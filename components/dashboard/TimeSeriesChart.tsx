@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { WaterQualityReading, ParameterInfo } from '@/types';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
@@ -12,9 +12,14 @@ interface TimeSeriesChartProps {
 }
 
 export function TimeSeriesChart({ readings, parameters }: TimeSeriesChartProps) {
-  const [selectedParameter, setSelectedParameter] = useState<string>(
-    parameters.length > 0 ? parameters[0].name : ''
-  );
+  const [selectedParameter, setSelectedParameter] = useState<string>('');
+
+  // Update selected parameter when parameters are loaded
+  useEffect(() => {
+    if (parameters.length > 0 && !selectedParameter) {
+      setSelectedParameter(parameters[0].name);
+    }
+  }, [parameters, selectedParameter]);
 
   // Filter and sort readings for the selected parameter
   const parameterReadings = readings
