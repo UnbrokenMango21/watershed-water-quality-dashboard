@@ -23,6 +23,16 @@ This is not the final public or authoritative watershed service.
 - Hosted feature layer: `Central_PA_Watershed_QC_Staging`
 - Initial sharing: owner only/private
 
+## Time standard
+
+Use **Eastern Time for all product timestamps** to keep collection, validation, review, audit, ArcGIS staging, authoritative publication, and dashboard display on one time standard.
+
+Canonical zone: `America/New_York` / Eastern Time. Daylight-saving adjustment must remain enabled so summer timestamps use EDT and winter timestamps use EST automatically.
+
+Do not use a fixed `EST` offset year-round. The platform should use the Eastern Time zone rules rather than a fixed UTC-5 offset.
+
+Historical records with a date but no recorded time keep `time_known = false`. Any technical placeholder required by downstream systems must remain marked as imputed and must not be presented as an observed field time.
+
 ## Publish as one related service
 
 The ArcGIS Pro map must include these five source datasets together before publication:
@@ -54,13 +64,14 @@ From ArcGIS Pro:
 1. Confirm Penn State ArcGIS Online is the active portal and the correct account is signed in.
 2. Confirm all five datasets are in the current map (two feature layers + three standalone tables).
 3. Set the map coordinate system to **WGS 1984 / EPSG:4326**.
-4. Share the full map contents as a Web Layer.
-5. Name: `Central_PA_Watershed_QC_Staging`.
-6. Layer type: **Feature**.
-7. Data: **Copy all data**.
-8. Portal folder: `Central_PA_Watershed_Staging`.
-9. Sharing: **do not share** with Everyone or the organization during Phase 7.
-10. Configure operations:
+4. Set the web-layer data time zone to **Eastern Time / America/New_York** and enable daylight-saving adjustment.
+5. Share the full map contents as a Web Layer.
+6. Name: `Central_PA_Watershed_QC_Staging`.
+7. Layer type: **Feature**.
+8. Data: **Copy all data**.
+9. Portal folder: `Central_PA_Watershed_Staging`.
+10. Sharing: **do not share** with Everyone or the organization during Phase 7.
+11. Configure operations:
    - Enable editing.
    - Allow **Add**.
    - Allow **Update → Attributes only**.
@@ -70,8 +81,8 @@ From ArcGIS Pro:
    - Do **not** enable public data collection.
    - Preserve editor tracking information where the publishing pane exposes the option.
    - Keep attachments/related data included.
-11. Analyze before publishing. Resolve all errors before publish; review warnings individually.
-12. Publish.
+12. Analyze before publishing. Resolve all errors before publish; review warnings individually.
+13. Publish.
 
 ## Why these editing settings
 
@@ -118,6 +129,7 @@ The staging item must remain private. Backend/private fields may exist in this s
 - Do not remove landowner/internal fields from the staging source; instead exclude/hide them from future public-safe views.
 - Do not treat the QC staging layer as the authoritative approved dataset.
 - Do not overwrite the local file geodatabase as part of online editing; the online hosted copy is a separate environment.
+- Use Eastern Time consistently across collection, review, audit, publication, and dashboard-facing timestamps.
 
 ## Acceptance criteria
 
@@ -127,6 +139,7 @@ The staging item must remain private. Backend/private fields may exist in this s
 - SamplingEvents attachments work.
 - Domains/coded values survived publishing.
 - GlobalID/GUID fields survived publishing.
+- Eastern Time is configured as the data time zone with daylight-saving adjustment.
 - Item is private.
 - No real/historical observations are loaded.
 - Map Viewer opens the service without schema errors.
