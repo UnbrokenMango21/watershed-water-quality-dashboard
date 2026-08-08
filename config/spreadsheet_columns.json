@@ -1,0 +1,40 @@
+{
+  "schemaVersion": "0.1.0",
+  "purpose": "Canonical mapping for the current historical spreadsheet and future compatible imports/exports.",
+  "defaultsForCurrentObservations": {
+    "Test Type": "In-situ/Penn State Lab",
+    "Data Collected By": "Student/researcher"
+  },
+  "columns": [
+    {"order":1,"displayLabel":"SiteID","backendMapping":"site_id","type":"string"},
+    {"order":2,"displayLabel":"SiteName","backendMapping":"site_name_internal_or_public_after_privacy_review","type":"string","publicRule":"Never expose an unscreened private/landowner-containing value"},
+    {"order":3,"displayLabel":"Test Type","backendMapping":"test_type","type":"string","default":"In-situ/Penn State Lab"},
+    {"order":4,"displayLabel":"Data Collected By","backendMapping":"data_collected_by","type":"string","default":"Student/researcher"},
+    {"order":5,"displayLabel":"Review Status","backendMapping":"review_status","type":"string"},
+    {"order":6,"displayLabel":"Review Comment","backendMapping":"review_comment","type":"string","public":false},
+    {"order":7,"displayLabel":"Latitude","backendMapping":"latitude","type":"double"},
+    {"order":8,"displayLabel":"Longitude","backendMapping":"longitude","type":"double"},
+    {"order":9,"displayLabel":"Date","backendMapping":"collected_at","type":"datetime"},
+    {"order":10,"displayLabel":"Weather Condition","backendMapping":"weather_condition","type":"string"},
+    {"order":11,"displayLabel":"Temp (F)","parameterCode":"WATER_TEMP_F","type":"double","unit":"degF"},
+    {"order":12,"displayLabel":"Temp (C)","parameterCode":"WATER_TEMP_C","type":"double","unit":"degC"},
+    {"order":13,"displayLabel":"pH","parameterCode":"PH","type":"double","unit":"pH"},
+    {"order":14,"displayLabel":"DO (%)","parameterCode":"DO_PERCENT","type":"double","unit":"percent"},
+    {"order":15,"displayLabel":"DO (ppm)","parameterCode":"DO_PPM","type":"double","unit":"ppm"},
+    {"order":16,"displayLabel":"Conductivity (µS/cm)","parameterCode":"CONDUCTIVITY_US_CM","type":"double","unit":"uS/cm"},
+    {"order":17,"displayLabel":"TDS (ppm)","parameterCode":"TDS_PPM","type":"double","unit":"ppm"},
+    {"order":18,"displayLabel":"ORP (mV)","parameterCode":"ORP_MV","type":"double","unit":"mV"},
+    {"order":19,"displayLabel":"Chloride (mg/L)","parameterCode":"CHLORIDE_MG_L","type":"double","unit":"mg/L"},
+    {"order":20,"displayLabel":"Sulphate (mg/L)","parameterCode":"SULFATE_MG_L","type":"double","unit":"mg/L"},
+    {"order":21,"displayLabel":"Nitrate (mg/L)","parameterCode":"NITRATE_MG_L","type":"double","unit":"mg/L"},
+    {"order":22,"displayLabel":"Phosphate (mg/L)","parameterCode":"PHOSPHATE_MG_L","type":"double","unit":"mg/L"},
+    {"order":23,"displayLabel":"Q (m³/s)","parameterCode":"DISCHARGE_M3_S","type":"double","unit":"m3/s"}
+  ],
+  "privacy": {
+    "landownerName": "backend only; never public",
+    "landownerNotes": "backend only; never public",
+    "reviewComment": "internal by default",
+    "collectorUserId": "internal only",
+    "reviewerUserId": "internal only"
+  }
+}
