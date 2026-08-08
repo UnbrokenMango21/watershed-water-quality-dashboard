@@ -43,25 +43,39 @@ The geodatabase relationship classes are:
 
 `SamplingEvents` also has attachments enabled.
 
+## Map coordinate system
+
+Before publication, set the ArcGIS Pro map coordinate system to **WGS 1984 / EPSG:4326** so the hosted staging geometry remains aligned with the local canonical geometry and mobile latitude/longitude model.
+
 ## Publication configuration
 
 From ArcGIS Pro:
 
 1. Confirm Penn State ArcGIS Online is the active portal and the correct account is signed in.
 2. Confirm all five datasets are in the current map (two feature layers + three standalone tables).
-3. Share the full map contents as a Web Layer.
-4. Name: `Central_PA_Watershed_QC_Staging`.
-5. Layer type: **Feature**.
-6. Data: **Copy all data** (required for ArcGIS Online hosted feature layers).
-7. Portal folder: `Central_PA_Watershed_Staging`.
-8. Sharing: **do not share** with Everyone or the organization during Phase 7.
-9. Configuration:
+3. Set the map coordinate system to **WGS 1984 / EPSG:4326**.
+4. Share the full map contents as a Web Layer.
+5. Name: `Central_PA_Watershed_QC_Staging`.
+6. Layer type: **Feature**.
+7. Data: **Copy all data**.
+8. Portal folder: `Central_PA_Watershed_Staging`.
+9. Sharing: **do not share** with Everyone or the organization during Phase 7.
+10. Configure operations:
+   - Enable editing.
+   - Allow **Add**.
+   - Allow **Update → Attributes only**.
+   - Do **not** allow Delete.
+   - Do **not** enable Sync in Phase 7.
+   - Do **not** enable Export Data in Phase 7 because staging contains private/internal fields.
+   - Do **not** enable public data collection.
    - Preserve editor tracking information where the publishing pane exposes the option.
    - Keep attachments/related data included.
-   - Editing may be enabled for the private staging service because later system/Workflow Manager actions need to add/update review records; keep sharing private.
-   - Do not enable public data collection.
-10. Analyze before publishing. Resolve errors before publish; review warnings individually.
-11. Publish.
+11. Analyze before publishing. Resolve all errors before publish; review warnings individually.
+12. Publish.
+
+## Why these editing settings
+
+The staging service needs to accept new review records and allow workflow/status/reviewer attributes to change, but supervisors should not modify field geometry and nobody should delete scientific submissions as part of normal review. Deletion and geometry correction remain controlled administrative/backend operations rather than routine reviewer privileges.
 
 ## Verification in ArcGIS Online
 
