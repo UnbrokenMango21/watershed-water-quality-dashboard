@@ -1,0 +1,95 @@
+{
+  "version": "1.0.0",
+  "engineInput": {
+    "revision": "current immutable submitted revision",
+    "measurements": "measurement records for current revision",
+    "site": "mobile-safe expected site coordinates/tolerance when available",
+    "historyByParameter": "approved comparable historical records only",
+    "now": "server validation timestamp"
+  },
+  "engineOutput": {
+    "validation_rules_version": "string",
+    "quality_algorithm_version": "string",
+    "validation_profile_id": "string",
+    "blocking": "boolean",
+    "review_ready": "boolean",
+    "counts": {
+      "error": "integer",
+      "warning": "integer including plausibility + environmental warnings",
+      "plausibility_warning": "integer",
+      "environmental_alert": "integer",
+      "info": "integer"
+    },
+    "scores": {
+      "completeness_score": "number 0-100",
+      "location_quality_score": "number 0-100",
+      "method_quality_score": "number 0-100",
+      "validation_quality_score": "number 0-100",
+      "temporal_quality_score": "number 0-100",
+      "historical_quality_score": "number 0-100|null",
+      "overall_quality_score": "number 0-100|null",
+      "overall_quality_score_display": "integer|null",
+      "anomaly_score": "number 0-100|null",
+      "historical_effective_weight": "number 0-0.10"
+    },
+    "flags": "array of deterministic validation flag objects",
+    "derived": "site distance and historical diagnostic details"
+  },
+  "firestorePersistence": {
+    "revisionValidationMap": {
+      "target": "submissions/{submissionId}/revisions/{revisionId}.validation",
+      "write": [
+        "validation_rules_version",
+        "quality_algorithm_version",
+        "validation_profile_id",
+        "blocking",
+        "counts",
+        "scores",
+        "validated_at"
+      ]
+    },
+    "flags": {
+      "target": "submissions/{submissionId}/revisions/{revisionId}/validationFlags/{flagId}",
+      "idempotency": "flag_id is deterministic from rule_code + parameter_code where applicable",
+      "replacePolicy": "trusted validation service replaces current revision flag set on each run"
+    },
+    "submissionSummary": {
+      "target": "submissions/{submissionId}",
+      "write": [
+        "validation_rules_version",
+        "quality_algorithm_version",
+        "overall_quality_score",
+        "anomaly_score",
+        "error_flag_count",
+        "warning_flag_count",
+        "info_flag_count",
+        "updated_at"
+      ]
+    },
+    "statusTransition": {
+      "ifErrors": "VALIDATING remains blocked / return correction path; never advance to supervisor review",
+      "ifNoErrors": "VALIDATING -> PENDING_REVIEW",
+      "actor": "trusted validation service using Admin SDK/IAM"
+    },
+    "audit": {
+      "target": "submissions/{submissionId}/audit/{auditId}",
+      "eventType": "VALIDATION_COMPLETED",
+      "actorType": "VALIDATION_SERVICE",
+      "metadata": ["revision_id", "rules_version", "algorithm_version", "counts", "overall_quality_score", "anomaly_score"]
+    }
+  },
+  "arcgisMapping": {
+    "SamplingEvents.completeness_score": "scores.completeness_score",
+    "SamplingEvents.location_quality_score": "scores.location_quality_score",
+    "SamplingEvents.method_quality_score": "scores.method_quality_score",
+    "SamplingEvents.validation_quality_score": "scores.validation_quality_score",
+    "SamplingEvents.temporal_quality_score": "scores.temporal_quality_score",
+    "SamplingEvents.historical_quality_score": "scores.historical_quality_score",
+    "SamplingEvents.overall_quality_score": "scores.overall_quality_score",
+    "SamplingEvents.anomaly_score": "scores.anomaly_score",
+    "SamplingEvents.error_flag_count": "counts.error",
+    "SamplingEvents.warning_flag_count": "counts.warning",
+    "SamplingEvents.info_flag_count": "counts.info",
+    "ValidationFlags": "flags[]"
+  }
+}
