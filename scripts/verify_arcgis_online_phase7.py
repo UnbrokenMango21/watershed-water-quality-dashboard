@@ -2,9 +2,15 @@
 
 Run inside ArcGIS Pro's Python window while signed in to the Penn State portal.
 The script is read-only: it does not edit the hosted service.
+
+Important ArcGIS Online behavior:
+Hosted Date fields are stored internally in UTC by design. The project-standard
+Eastern Time requirement is therefore verified through preferredTimeReference,
+not by requiring dateFieldsTimeReference itself to be Eastern.
 """
 
 from arcgis.gis import GIS
+from arcgis.features import FeatureLayerCollection
 
 ITEM_ID = "b7775c1bdada4aa8b0787714eca3eb15"
 EXPECTED_TITLE = "Central_PA_Watershed_QC_Staging"
@@ -72,6 +78,15 @@ def prop(obj, name, default=None):
             return default
 
 
+def time_ref_text(ref):
+    if not ref:
+        return "not exposed"
+    tz = str(prop(ref, "timeZone", ""))
+    iana = str(prop(ref, "timeZoneIANA", ""))
+    daylight = prop(ref, "respectsDaylightSaving", None)
+    return f"timeZone={tz}; timeZoneIANA={iana}; respectsDaylightSaving={daylight}"
+
+
 print("=== PHASE 7 ARCGIS ONLINE VERIFICATION ===")
 print("Connecting through the ArcGIS Pro signed-in portal...")
 gis = GIS("pro")
@@ -90,7 +105,7 @@ if item.title == EXPECTED_TITLE:
 else:
     fail_check("Hosted item title", item.title)
 
-# Sharing/privacy
+# Sharing/privacy.
 try:
     shared = item.shared_with
     everyone = bool(shared.get("everyone", False))
@@ -103,7 +118,7 @@ try:
 except Exception as exc:
     warn_check("Could not read sharing state", str(exc))
 
-# Collect published layers/tables by service ID.
+# Collect published layers/tables by stable service ID.
 all_parts = list(item.layers) + list(item.tables)
 by_id = {int(p.properties.id): p for p in all_parts}
 
@@ -118,7 +133,7 @@ for sid, expected_name in EXPECTED.items():
     else:
         fail_check(f"Service ID {sid}", f"expected {expected_name}; got {actual_name}")
 
-# Ensure no production data has been loaded.
+# Empty staging gate.
 for sid, expected_name in EXPECTED.items():
     p = by_id.get(sid)
     if p is None:
@@ -132,7 +147,7 @@ for sid, expected_name in EXPECTED.items():
     except Exception as exc:
         fail_check(f"Query {expected_name}", str(exc))
 
-# IDs and GUID foreign keys.
+# GlobalIDs and GUID foreign keys.
 for sid, names in EXPECTED_GUID_FIELDS.items():
     p = by_id.get(sid)
     if p is None:
@@ -164,7 +179,7 @@ for sid, names in EXPECTED_DOMAIN_FIELDS.items():
         else:
             fail_check(f"Domain: {EXPECTED[sid]}.{name}", "coded-value domain missing")
 
-# Relationships: infer origin/destination pairs from relatedTableId on each published part.
+# Relationships.
 relation_pairs = set()
 for sid, p in by_id.items():
     rels = prop(p.properties, "relationships", []) or []
@@ -186,19 +201,16 @@ for pair in sorted(EXPECTED_RELATION_PAIRS):
     else:
         fail_check("Relationship", f"{EXPECTED[pair[0]]} -> {EXPECTED[pair[1]]}")
 
-# Attachments on SamplingEvents.
+# Attachments.
 events = by_id.get(20)
 if events is not None:
-    has_attachments = bool(prop(events.properties, "hasAttachments", False))
-    if has_attachments:
+    if bool(prop(events.properties, "hasAttachments", False)):
         pass_check("SamplingEvents attachments enabled")
     else:
         fail_check("SamplingEvents attachments enabled")
 
-# Editing / sync / geometry behavior at service/layer level.
-service_props = getattr(item, "_hydrated", False)
+# Editing / sync / geometry behavior.
 try:
-    # Layer capabilities are often the most reliable published indicator.
     if events is not None:
         caps = str(prop(events.properties, "capabilities", ""))
         capset = {c.strip().lower() for c in caps.split(",") if c.strip()}
@@ -223,7 +235,16 @@ try:
 except Exception as exc:
     warn_check("Could not fully inspect editing configuration", str(exc))
 
-# Date-field timezone metadata. ArcGIS commonly exposes this as dateFieldsTimeReference.
+# Time behavior.
+# ArcGIS Online hosted Date values are stored in UTC by design. Therefore UTC in
+# dateFieldsTimeReference is correct and is NOT a failure. The project-standard
+# user/client time zone is checked separately through preferredTimeReference.
+try:
+    flc = FeatureLayerCollection.fromitem(item)
+    service_preferred = prop(flc.properties, "preferredTimeReference", None)
+except Exception:
+    service_preferred = None
+
 for sid, expected_name in EXPECTED.items():
     p = by_id.get(sid)
     if p is None:
@@ -231,19 +252,33 @@ for sid, expected_name in EXPECTED.items():
     date_fields = [f for f in p.properties.fields if f.get("type") == "esriFieldTypeDate"]
     if not date_fields:
         continue
-    tref = prop(p.properties, "dateFieldsTimeReference", None)
-    if tref:
-        tz = str(prop(tref, "timeZone", ""))
-        daylight = prop(tref, "respectsDaylightSaving", None)
-        text = f"timeZone={tz}; respectsDaylightSaving={daylight}"
-        if "Eastern" in tz and daylight is True:
-            pass_check(f"Eastern Time metadata: {expected_name}", text)
-        elif "Eastern" in tz:
-            warn_check(f"Eastern Time metadata: {expected_name}", text)
+
+    storage_ref = prop(p.properties, "dateFieldsTimeReference", None)
+    if storage_ref:
+        storage_tz = str(prop(storage_ref, "timeZone", ""))
+        detail = time_ref_text(storage_ref)
+        if storage_tz.upper() == "UTC" or "COORDINATED UNIVERSAL" in storage_tz.upper():
+            pass_check(f"Hosted UTC date storage: {expected_name}", detail)
         else:
-            fail_check(f"Eastern Time metadata: {expected_name}", text)
+            warn_check(f"Hosted date storage is not reported as UTC: {expected_name}", detail)
     else:
-        warn_check(f"Date time-reference metadata not exposed: {expected_name}")
+        warn_check(f"Date storage time-reference not exposed: {expected_name}")
+
+    preferred_ref = prop(p.properties, "preferredTimeReference", None) or service_preferred
+    if preferred_ref:
+        preferred_tz = str(prop(preferred_ref, "timeZone", ""))
+        preferred_iana = str(prop(preferred_ref, "timeZoneIANA", ""))
+        daylight = prop(preferred_ref, "respectsDaylightSaving", None)
+        detail = time_ref_text(preferred_ref)
+        is_eastern = ("EASTERN" in preferred_tz.upper()) or (preferred_iana == "America/New_York")
+        if is_eastern and daylight is True:
+            pass_check(f"Preferred Eastern Time: {expected_name}", detail)
+        elif is_eastern:
+            fail_check(f"Preferred Eastern Time DST: {expected_name}", detail)
+        else:
+            fail_check(f"Preferred Eastern Time: {expected_name}", detail)
+    else:
+        fail_check(f"Preferred Eastern Time metadata: {expected_name}", "preferredTimeReference not exposed")
 
 print()
 print("=== SUMMARY ===")
