@@ -1,0 +1,221 @@
+{
+  "version": "0.1.0",
+  "database": "Cloud Firestore Standard",
+  "environmentStrategy": {
+    "developmentProject": "central-pa-watershed-dev",
+    "productionProjectReserved": "central-pa-watershed-prod",
+    "productionDataAllowedInDev": false
+  },
+  "idPolicy": {
+    "style": "UUID/non-sequential",
+    "submissionId": "stable form/submission envelope ID",
+    "eventId": "stable scientific SamplingEvent ID shared with ArcGIS",
+    "revisionId": "immutable collector revision ID",
+    "measurementId": "unique measurement record ID",
+    "siteId": "stable site ID shared with ArcGIS"
+  },
+  "collections": {
+    "users": {
+      "documentId": "Firebase Auth uid",
+      "fields": {
+        "display_name": "string",
+        "role": "COLLECTOR | ADMIN",
+        "active": "boolean",
+        "created_at": "Timestamp",
+        "updated_at": "Timestamp"
+      }
+    },
+    "siteCatalog": {
+      "documentId": "site_id",
+      "purpose": "mobile-safe site lookup only; never include landowner/private access fields",
+      "fields": {
+        "site_id": "string",
+        "site_code": "string",
+        "site_name_display": "string",
+        "latitude": "number",
+        "longitude": "number",
+        "location": "GeoPoint",
+        "site_tolerance_m": "number",
+        "active": "boolean",
+        "updated_at": "Timestamp"
+      }
+    },
+    "submissions": {
+      "documentId": "submission_id",
+      "fields": {
+        "submission_id": "string",
+        "event_id": "string",
+        "collector_user_id": "string",
+        "site_id": "string",
+        "status": "DRAFT | SUBMITTED | VALIDATING | PENDING_REVIEW | NEEDS_CORRECTION | RESUBMITTED | APPROVED | REJECTED | PUBLISHING | PUBLISH_FAILED | PUBLISHED",
+        "current_revision_id": "string",
+        "current_revision_no": "integer",
+        "latest_collected_at": "Timestamp",
+        "created_at": "Timestamp",
+        "updated_at": "Timestamp",
+        "submitted_at": "Timestamp|null",
+        "workflow_job_id": "string|null",
+        "arcgis_staging_globalid": "string|null",
+        "schema_version": "string",
+        "mobile_app_version": "string",
+        "validation_rules_version": "string|null",
+        "quality_algorithm_version": "string|null",
+        "overall_quality_score": "number|null",
+        "anomaly_score": "number|null",
+        "error_flag_count": "integer",
+        "warning_flag_count": "integer",
+        "info_flag_count": "integer",
+        "review_decision": "APPROVE | NEEDS_CORRECTION | REJECT | null",
+        "review_comment": "string|null",
+        "reviewed_at": "Timestamp|null",
+        "published_at": "Timestamp|null"
+      },
+      "serverOwnedFields": [
+        "workflow_job_id",
+        "arcgis_staging_globalid",
+        "validation_rules_version",
+        "quality_algorithm_version",
+        "overall_quality_score",
+        "anomaly_score",
+        "error_flag_count",
+        "warning_flag_count",
+        "info_flag_count",
+        "review_decision",
+        "review_comment",
+        "reviewed_at",
+        "published_at"
+      ],
+      "subcollections": {
+        "revisions": {
+          "documentId": "revision_id",
+          "policy": "collector science becomes immutable after revision is submitted",
+          "fields": {
+            "revision_id": "string",
+            "revision_no": "integer",
+            "submission_id": "string",
+            "event_id": "string",
+            "collector_user_id": "string",
+            "site_id": "string",
+            "revision_status": "DRAFT | SUBMITTED",
+            "created_at": "Timestamp",
+            "submitted_at": "Timestamp|null",
+            "collected_at": "Timestamp",
+            "time_known": "boolean",
+            "time_imputed": "boolean",
+            "latitude": "number",
+            "longitude": "number",
+            "location": "GeoPoint",
+            "gps_accuracy_m": "number",
+            "site_distance_m": "number|null",
+            "weather_condition": "string",
+            "data_collected_by": "string",
+            "test_type": "string",
+            "test_type_other": "string|null",
+            "method_name": "string",
+            "instrument_name": "string",
+            "instrument_other": "string|null",
+            "temp_entered_value": "number",
+            "temp_entered_unit": "C | F",
+            "temp_c": "number",
+            "temp_f": "number",
+            "field_notes_original": "string|null",
+            "schema_version": "string",
+            "mobile_app_version": "string",
+            "validation": "server-owned map|null"
+          },
+          "subcollections": {
+            "measurements": {
+              "documentId": "measurement_id",
+              "fields": {
+                "measurement_id": "string",
+                "parameter_code": "string",
+                "display_name": "string",
+                "value": "number",
+                "unit_code": "string",
+                "method_name": "string",
+                "instrument_name": "string",
+                "qualifier": "string|null",
+                "notes": "string|null",
+                "entered_at": "Timestamp"
+              }
+            },
+            "validationFlags": {
+              "documentId": "flag_id",
+              "serverWriteOnly": true,
+              "fields": {
+                "flag_id": "string",
+                "severity": "ERROR | PLAUSIBILITY_WARNING | ENVIRONMENTAL_ALERT | INFO",
+                "category": "string",
+                "parameter_code": "string|null",
+                "message": "string",
+                "rule_code": "string",
+                "created_at": "Timestamp",
+                "resolved": "boolean"
+              }
+            },
+            "attachments": {
+              "documentId": "attachment_id",
+              "fields": {
+                "attachment_id": "string",
+                "storage_path": "string",
+                "content_type": "string",
+                "kind": "SITE_PHOTO | INSTRUMENT_PHOTO | TEST_RESULT | OTHER",
+                "caption": "string|null",
+                "created_at": "Timestamp"
+              }
+            }
+          }
+        },
+        "audit": {
+          "documentId": "audit_id",
+          "serverWriteOnly": true,
+          "fields": {
+            "audit_id": "string",
+            "event_type": "string",
+            "actor_type": "COLLECTOR | VALIDATION_SERVICE | QC_REVIEWER | PUBLISHING_SERVICE",
+            "actor_id": "string|null",
+            "occurred_at": "Timestamp",
+            "previous_state": "string|null",
+            "new_state": "string|null",
+            "revision_id": "string|null",
+            "reason": "string|null",
+            "metadata": "map|null"
+          }
+        }
+      }
+    }
+  },
+  "temperatureBehavior": {
+    "input": "collector selects C or F and enters one value",
+    "conversion": {
+      "C_from_F": "(F - 32) * 5 / 9",
+      "F_from_C": "C * 9 / 5 + 32"
+    },
+    "displayPrecision": 2,
+    "storeEnteredValueAndUnit": true,
+    "storeBothDerivedValues": true
+  },
+  "workflowTransitions": {
+    "clientAllowed": [
+      "DRAFT -> SUBMITTED",
+      "NEEDS_CORRECTION -> RESUBMITTED"
+    ],
+    "serverOnly": [
+      "SUBMITTED -> VALIDATING",
+      "VALIDATING -> PENDING_REVIEW",
+      "PENDING_REVIEW -> NEEDS_CORRECTION",
+      "PENDING_REVIEW -> APPROVED",
+      "PENDING_REVIEW -> REJECTED",
+      "RESUBMITTED -> VALIDATING",
+      "APPROVED -> PUBLISHING",
+      "PUBLISHING -> PUBLISHED",
+      "PUBLISHING -> PUBLISH_FAILED"
+    ]
+  },
+  "privacy": {
+    "landownerFieldsInFirestoreMobileCatalog": false,
+    "collectorCanWriteQualityScores": false,
+    "collectorCanWriteReviewFields": false,
+    "collectorCanWritePublicationFields": false
+  }
+}
