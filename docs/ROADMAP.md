@@ -6,7 +6,7 @@ This sequence is the working implementation order for the Watershed Monitoring P
 - [x] 2. GitHub repository
 - [x] 3. GitHub documentation / CHANGELOG / Issues foundation
 - [x] 4. Formal data dictionary
-- [ ] 5. ArcGIS Pro geodatabase prototype
+- [x] 5. ArcGIS Pro geodatabase prototype
 - [ ] 6. ArcGIS domains + relationships + IDs
 - [ ] 7. Publish clean ArcGIS Online staging environment
 - [ ] 8. Design Workflow Manager
@@ -21,9 +21,9 @@ This sequence is the working implementation order for the Watershed Monitoring P
 
 ## Current active phase
 
-**Phase 5 — ArcGIS Pro geodatabase prototype**
+**Phase 6 — ArcGIS domains + relationships + IDs**
 
-The canonical data dictionary, collection protocol, validation concepts, privacy rules, workflow states, spreadsheet mappings, and versioned quality/anomaly score are now defined well enough to build the first ArcGIS Pro geodatabase prototype.
+Phase 5 was visually verified in ArcGIS Pro 3.7.1: `CentralPA_Watershed.gdb` exists, all five empty prototype datasets exist, `SamplingSites` and `SamplingEvents` use WGS 1984 / EPSG:4326, and the expected fields are present. Phase 6 now hardens the geodatabase with GlobalIDs, GUID foreign keys, relationship classes, coded-value domains, attachments, and editor tracking.
 
 ## Phase gates
 
