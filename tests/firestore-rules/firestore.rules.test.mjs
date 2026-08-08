@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import test, { before, beforeEach, after } from 'node:test';
 import assert from 'node:assert/strict';
 import {
@@ -16,7 +17,8 @@ import {
 } from 'firebase/firestore';
 
 const PROJECT_ID = 'central-pa-watershed-dev';
-const RULES_PATH = path.resolve(process.cwd(), 'firebase/firestore.rules');
+const TEST_DIR = path.dirname(fileURLToPath(import.meta.url));
+const RULES_PATH = path.resolve(TEST_DIR, '../../firebase/firestore.rules');
 
 let env;
 
