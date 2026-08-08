@@ -1,0 +1,16 @@
+{
+  "schemaVersion": "0.1.0",
+  "spatialReference": {"name": "WGS 1984", "wkid": 4326},
+  "datasets": {
+    "SamplingSites": "Point feature class",
+    "SamplingEvents": "Point feature class",
+    "Measurements": "Table",
+    "ValidationFlags": "Table",
+    "AuditEvents": "Table"
+  },
+  "phase5Notes": [
+    "Prototype only; no historical or production data loaded.",
+    "Domains, GlobalIDs/GUID relationships, editor tracking, and attachments are finalized in Phase 6.",
+    "Private landowner and internal identity fields must never be exposed in public hosted views."
+  ]
+}
