@@ -1,0 +1,171 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function uid() {
+      return request.auth.uid;
+    }
+
+    function role() {
+      return signedIn() && request.auth.token.role != null
+        ? request.auth.token.role
+        : "COLLECTOR";
+    }
+
+    function isAdmin() {
+      return signedIn() && role() == "ADMIN";
+    }
+
+    function isReviewer() {
+      return signedIn() && role() == "QC_REVIEWER";
+    }
+
+    function submissionPath(submissionId) {
+      return /databases/$(database)/documents/submissions/$(submissionId);
+    }
+
+    function revisionPath(submissionId, revisionId) {
+      return /databases/$(database)/documents/submissions/$(submissionId)/revisions/$(revisionId);
+    }
+
+    function ownsSubmission(submissionId) {
+      return signedIn()
+        && get(submissionPath(submissionId)).data.collector_user_id == uid();
+    }
+
+    function canReadSubmission(submissionId) {
+      return ownsSubmission(submissionId) || isAdmin() || isReviewer();
+    }
+
+    function collectorSubmissionUpdateKeysOnly() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+        "site_id",
+        "status",
+        "current_revision_id",
+        "current_revision_no",
+        "latest_collected_at",
+        "updated_at",
+        "submitted_at",
+        "mobile_app_version"
+      ]);
+    }
+
+    function validCollectorSubmissionTransition() {
+      return (
+        resource.data.status == "DRAFT"
+        && request.resource.data.status in ["DRAFT", "SUBMITTED"]
+      ) || (
+        resource.data.status == "NEEDS_CORRECTION"
+        && request.resource.data.status in ["NEEDS_CORRECTION", "RESUBMITTED"]
+      );
+    }
+
+    function revisionIsDraft(submissionId, revisionId) {
+      return get(revisionPath(submissionId, revisionId)).data.revision_status == "DRAFT";
+    }
+
+    match /users/{userId} {
+      allow read: if signedIn() && (userId == uid() || isAdmin());
+      allow write: if false;
+    }
+
+    match /siteCatalog/{siteId} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+
+    match /submissions/{submissionId} {
+      allow create: if signedIn()
+        && request.resource.data.collector_user_id == uid()
+        && request.resource.data.submission_id == submissionId
+        && request.resource.data.status == "DRAFT"
+        && request.resource.data.keys().hasOnly([
+          "submission_id",
+          "event_id",
+          "collector_user_id",
+          "site_id",
+          "status",
+          "current_revision_id",
+          "current_revision_no",
+          "latest_collected_at",
+          "created_at",
+          "updated_at",
+          "submitted_at",
+          "schema_version",
+          "mobile_app_version"
+        ]);
+
+      allow read: if signedIn()
+        && (resource.data.collector_user_id == uid() || isAdmin() || isReviewer());
+
+      allow update: if signedIn()
+        && resource.data.collector_user_id == uid()
+        && request.resource.data.collector_user_id == resource.data.collector_user_id
+        && request.resource.data.submission_id == resource.data.submission_id
+        && request.resource.data.event_id == resource.data.event_id
+        && collectorSubmissionUpdateKeysOnly()
+        && validCollectorSubmissionTransition();
+
+      allow delete: if false;
+
+      match /revisions/{revisionId} {
+        allow read: if canReadSubmission(submissionId);
+
+        allow create: if ownsSubmission(submissionId)
+          && get(submissionPath(submissionId)).data.status in ["DRAFT", "NEEDS_CORRECTION"]
+          && request.resource.data.revision_id == revisionId
+          && request.resource.data.submission_id == submissionId
+          && request.resource.data.collector_user_id == uid()
+          && request.resource.data.event_id == get(submissionPath(submissionId)).data.event_id
+          && request.resource.data.revision_status == "DRAFT";
+
+        allow update: if ownsSubmission(submissionId)
+          && resource.data.collector_user_id == uid()
+          && resource.data.revision_status == "DRAFT"
+          && request.resource.data.revision_status in ["DRAFT", "SUBMITTED"]
+          && request.resource.data.revision_id == resource.data.revision_id
+          && request.resource.data.submission_id == resource.data.submission_id
+          && request.resource.data.event_id == resource.data.event_id
+          && request.resource.data.collector_user_id == resource.data.collector_user_id;
+
+        allow delete: if ownsSubmission(submissionId)
+          && resource.data.revision_status == "DRAFT";
+
+        match /measurements/{measurementId} {
+          allow read: if canReadSubmission(submissionId);
+
+          allow create, update, delete: if ownsSubmission(submissionId)
+            && revisionIsDraft(submissionId, revisionId);
+        }
+
+        match /attachments/{attachmentId} {
+          allow read: if canReadSubmission(submissionId);
+
+          allow create, update, delete: if ownsSubmission(submissionId)
+            && revisionIsDraft(submissionId, revisionId);
+        }
+
+        match /validationFlags/{flagId} {
+          allow read: if canReadSubmission(submissionId);
+          allow write: if false;
+        }
+      }
+
+      match /audit/{auditId} {
+        allow read: if canReadSubmission(submissionId);
+        allow write: if false;
+      }
+    }
+
+    // Default deny. Server Admin SDK / IAM performs trusted validation,
+    // review synchronization, audit, scoring and publication writes.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
