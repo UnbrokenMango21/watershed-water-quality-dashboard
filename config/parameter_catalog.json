@@ -1,0 +1,21 @@
+{
+  "catalogVersion": "0.1.0",
+  "parameters": [
+    {"code":"PH","name":"pH","canonicalUnit":"pH","storageType":"double","uiDecimals":2,"mvpStatus":"core"},
+    {"code":"DO_MG_L","name":"Dissolved Oxygen","canonicalUnit":"mg/L","storageType":"double","uiDecimals":2,"mvpStatus":"core"},
+    {"code":"DO_PERCENT","name":"Dissolved Oxygen Saturation","canonicalUnit":"%","storageType":"double","uiDecimals":1,"mvpStatus":"core"},
+    {"code":"WATER_TEMP_C","name":"Water Temperature","canonicalUnit":"degC","storageType":"double","uiDecimals":2,"mvpStatus":"core"},
+    {"code":"CONDUCTIVITY_US_CM","name":"Conductivity / Specific Conductance","canonicalUnit":"uS/cm","storageType":"double","uiDecimals":1,"mvpStatus":"core"},
+    {"code":"TDS_MG_L","name":"Total Dissolved Solids","canonicalUnit":"mg/L","storageType":"double","uiDecimals":1,"mvpStatus":"core"},
+    {"code":"NITRATE_MG_L","name":"Nitrate","canonicalUnit":"mg/L","storageType":"double","uiDecimals":2,"mvpStatus":"configurable"},
+    {"code":"PHOSPHATE_MG_L","name":"Phosphate","canonicalUnit":"mg/L","storageType":"double","uiDecimals":2,"mvpStatus":"configurable"},
+    {"code":"CHLORIDE_MG_L","name":"Chloride","canonicalUnit":"mg/L","storageType":"double","uiDecimals":2,"mvpStatus":"configurable"},
+    {"code":"SULFATE_MG_L","name":"Sulfate","canonicalUnit":"mg/L","storageType":"double","uiDecimals":2,"mvpStatus":"configurable"},
+    {"code":"SALINITY_PPT","name":"Salinity","canonicalUnit":"ppt","storageType":"double","uiDecimals":2,"mvpStatus":"configurable"}
+  ],
+  "notes": [
+    "Requiredness is defined by sampling protocol, not hard-coded in this catalog.",
+    "Scientific thresholds and instrument hard limits will live in versioned validation-rule configuration.",
+    "Numeric measurements must remain numeric through mobile, Firebase, validation, ArcGIS, and dashboard layers."
+  ]
+}
