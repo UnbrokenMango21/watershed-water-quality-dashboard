@@ -1,198 +1,192 @@
-# Water-Quality Observation Quality Score
+# Water-Quality Observation Data Quality / Confidence Score
 
-**Version:** 0.1.0  
-**Status:** Approved for MVP / Step 4 completion  
-**Scope:** Central PA Watershed Dashboard
+**Version:** 1.0.0  
+**Status:** Phase 10 implementation baseline  
+**Scope:** Central Pennsylvania freshwater streams and creeks
 
 ## Purpose
 
-The quality score measures **confidence in the observation and its provenance**, not whether the water itself is healthy. An environmentally extreme reading can still receive a high quality score if it was collected correctly, at the correct place, with traceable methods/instruments, and passes internal QA checks.
+The score measures **confidence in the observation and its provenance**. It does **not** measure whether the stream itself has good or bad water quality.
 
-A separate **Anomaly Score** measures how unusual the measured values are compared with prior approved observations. This prevents a real pollution or low-DO event from being mislabeled as poor-quality data simply because it differs from history.
+A scientifically extreme observation can retain an excellent confidence score when it was collected at the intended site, with traceable methods, internally consistent values, and valid provenance. Environmental alerts and historical anomalies are therefore separated from data-quality errors.
 
-The supervisor remains the approval authority. The score is decision support only and never auto-approves or auto-rejects scientific data.
+An unresolved `ERROR` blocks progression regardless of any component score. Scores never auto-approve or auto-reject an observation.
 
-## Overall quality formula
+## Severity behavior
 
-For an observation with all components available:
+- `ERROR`: missing required information, impossible/hard-invalid values, internal contradictions, or invalid location/time structure. Blocks supervisor review.
+- `PLAUSIBILITY_WARNING`: possible but questionable data or internal consistency concern. Does not block; may reduce the relevant confidence component.
+- `ENVIRONMENTAL_ALERT`: possible environmental condition worth human attention. Does not block and does not reduce confidence merely because the environment is unusual.
+- `INFO`: explanatory/context information only. Does not block and does not reduce confidence.
+
+The UI may present both warning subtypes under the human-facing label **WARNING**, while retaining their distinct internal classes.
+
+## Overall formula
+
+With every component available:
 
 `Q = 0.20C + 0.20L + 0.20M + 0.20V + 0.10T + 0.10H`
 
 Where:
 
-- `C` = protocol completeness, 0–100
-- `L` = location quality, 0–100
-- `M` = method/instrument traceability, 0–100
-- `V` = validation/internal consistency, 0–100
-- `T` = temporal/provenance quality, 0–100
-- `H` = historical consistency, 0–100
+- `C` = protocol completeness
+- `L` = location quality
+- `M` = method/instrument traceability
+- `V` = validation/internal consistency
+- `T` = temporal/provenance quality
+- `H` = historical consistency
 
-The final quality score is rounded to the nearest whole number for display while the unrounded value may be retained internally.
+All components are 0–100. If a component is legitimately unavailable/not applicable, its weight is removed and remaining weights are renormalized. A missing required field is **not** treated as unavailable; it is an `ERROR`.
 
-If a component is legitimately unavailable/not-applicable, its weight is removed and the remaining weights are renormalized. Missing a required field is not treated as unavailable: it is an ERROR and blocks progression.
+## C — Completeness (20%)
 
-## C — Protocol completeness (20%)
+Completeness is evaluated against the active protocol and declared Test Type. Optional parameters that were not required by the selected protocol do not reduce the score and do not provide bonus points simply for being collected.
 
-Hard rule: if any protocol-required field or measurement is missing, validation returns an ERROR and the observation cannot advance to supervisor review.
+For the v1 in-situ/sonde/mixed profile, the core is:
 
-For observations that pass required-field validation:
+- water temperature
+- pH
+- dissolved oxygen concentration (mg/L)
+- conductivity (µS/cm)
 
-`C = 100 × (required_present + 0.25 × recommended_present) / (required_total + 0.25 × recommended_total)`
+Lab-only and field-kit profiles are configurable and are not forced to provide irrelevant in-situ parameters; they must provide at least one declared measurement and complete method/instrument provenance.
 
-Optional measurements that are not marked `recommended` by the active protocol do not reduce completeness.
+Missing required items produce an `ERROR`; the overall score remains unset until corrected.
 
 ## L — Location quality (20%)
 
-GPS is mandatory for new mobile submissions. Location quality combines the phone-reported horizontal GPS accuracy with the distance from the expected sampling-site location.
-
 `L = 0.65A + 0.35P`
 
-### GPS accuracy subscore A
+GPS accuracy score `A`:
 
-- `≤ 5 m` → 100
-- `> 5–10 m` → 95
-- `> 10–20 m` → 85
-- `> 20–50 m` → 65
-- `> 50 m` → 40 and recapture/confirmation warning
-- missing/invalid GPS → ERROR
+- ≤5 m → 100
+- >5–10 m → 95
+- >10–20 m → 85
+- >20–50 m → 65
+- >50 m → 40 + recapture/confirmation warning
+- invalid/missing coordinates or accuracy → `ERROR`
 
-### Site-proximity subscore P
+Site proximity score `P`, with site tolerance `R` (default 30 m):
 
-Each site has a configurable `siteToleranceM`; MVP default is 30 m.
+- distance ≤ R → 100
+- R < distance ≤ 2R → 85
+- 2R < distance ≤ 4R → 60
+- distance > 4R → 30 + strong review warning
 
-Let `d` be measured distance from the expected site point and `R = siteToleranceM`:
-
-- `d ≤ R` → 100
-- `R < d ≤ 2R` → 85
-- `2R < d ≤ 4R` → 60
-- `d > 4R` → 30 and strong review warning
-
-The site tolerance can later be tuned for locations where safe/realistic sampling occurs along a reach rather than at an exact point.
+If an expected site geometry is legitimately unavailable, the proximity dimension is omitted rather than inventing a penalty.
 
 ## M — Method/instrument traceability (20%)
 
-Method and instrument identification are mandatory for future user-collected measurements.
+Nominal dimensions:
 
-`M` is additive:
+- Test Type → 20 points
+- method → 30 points
+- instrument/laboratory analytical source → 30 points
+- calibration/verification/QC documentation → 20 points
 
-- Test Type identified → 20 points
-- Test method identified → 30 points
-- Instrument, laboratory, or analytical source identified → 30 points
-- Calibration / verification / QC status documented, or explicitly marked not applicable with rationale → 20 points
+When the active schema does not yet capture a traceability dimension, that dimension is unavailable and the applicable points are renormalized. Once calibration/QC metadata becomes an active protocol field, it receives its configured weight.
 
-If `Other` is selected for method/instrument/test type, the accompanying description is required for that portion to receive credit.
+`Other` selections require explanatory text where supported.
 
-## V — Validation and internal consistency (20%)
-
-Physical impossibilities and schema errors block progression and therefore do not receive a normal final quality score.
+## V — Validation/internal consistency (20%)
 
 For observations without blocking errors:
 
-`V = max(50, 100 - min(40, 10W) - min(10, 5I))`
+`V = max(50, 100 - min(50, 10W))`
 
-Where:
+`W` counts unresolved **data-quality** plausibility warnings assigned to the validation component.
 
-- `W` = unresolved **data-quality** warnings
-- `I` = unresolved data-quality informational flags
+Environmental alerts, informational flags, and location warnings do not reduce `V`; location already has its own component and environmental conditions must not be mistaken for collection quality.
 
-Environmental-condition alerts do not reduce `V`. For example, genuinely low dissolved oxygen may be environmentally concerning but is not automatically evidence of bad collection.
-
-Examples of checks contributing to `V` include numeric/type validity, unit consistency, temperature F/C conversion agreement, impossible values, duplicate-submission checks, and method-dependent consistency checks.
+Examples include temperature C/F contradiction, DO concentration-vs-percent consistency, numeric/unit problems, and instrument-dependent hard-range checks.
 
 ## T — Temporal/provenance quality (10%)
 
-- exact collection date/time with timezone/source plus server receipt timestamp → 100
-- exact collection datetime but timezone must be inferred → 90
-- historical date known but time not recorded → 75, with `timePrecision = DATE_ONLY`
-- imputed technical placeholder time → 75 and must never be displayed as an observed time
-- missing collection date → ERROR
+- exact known collection datetime with normal provenance → 100
+- legacy date-only / imputed technical time → 75 and must never be displayed as an observed time
+- slightly future timestamp consistent with device-clock error → warning and reduced temporal score
+- missing/invalid date or grossly contradictory timestamp ordering → `ERROR`
 
-New mobile submissions require date and time. Historical records may remain date-only and are not falsified with a displayed invented collection time.
+The application convention is Eastern Time for users and workflow presentation; backend platforms may normalize timestamps internally.
 
-## H — Historical consistency (10%)
+## H — Historical consistency (up to 10%)
 
-Historical comparison is deliberately low-weight because natural environmental change must not be mistaken for measurement error.
+Historical comparison is intentionally low-weight and uses only **approved** observations. Different-from-history is never treated as equivalent to wrong.
 
-Only previously **approved** observations may be used as the baseline. Comparison order is:
+Comparison preference remains:
 
-1. same site + same parameter + same method/test type + seasonal window when enough data exist;
-2. same site + same parameter + seasonal window;
-3. same site + same parameter across all approved dates.
+1. same site + parameter + method/test type + seasonal window;
+2. same site + parameter + seasonal window;
+3. same site + parameter across approved dates.
 
-A seasonal window is initially ±45 days of day-of-year.
+Seasonal window starts at ±45 days of day-of-year.
 
-Baseline minimums:
+Baseline availability:
 
-- fewer than 8 comparable observations → H unavailable; remove its weight and renormalize
-- 8–19 observations → provisional baseline; use an effective H weight of 5% and renormalize the remaining score
-- 20+ observations → established baseline; use the full H weight of 10%
+- fewer than 8 comparable observations → unavailable; remove H and renormalize
+- 8–19 → provisional baseline, maximum nominal H weight 5%
+- 20+ → established baseline, maximum nominal H weight 10%
 
-The project's initial historical dataset may seed a provisional baseline. It is never treated as a permanent gold standard; the baseline continuously improves as new approved observations accumulate.
+Historical influence is further multiplied by a confidence factor derived from sample count, recency, and baseline stability. This means a small, old, or highly variable baseline exerts less influence than a large, recent, consistent baseline.
 
-### Robust historical comparison
-
-For each parameter with a usable baseline, compute the modified z-score:
+Primary robust statistic:
 
 `z* = 0.6745 × (x - median) / MAD`
 
-where MAD is the median absolute deviation. If MAD is zero and no defensible fallback variability estimate exists, that parameter's historical score is treated as unavailable rather than inventing precision.
+If MAD is zero but IQR is nonzero, use the robust fallback:
 
-Parameter historical-consistency subscore:
+`z = (x - median) / (IQR / 1.349)`
 
-- `|z*| ≤ 2` → 100
-- `2 < |z*| ≤ 3` → 90
-- `3 < |z*| ≤ 4` → 75
-- `|z*| > 4` → 60
+If neither provides defensible variability, that parameter is unavailable for historical scoring.
 
-`H` is the mean of the available parameter historical-consistency subscores.
+Historical subscore:
 
-Because H bottoms at 60 and carries only 5–10% weight, even a very unusual but otherwise well-collected observation loses only a few quality-score points.
+- |z| ≤ 2 → 100
+- 2 < |z| ≤ 3 → 90
+- 3 < |z| ≤ 4 → 75
+- |z| > 4 → 60
+
+A large historical deviation creates an environmental/historical review alert, not a blocking validation error.
 
 ## Separate Anomaly Score
 
-The system also computes a supervisor-facing anomaly score that does **not** directly determine quality:
+For each parameter with a usable baseline:
 
-For each parameter with a historical baseline:
-
-`a_i = min(100, 25 × |z*_i|)`
+`a_i = min(100, 25 × |z_i|)`
 
 `AnomalyScore = mean(a_i)`
 
-Suggested interpretation:
+Interpretation:
 
-- 0–24: typical relative to baseline
-- 25–49: mildly unusual
-- 50–74: unusual
-- 75–100: highly unusual
+- 0–24 → typical
+- 25–49 → mildly unusual
+- 50–74 → unusual
+- 75–100 → highly unusual
 
-A powerful review pattern is therefore:
+The key review combinations are:
 
-- high Quality + low Anomaly → routine trustworthy observation
-- high Quality + high Anomaly → potentially important environmental event
-- low Quality + high Anomaly → scrutinize collection/method before interpreting the event
-- low Quality + low Anomaly → routine-looking value with weak collection/provenance
+- high Confidence + low Anomaly → routine trustworthy observation
+- high Confidence + high Anomaly → potentially important environmental event
+- low Confidence + high Anomaly → verify collection/method before environmental interpretation
+- low Confidence + low Anomaly → ordinary-looking value with weak provenance
 
-The Anomaly Score is internal/supervisor-facing for MVP. It is not required on the public dashboard.
+## Confidence display bands
 
-## Quality-score display bands
+- 90–100 — Excellent confidence
+- 80–89 — Good confidence
+- 70–79 — Acceptable confidence
+- 60–69 — Review carefully
+- <60 — Low confidence
 
-- 90–100: Excellent confidence
-- 80–89: Good confidence
-- 70–79: Review attention
-- 60–69: Low confidence
-- below 60: Very low confidence
+Any public-facing indicator must be explicitly labeled as **Data Confidence** or equivalent, never simply “Water Quality Score.” If enabled on the public dashboard, use the latest approved observation's confidence score rather than a lifetime average.
 
-These bands never replace supervisor review.
+## Critical invariants
 
-For the public ArcGIS dashboard, if implemented, the site indicator should display the **latest approved observation's quality score**, not a lifetime average. A rolling site-level score can be added later if useful.
-
-## Critical rules
-
-1. Quality Score measures data confidence, not water health.
-2. Anomaly Score measures difference from history.
-3. Historical data seeds the model but does not define permanent truth.
-4. Environmental alerts do not automatically reduce data quality.
-5. Blocking validation ERRORs stop workflow progression.
-6. Scores never auto-approve observations.
-7. Supervisors do not edit scientific measurements; corrections return to the collector and are revalidated.
-8. Every score stores `qualityAlgorithmVersion` so past decisions remain reproducible.
+1. Confidence measures data/provenance quality, not environmental health.
+2. Environmental alerts do not automatically reduce confidence.
+3. Historical anomalies never block solely because they differ from history.
+4. Required-field/hard-validity `ERROR`s block workflow progression.
+5. Numerical scores never override severity.
+6. Optional uncollected parameters do not reduce or boost score.
+7. Supervisors return scientific corrections to collectors rather than silently editing measurements.
+8. Store `qualityAlgorithmVersion` with every result for reproducibility.
