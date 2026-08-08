@@ -92,7 +92,7 @@ export default function HomeScreen() {
           <View style={[styles.heroIcon, { backgroundColor: theme.surface }]}>
             <AppIcon name="plus" color={theme.primary} size={22} />
           </View>
-          <Text style={[styles.heroKicker, { color: theme.background }]}>PRIMARY FIELD ACTION</Text>
+          <Text style={[styles.heroKicker, { color: theme.background }]}>FIELD WORK</Text>
         </View>
 
         <View style={styles.heroCopy}>
