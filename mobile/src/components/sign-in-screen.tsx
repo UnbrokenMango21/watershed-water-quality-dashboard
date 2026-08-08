@@ -124,7 +124,7 @@ export function SignInScreen() {
           <View style={styles.footer}>
             <AppIcon name="lock" color={theme.textMuted} size={15} />
             <Text style={[styles.footerText, { color: theme.textMuted }]}>
-              Collector access only · Authentication is handled securely through Firebase.
+              Collector access only · Sign-in is required to protect field records.
             </Text>
           </View>
         </ScrollView>
