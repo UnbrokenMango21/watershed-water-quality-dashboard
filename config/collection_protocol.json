@@ -1,0 +1,96 @@
+{
+  "protocolVersion": "0.1.0-draft",
+  "dashboardTitle": "Central PA Watershed Dashboard",
+  "requiredStructuralFields": [
+    "siteId",
+    "testType",
+    "dataCollectedBy",
+    "measurementMethod",
+    "instrumentNameOrId",
+    "collectedDate",
+    "collectedTime",
+    "latitude",
+    "longitude",
+    "gpsAccuracyM"
+  ],
+  "requiredCoreParameters": [
+    "WATER_TEMP_C",
+    "PH",
+    "DO_MG_L",
+    "CONDUCTIVITY_US_CM"
+  ],
+  "optionalParameters": [
+    "DO_PERCENT",
+    "TDS_MG_L",
+    "ORP_MV",
+    "CHLORIDE_MG_L",
+    "SULFATE_MG_L",
+    "NITRATE_MG_L",
+    "PHOSPHATE_MG_L",
+    "DISCHARGE_M3_S"
+  ],
+  "legacyDefaults": {
+    "testType": "In-situ/Penn State Lab",
+    "dataCollectedBy": "Student/researcher"
+  },
+  "testTypeChoices": [
+    "In-situ / Field Instrument",
+    "Penn State Lab",
+    "External Lab",
+    "Field Kit / Colorimetric",
+    "Continuous Sensor / Sonde",
+    "Mixed In-situ + Lab",
+    "Other"
+  ],
+  "otherRequiresText": true,
+  "temperatureEntry": {
+    "userChoosesUnit": true,
+    "allowedInputUnits": ["F", "C"],
+    "canonicalUnit": "C",
+    "formulaFtoC": "(F - 32) * 5 / 9",
+    "formulaCtoF": "C * 9 / 5 + 32",
+    "displayMaxDecimals": 2,
+    "preserveEnteredValue": true,
+    "markDerivedCounterpart": true
+  },
+  "gps": {
+    "required": true,
+    "captureAutomatically": true,
+    "manualEntryDefault": false,
+    "storeAccuracyMeters": true,
+    "preferredAccuracyM": 10,
+    "acceptableAccuracyM": 20,
+    "warningAccuracyM": 50
+  },
+  "reviewPolicy": {
+    "supervisorMayEditScientificValues": false,
+    "correctionsReturnToCollector": true,
+    "reviewCommentRequiredForCorrection": true,
+    "reviewCommentRequiredForRejection": true
+  },
+  "privacy": {
+    "backendSiteNameMayContainPrivateIdentifiers": true,
+    "exposeBackendSiteNamePublicly": false,
+    "publicSiteLabelPattern": "Sampling Site {siteCode}",
+    "hideLandownerFields": true,
+    "hideCollectorIdentity": true,
+    "hideReviewerIdentity": true,
+    "hideInternalAccessNotes": true
+  },
+  "historicalTimePolicy": {
+    "newRecordsRequireTime": true,
+    "legacyMissingTimeAllowed": true,
+    "technicalPlaceholderLocalTime": "12:00:00",
+    "placeholderMustNeverDisplayAsObservedTime": true,
+    "flags": {
+      "timeKnown": false,
+      "timeImputed": true,
+      "timePrecision": "DATE_ONLY"
+    }
+  },
+  "acceptanceTest": {
+    "preloadHistoricalDatasetDuringDevelopment": false,
+    "finalHistoricalUploadPerformedByProjectOwner": true,
+    "purpose": "End-to-end ingestion acceptance test"
+  }
+}
