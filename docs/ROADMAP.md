@@ -5,7 +5,7 @@ This sequence is the working implementation order for the Watershed Monitoring P
 - [x] 1. Architecture + mind map
 - [x] 2. GitHub repository
 - [x] 3. GitHub documentation / CHANGELOG / Issues foundation
-- [ ] 4. Formal data dictionary
+- [x] 4. Formal data dictionary
 - [ ] 5. ArcGIS Pro geodatabase prototype
 - [ ] 6. ArcGIS domains + relationships + IDs
 - [ ] 7. Publish clean ArcGIS Online staging environment
@@ -18,6 +18,12 @@ This sequence is the working implementation order for the Watershed Monitoring P
 - [ ] 14. Build dashboard
 - [ ] 15. End-to-end testing
 - [ ] 16. v1.0 release
+
+## Current active phase
+
+**Phase 5 — ArcGIS Pro geodatabase prototype**
+
+The canonical data dictionary, collection protocol, validation concepts, privacy rules, workflow states, spreadsheet mappings, and versioned quality/anomaly score are now defined well enough to build the first ArcGIS Pro geodatabase prototype.
 
 ## Phase gates
 
