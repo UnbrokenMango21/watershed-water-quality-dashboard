@@ -117,7 +117,7 @@ const styles = StyleSheet.create({
     gap: Spacing.xs,
   },
   shell: {
-    minHeight: 60,
+    minHeight: 64,
     borderWidth: 1,
     borderRadius: Radii.md,
     flexDirection: 'row',
@@ -129,7 +129,7 @@ const styles = StyleSheet.create({
   value: {
     ...Typography.numeric,
     flex: 1,
-    minHeight: 58,
+    minHeight: 62,
     paddingVertical: 8,
   },
   units: {
@@ -138,8 +138,8 @@ const styles = StyleSheet.create({
     padding: 3,
   },
   unitButton: {
-    minWidth: 46,
-    minHeight: 42,
+    minWidth: 48,
+    minHeight: 48,
     borderRadius: 7,
     alignItems: 'center',
     justifyContent: 'center',
