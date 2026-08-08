@@ -1,93 +1,84 @@
 {
-  "validationRulesVersion": "0.1.0-draft",
-  "principle": "Do not confuse poor environmental condition with poor data quality.",
+  "validationRulesVersion": "1.0.0",
+  "profileId": "central_pa_freshwater_stream_v1",
+  "principle": "Detect questionable data without suppressing legitimate environmental anomalies.",
   "classes": {
-    "ERROR": "Impossible, structurally invalid, or outside a selected instrument's hard range; blocks progression until corrected.",
-    "PLAUSIBILITY_WARNING": "Possible but unusual; requires attention/review and does not automatically reject.",
-    "ENVIRONMENTAL_ALERT": "Potentially poor water condition; does not reduce accuracy score solely because the water is unhealthy."
+    "ERROR": {"blocksReview": true, "reducesQuality": true},
+    "PLAUSIBILITY_WARNING": {"blocksReview": false, "reducesQuality": true},
+    "ENVIRONMENTAL_ALERT": {"blocksReview": false, "reducesQuality": false},
+    "INFO": {"blocksReview": false, "reducesQuality": false}
   },
-  "rules": [
-    {
-      "parameter": "PH",
-      "error": {"minInclusive": 0, "maxInclusive": 14},
-      "environmentalAlert": {"outsideRange": [6.0, 9.0], "basis": "Pennsylvania Chapter 93 general aquatic-life pH criterion"}
-    },
-    {
-      "parameter": "WATER_TEMP_C",
-      "error": {"minInclusive": -5, "maxInclusive": 60},
-      "plausibilityWarning": {"outsideRange": [0, 35]},
-      "notes": "Generic Central-PA freshwater plausibility guardrail only. Site-designation and seasonal Pennsylvania criteria should later drive environmental alerts."
-    },
-    {
-      "parameter": "DO_MG_L",
-      "error": {"minInclusive": 0, "maxInclusive": 50},
-      "environmentalAlerts": [
-        {"below": 5, "severity": "WARNING", "message": "Low dissolved oxygen; commonly stressful for fish."},
-        {"below": 3, "severity": "HIGH", "message": "Very low dissolved oxygen."}
-      ],
-      "plausibilityWarning": {"above": 20, "message": "Unusually high DO concentration; review meter/context rather than reject automatically."}
-    },
-    {
-      "parameter": "DO_PERCENT",
-      "error": {"minInclusive": 0, "maxInclusive": 300},
-      "notes": "Values above 100% are allowed because supersaturation can occur."
-    },
-    {
-      "parameter": "CONDUCTIVITY_US_CM",
-      "error": {"minInclusive": 0},
-      "contextWarning": {"above": 1500, "message": "Outside the general range EPA cites for many U.S. rivers; use site baseline before drawing conclusions."},
-      "notes": "High conductivity is not automatically bad data. Historical/site-specific baseline is preferred."
-    },
-    {
-      "parameter": "TDS_MG_L",
-      "error": {"minInclusive": 0},
-      "notes": "Use instrument/method range and site context for upper-bound review."
-    },
-    {
-      "parameter": "ORP_MV",
-      "notes": "No universal positive/negative validity rule. Validate against selected instrument range and context."
-    },
-    {
-      "parameter": "CHLORIDE_MG_L",
-      "error": {"minInclusive": 0},
-      "notes": "Upper thresholds are context/use dependent; do not globally reject high values."
-    },
-    {
-      "parameter": "SULFATE_MG_L",
-      "error": {"minInclusive": 0},
-      "environmentalAlert": {"above": 250, "basis": "Pennsylvania Chapter 93 public-water-supply sulfate criterion"}
-    },
-    {
-      "parameter": "NITRATE_MG_L",
-      "error": {"minInclusive": 0},
-      "requiresAnalyteBasis": true,
-      "notes": "Do not apply criterion-based upper thresholds until method clarifies nitrate as N vs nitrate ion / combined nitrite+nitrate basis."
-    },
-    {
-      "parameter": "PHOSPHATE_MG_L",
-      "error": {"minInclusive": 0},
-      "requiresAnalyteBasis": true,
-      "notes": "Method must identify phosphorus form/basis (e.g. orthophosphate, total phosphorus, as P vs as PO4) before criterion interpretation."
-    },
-    {
-      "parameter": "DISCHARGE_M3_S",
-      "error": {"minInclusive": 0},
-      "notes": "Zero is valid. No generic high-flow rejection; compare with site/hydrologic context."
-    }
+  "testTypeProfiles": {
+    "In-situ/Penn State Lab": {"requiredMeasurements": ["PH", "DO_MG_L", "CONDUCTIVITY_US_CM"], "minimumMeasurementCount": 3},
+    "In-situ / Field Instrument": {"requiredMeasurements": ["PH", "DO_MG_L", "CONDUCTIVITY_US_CM"], "minimumMeasurementCount": 3},
+    "Continuous Sensor / Sonde": {"requiredMeasurements": ["PH", "DO_MG_L", "CONDUCTIVITY_US_CM"], "minimumMeasurementCount": 3},
+    "Mixed In-situ + Lab": {"requiredMeasurements": ["PH", "DO_MG_L", "CONDUCTIVITY_US_CM"], "minimumMeasurementCount": 3},
+    "Penn State Lab": {"requiredMeasurements": [], "minimumMeasurementCount": 1},
+    "External Lab": {"requiredMeasurements": [], "minimumMeasurementCount": 1},
+    "Field Kit / Colorimetric": {"requiredMeasurements": [], "minimumMeasurementCount": 1},
+    "Other": {"requiredMeasurements": [], "minimumMeasurementCount": 1}
+  },
+  "requiredRevisionFields": [
+    "site_id", "test_type", "data_collected_by", "method_name", "instrument_name",
+    "collected_at", "latitude", "longitude", "gps_accuracy_m",
+    "temp_entered_value", "temp_entered_unit", "temp_c", "temp_f"
   ],
-  "gpsQuality": {
-    "missingOrInvalidCoordinates": "ERROR",
-    "bandsMeters": [
-      {"max": 10, "classification": "PREFERRED"},
-      {"max": 20, "classification": "ACCEPTABLE"},
-      {"max": 50, "classification": "WARNING_RECAPTURE_RECOMMENDED"},
-      {"minExclusive": 50, "classification": "STRONG_WARNING_CONFIRM_OR_RETRY"}
-    ]
+  "temperature": {
+    "hardRangeC": [-5, 60],
+    "contextRangeC": [0, 35],
+    "conversionToleranceC": 0.2,
+    "conversionToleranceF": 0.36
   },
-  "temperatureConsistency": {
-    "ifBothHistoricalUnitsProvided": true,
-    "formulaFtoC": "(F - 32) * 5 / 9",
-    "compareInsteadOfOverwrite": true
+  "parameters": {
+    "PH": {
+      "unit": "pH",
+      "hardRange": [0, 14],
+      "environmentalOutsideRange": [6.0, 9.0],
+      "environmentalRuleCode": "ENV_PH_OUTSIDE_PA_AQUATIC_RANGE"
+    },
+    "DO_MG_L": {
+      "unit": "mg/L",
+      "hardRange": [0, 50],
+      "plausibilityAbove": 25,
+      "environmentalBelow": [
+        {"value": 5, "ruleCode": "ENV_DO_BELOW_5", "message": "Dissolved oxygen is below 5 mg/L; this may stress aquatic life but is not evidence of bad data."},
+        {"value": 3, "ruleCode": "ENV_DO_BELOW_3", "message": "Dissolved oxygen is below 3 mg/L; this is a severe environmental condition but remains scientifically possible."}
+      ]
+    },
+    "DO_PERCENT": {"unit": "%", "hardRange": [0, 300], "plausibilityAbove": 200},
+    "CONDUCTIVITY_US_CM": {"unit": "uS/cm", "hardMin": 0},
+    "TDS_MG_L": {"unit": "mg/L", "hardMin": 0, "environmentalAbove": 750, "environmentalRuleCode": "ENV_TDS_ABOVE_PA_PWS_MAX", "contextOnly": true},
+    "ORP_MV": {"unit": "mV"},
+    "CHLORIDE_MG_L": {"unit": "mg/L", "hardMin": 0, "environmentalAbove": 250, "environmentalRuleCode": "ENV_CHLORIDE_ABOVE_PA_PWS_CONTEXT", "contextOnly": true},
+    "SULFATE_MG_L": {"unit": "mg/L", "hardMin": 0, "environmentalAbove": 250, "environmentalRuleCode": "ENV_SULFATE_ABOVE_PA_PWS_CONTEXT", "contextOnly": true},
+    "NITRATE_MG_L": {"unit": "mg/L", "hardMin": 0, "requiresAnalyteBasis": true, "criterionAsN": 10},
+    "PHOSPHATE_MG_L": {"unit": "mg/L", "hardMin": 0, "requiresAnalyteBasis": true},
+    "DISCHARGE_M3_S": {"unit": "m3/s", "hardMin": 0}
   },
-  "instrumentRule": "When an instrument/method profile has a documented measurement range, that hard range may be used for ERROR classification and is versioned with the rule set."
+  "gps": {
+    "accuracyBands": [
+      {"max": 5, "score": 100}, {"max": 10, "score": 95}, {"max": 20, "score": 85},
+      {"max": 50, "score": 65}, {"max": null, "score": 40}
+    ],
+    "siteProximityBands": [
+      {"maxMultiple": 1, "score": 100}, {"maxMultiple": 2, "score": 85},
+      {"maxMultiple": 4, "score": 60}, {"maxMultiple": null, "score": 30}
+    ],
+    "defaultSiteToleranceM": 30
+  },
+  "temporal": {
+    "futureWarningMinutes": 5,
+    "futureErrorHours": 24,
+    "submittedBeforeCollectedToleranceSeconds": 60
+  },
+  "crossChecks": {
+    "doSaturationRelativeDifferenceWarning": 0.30,
+    "tdsConductivityRatioInfoRange": [0.3, 1.0]
+  },
+  "scientificContext": {
+    "paPhAquaticRange": "25 Pa. Code §93.7: pH 6.0-9.0 for CWF/WWF/TSF/MF",
+    "paDoMinimum": "25 Pa. Code §93.7: flowing-water minimum generally 5.0 mg/L, with designated-use averaging rules",
+    "paContextReferences": "Chloride 250 mg/L, sulfate 250 mg/L, TDS monthly average 500/max 750 mg/L, nitrite+nitrate 10 mg/L as N are designated-use/context references, not generic single-sample data-validity limits",
+    "doSaturation": "Temperature-based cross-check uses Weiss (1970) freshwater oxygen solubility at sea level; elevation/barometric pressure can cause legitimate differences"
+  }
 }
