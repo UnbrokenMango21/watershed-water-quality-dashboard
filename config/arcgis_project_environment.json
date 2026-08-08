@@ -1,0 +1,16 @@
+{
+  "environmentVersion": "0.1.0",
+  "arcgisProVersion": "3.7.x",
+  "projectName": "MyProject",
+  "projectLocation": "C:\\Mac\\Home\\Desktop\\Watershed Project\\Watershed Dashboard",
+  "createProjectFolder": true,
+  "expectedProjectFolder": "C:\\Mac\\Home\\Desktop\\Watershed Project\\Watershed Dashboard\\MyProject",
+  "expectedProjectFile": "C:\\Mac\\Home\\Desktop\\Watershed Project\\Watershed Dashboard\\MyProject\\MyProject.aprx",
+  "workingGeodatabaseName": "CentralPA_Watershed.gdb",
+  "workingGeodatabaseResolution": "dynamic_from_arcgis_project_homeFolder",
+  "notes": [
+    "The setup script intentionally derives the active project home folder from ArcGISProject('CURRENT').",
+    "The selected project path is a Parallels-exposed Windows path backed by the Mac home directory.",
+    "If locking or performance problems occur later, migrate the working project and geodatabase to native Windows storage without changing the logical schema."
+  ]
+}
