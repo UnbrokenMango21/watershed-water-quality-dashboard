@@ -1,0 +1,60 @@
+{
+  "version": "1.0.0",
+  "sourceStateTransitions": {
+    "SUBMITTED": "VALIDATING",
+    "RESUBMITTED": "VALIDATING"
+  },
+  "validationOutcomeTransitions": {
+    "blockingError": "NEEDS_CORRECTION",
+    "noBlockingError": "PENDING_REVIEW"
+  },
+  "importantCorrection": "VALIDATING -> NEEDS_CORRECTION is a required server-side transition so collectors can create a correction revision before supervisor review.",
+  "blockingPolicy": {
+    "ERROR": "blocks review and routes back to collector",
+    "PLAUSIBILITY_WARNING": "persists and proceeds to PENDING_REVIEW",
+    "ENVIRONMENTAL_ALERT": "persists and proceeds to PENDING_REVIEW without data-quality penalty solely for environmental condition",
+    "INFO": "persists and proceeds to PENDING_REVIEW"
+  },
+  "submissionFieldsWrittenByValidationService": [
+    "status",
+    "updated_at",
+    "validation_rules_version",
+    "quality_algorithm_version",
+    "overall_quality_score",
+    "anomaly_score",
+    "error_flag_count",
+    "warning_flag_count",
+    "info_flag_count"
+  ],
+  "submissionFieldsNotWrittenByValidationService": [
+    "review_decision",
+    "review_comment",
+    "reviewed_at",
+    "published_at"
+  ],
+  "revisionWrite": {
+    "field": "validation",
+    "serverOwned": true,
+    "contains": [
+      "validation_rules_version",
+      "quality_algorithm_version",
+      "blocking",
+      "flag counts",
+      "component scores",
+      "overall_quality_score",
+      "anomaly_score",
+      "validated_at"
+    ]
+  },
+  "validationFlags": {
+    "strategy": "replace flags for the current revision on each validation run",
+    "path": "submissions/{submissionId}/revisions/{revisionId}/validationFlags/{flagId}",
+    "serverWriteOnly": true
+  },
+  "audit": {
+    "path": "submissions/{submissionId}/audit/{auditId}",
+    "events": ["VALIDATION_COMPLETED", "VALIDATION_BLOCKED"],
+    "actorType": "VALIDATION_SERVICE"
+  },
+  "atomicity": "submission patch, revision validation map, replacement validation flags, and audit event must be committed atomically by the Firestore server adapter"
+}
