@@ -29,6 +29,8 @@ Use **Eastern Time for all product timestamps** to keep collection, validation, 
 
 Canonical zone: `America/New_York` / Eastern Time. Daylight-saving adjustment must remain enabled so summer timestamps use EDT and winter timestamps use EST automatically.
 
+For the ArcGIS Pro publishing UI, use the Microsoft Windows time-zone list and select **`(UTC-05:00) Eastern Time (US & Canada)`** for both **Time zone of the data** and **Preferred time zone for display**, with **Adjust For Daylight Saving** enabled for both. The Windows label shows the standard UTC-5 base offset; the daylight-saving option automatically shifts summer timestamps to UTC-4/EDT.
+
 Do not use a fixed `EST` offset year-round. The platform should use the Eastern Time zone rules rather than a fixed UTC-5 offset.
 
 Historical records with a date but no recorded time keep `time_known = false`. Any technical placeholder required by downstream systems must remain marked as imputed and must not be presented as an observed field time.
@@ -64,7 +66,7 @@ From ArcGIS Pro:
 1. Confirm Penn State ArcGIS Online is the active portal and the correct account is signed in.
 2. Confirm all five datasets are in the current map (two feature layers + three standalone tables).
 3. Set the map coordinate system to **WGS 1984 / EPSG:4326**.
-4. Set the web-layer data time zone to **Eastern Time / America/New_York** and enable daylight-saving adjustment.
+4. Set both the web-layer data time zone and preferred display time zone to **`(UTC-05:00) Eastern Time (US & Canada)`**, with daylight-saving adjustment enabled for both.
 5. Share the full map contents as a Web Layer.
 6. Name: `Central_PA_Watershed_QC_Staging`.
 7. Layer type: **Feature**.
@@ -139,7 +141,7 @@ The staging item must remain private. Backend/private fields may exist in this s
 - SamplingEvents attachments work.
 - Domains/coded values survived publishing.
 - GlobalID/GUID fields survived publishing.
-- Eastern Time is configured as the data time zone with daylight-saving adjustment.
+- Eastern Time is configured as both the data and preferred display time zone with daylight-saving adjustment.
 - Item is private.
 - No real/historical observations are loaded.
 - Map Viewer opens the service without schema errors.
