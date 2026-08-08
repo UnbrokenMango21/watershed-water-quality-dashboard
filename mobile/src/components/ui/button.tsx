@@ -26,6 +26,7 @@ export function PrimaryButton({
 }: ButtonProps) {
   const theme = useTheme();
   const isDisabled = disabled || loading;
+  const foreground = isDisabled ? theme.textMuted : theme.background;
 
   return (
     <Pressable
@@ -46,11 +47,11 @@ export function PrimaryButton({
         style,
       ]}>
       {loading ? (
-        <ActivityIndicator color="#FFFFFF" />
+        <ActivityIndicator color={foreground} />
       ) : (
         <>
-          {icon ? <AppIcon name={icon} color="#FFFFFF" size={18} /> : null}
-          <Text style={styles.primaryLabel}>{label}</Text>
+          {icon ? <AppIcon name={icon} color={foreground} size={18} /> : null}
+          <Text style={[styles.primaryLabel, { color: foreground }]}>{label}</Text>
         </>
       )}
     </Pressable>
@@ -141,7 +142,6 @@ const styles = StyleSheet.create({
   },
   primaryLabel: {
     ...Typography.button,
-    color: '#FFFFFF',
   },
   secondaryLabel: {
     ...Typography.button,
