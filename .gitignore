@@ -137,3 +137,7 @@ dist
 # Vite logs files
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
+
+# Firebase native client configs - local environment
+mobile/google-services.json
+mobile/GoogleService-Info.plist
