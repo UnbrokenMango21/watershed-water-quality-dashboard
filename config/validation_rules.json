@@ -1,0 +1,93 @@
+{
+  "validationRulesVersion": "0.1.0-draft",
+  "principle": "Do not confuse poor environmental condition with poor data quality.",
+  "classes": {
+    "ERROR": "Impossible, structurally invalid, or outside a selected instrument's hard range; blocks progression until corrected.",
+    "PLAUSIBILITY_WARNING": "Possible but unusual; requires attention/review and does not automatically reject.",
+    "ENVIRONMENTAL_ALERT": "Potentially poor water condition; does not reduce accuracy score solely because the water is unhealthy."
+  },
+  "rules": [
+    {
+      "parameter": "PH",
+      "error": {"minInclusive": 0, "maxInclusive": 14},
+      "environmentalAlert": {"outsideRange": [6.0, 9.0], "basis": "Pennsylvania Chapter 93 general aquatic-life pH criterion"}
+    },
+    {
+      "parameter": "WATER_TEMP_C",
+      "error": {"minInclusive": -5, "maxInclusive": 60},
+      "plausibilityWarning": {"outsideRange": [0, 35]},
+      "notes": "Generic Central-PA freshwater plausibility guardrail only. Site-designation and seasonal Pennsylvania criteria should later drive environmental alerts."
+    },
+    {
+      "parameter": "DO_MG_L",
+      "error": {"minInclusive": 0, "maxInclusive": 50},
+      "environmentalAlerts": [
+        {"below": 5, "severity": "WARNING", "message": "Low dissolved oxygen; commonly stressful for fish."},
+        {"below": 3, "severity": "HIGH", "message": "Very low dissolved oxygen."}
+      ],
+      "plausibilityWarning": {"above": 20, "message": "Unusually high DO concentration; review meter/context rather than reject automatically."}
+    },
+    {
+      "parameter": "DO_PERCENT",
+      "error": {"minInclusive": 0, "maxInclusive": 300},
+      "notes": "Values above 100% are allowed because supersaturation can occur."
+    },
+    {
+      "parameter": "CONDUCTIVITY_US_CM",
+      "error": {"minInclusive": 0},
+      "contextWarning": {"above": 1500, "message": "Outside the general range EPA cites for many U.S. rivers; use site baseline before drawing conclusions."},
+      "notes": "High conductivity is not automatically bad data. Historical/site-specific baseline is preferred."
+    },
+    {
+      "parameter": "TDS_MG_L",
+      "error": {"minInclusive": 0},
+      "notes": "Use instrument/method range and site context for upper-bound review."
+    },
+    {
+      "parameter": "ORP_MV",
+      "notes": "No universal positive/negative validity rule. Validate against selected instrument range and context."
+    },
+    {
+      "parameter": "CHLORIDE_MG_L",
+      "error": {"minInclusive": 0},
+      "notes": "Upper thresholds are context/use dependent; do not globally reject high values."
+    },
+    {
+      "parameter": "SULFATE_MG_L",
+      "error": {"minInclusive": 0},
+      "environmentalAlert": {"above": 250, "basis": "Pennsylvania Chapter 93 public-water-supply sulfate criterion"}
+    },
+    {
+      "parameter": "NITRATE_MG_L",
+      "error": {"minInclusive": 0},
+      "requiresAnalyteBasis": true,
+      "notes": "Do not apply criterion-based upper thresholds until method clarifies nitrate as N vs nitrate ion / combined nitrite+nitrate basis."
+    },
+    {
+      "parameter": "PHOSPHATE_MG_L",
+      "error": {"minInclusive": 0},
+      "requiresAnalyteBasis": true,
+      "notes": "Method must identify phosphorus form/basis (e.g. orthophosphate, total phosphorus, as P vs as PO4) before criterion interpretation."
+    },
+    {
+      "parameter": "DISCHARGE_M3_S",
+      "error": {"minInclusive": 0},
+      "notes": "Zero is valid. No generic high-flow rejection; compare with site/hydrologic context."
+    }
+  ],
+  "gpsQuality": {
+    "missingOrInvalidCoordinates": "ERROR",
+    "bandsMeters": [
+      {"max": 10, "classification": "PREFERRED"},
+      {"max": 20, "classification": "ACCEPTABLE"},
+      {"max": 50, "classification": "WARNING_RECAPTURE_RECOMMENDED"},
+      {"minExclusive": 50, "classification": "STRONG_WARNING_CONFIRM_OR_RETRY"}
+    ]
+  },
+  "temperatureConsistency": {
+    "ifBothHistoricalUnitsProvided": true,
+    "formulaFtoC": "(F - 32) * 5 / 9",
+    "compareInsteadOfOverwrite": true
+  },
+  "instrumentRule": "When an instrument/method profile has a documented measurement range, that hard range may be used for ERROR classification and is versioned with the rule set."
+}
