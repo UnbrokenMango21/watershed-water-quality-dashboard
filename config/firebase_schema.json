@@ -1,10 +1,26 @@
 {
-  "version": "0.1.0",
+  "version": "0.1.1",
   "database": "Cloud Firestore Standard",
   "environmentStrategy": {
     "developmentProject": "central-pa-watershed-dev",
+    "developmentDatabase": "(default)",
+    "developmentLocation": "nam5",
+    "developmentLocationDescription": "United States (Central) multi-region",
     "productionProjectReserved": "central-pa-watershed-prod",
     "productionDataAllowedInDev": false
+  },
+  "analytics": {
+    "enabled": true,
+    "purpose": "privacy-safe product and UX telemetry only",
+    "forbiddenPayloads": [
+      "scientific measurement values",
+      "exact GPS coordinates",
+      "landowner/private property information",
+      "field notes",
+      "collector/reviewer email addresses",
+      "reviewer comments",
+      "authentication secrets or tokens"
+    ]
   },
   "idPolicy": {
     "style": "UUID/non-sequential",
@@ -123,6 +139,7 @@
             "mobile_app_version": "string",
             "validation": "server-owned map|null"
           },
+          "serverOwnedFields": ["validation"],
           "subcollections": {
             "measurements": {
               "documentId": "measurement_id",
@@ -216,6 +233,7 @@
     "landownerFieldsInFirestoreMobileCatalog": false,
     "collectorCanWriteQualityScores": false,
     "collectorCanWriteReviewFields": false,
-    "collectorCanWritePublicationFields": false
+    "collectorCanWritePublicationFields": false,
+    "collectorCanWriteRevisionValidationMap": false
   }
 }
