@@ -83,7 +83,7 @@ export default function HomeScreen() {
       <View style={styles.capabilityRow}>
         <StatusChip label="Offline-ready" tone="success" />
         <Text style={[styles.capabilityText, { color: theme.textMuted }]}>
-          Sync state stays visible when drafts are connected.
+          Drafts show exactly what is local, syncing, or server-synced.
         </Text>
       </View>
 
@@ -103,11 +103,15 @@ export default function HomeScreen() {
         </View>
 
         <View style={styles.heroActionArea}>
-          <View style={[styles.heroDisabledButton, { backgroundColor: theme.surface }]}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityState={{ disabled: true }}
+            disabled
+            style={[styles.heroDisabledButton, { backgroundColor: theme.surface }]}>
             <Text style={[styles.heroDisabledLabel, { color: theme.textMuted }]}>Start observation</Text>
-          </View>
+          </Pressable>
           <Text style={[styles.heroHelper, { color: theme.background }]}>
-            Site catalog connection is the next implementation step.
+            Site catalog must be available before collection can begin.
           </Text>
         </View>
       </View>
