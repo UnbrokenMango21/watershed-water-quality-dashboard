@@ -35,6 +35,12 @@ Do not use a fixed `EST` offset year-round. The platform should use the Eastern 
 
 Historical records with a date but no recorded time keep `time_known = false`. Any technical placeholder required by downstream systems must remain marked as imputed and must not be presented as an observed field time.
 
+### ArcGIS Pro timezone automation
+
+If analyzer warning `24195` appears for individual source layers/tables, run `scripts/fix_arcgis_phase7_timezones.py` in the ArcGIS Pro Python window. The script applies the Eastern Time reference (`Eastern Standard Time` / `America/New_York`) to every date-bearing watershed layer/table, enables daylight-saving and dynamic adjustment rules, applies the reference to all temporal fields, leaves time filtering disabled, and saves the project.
+
+The script intentionally skips any target that has no temporal fields and is safe to rerun.
+
 ## Publish as one related service
 
 The ArcGIS Pro map must include these five source datasets together before publication:
