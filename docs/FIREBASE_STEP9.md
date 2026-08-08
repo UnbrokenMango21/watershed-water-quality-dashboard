@@ -3,49 +3,69 @@
 **Status:** Active  
 **Goal:** Create the clean mobile/backend source-of-truth environment without loading real watershed observations.
 
+## Actual development environment
+
+The development Firebase project now exists.
+
+- Firebase project name: `Central PA Watershed Dev`
+- Firebase project ID: `central-pa-watershed-dev`
+- Firestore database: `(default)`
+- Firestore edition: Standard
+- Firestore location: `nam5` — United States (Central)
+- Google Analytics: enabled for product/UX telemetry only
+
+### Firestore location decision
+
+The originally preferred location was `nam7` (United States Central and East), but the created default database is in `nam5`.
+
+We are intentionally keeping `nam5` rather than recreating the environment. `nam5` is still a US multi-region Firestore location with read/write replicas in Iowa and Google's Oklahoma region and a witness in South Carolina. It provides multi-region availability/durability and is fully suitable for this development environment.
+
+The database location is immutable after creation, so `nam5` is now the locked development location.
+
 ## Environment separation
 
-Do not use one Firebase project for both experimentation and final production.
-
-Create first:
+Development:
 
 `central-pa-watershed-dev`
 
-Reserve for later deployment:
+Reserved for later production deployment:
 
 `central-pa-watershed-prod`
 
 This prevents validation experiments, synthetic mobile records and destructive development work from contaminating production science data.
 
-## Firestore location
-
-Recommended location for this project: **`nam7` — United States (Central and East)**.
-
-Reasoning:
-
-- Pennsylvania users benefit from the eastern read/write region in Northern Virginia.
-- Multi-region replication gives stronger availability/durability than a single regional deployment.
-- The application is small enough that the availability benefit is more valuable than optimizing for the lowest possible regional write cost.
-- The location is immutable after database creation, so choose deliberately.
-
-If Penn State/Google account policy does not offer `nam7`, stop and record the available choices before selecting an alternative.
-
 ## Firebase services for Phase 9
 
-Enable only what we need now:
+Enabled / being configured:
 
 1. Firebase project
 2. Cloud Firestore — Standard edition
 3. Firebase Authentication
 4. Firestore Security Rules
+5. Google Analytics
 
-Defer until needed:
+Deferred until needed:
 
 - Cloud Storage for photographs/attachments — Phase 11 mobile work
 - App Check enforcement — before mobile production release
 - Cloud Functions / validation backend — Phase 10
 - Hosting — only if the eventual architecture requires it
-- Analytics — optional, not required for scientific data collection
+
+## Analytics policy
+
+Google Analytics is enabled, but Analytics must never receive scientific or private payloads.
+
+Do not send these as Analytics events, parameters, user properties, or screen metadata:
+
+- scientific measurement values;
+- exact latitude/longitude;
+- landowner/private property information;
+- field notes;
+- collector/reviewer email addresses;
+- reviewer comments;
+- authentication tokens or identifiers that expose a person's identity.
+
+Analytics may later record privacy-safe product telemetry such as screen navigation, generic form completion, offline-sync usage, validation-screen visits, and non-sensitive performance/error events.
 
 ## Firestore data model
 
@@ -87,7 +107,7 @@ submitted
 pH = 7.24
 ```
 
-Revision 1 remains preserved. Revision 2 becomes the current revision. This makes the correction history auditable and aligns with the earlier decision that supervisors do not edit scientific measurements directly.
+Revision 1 remains preserved. Revision 2 becomes the current revision. This makes the correction history auditable and aligns with the decision that supervisors do not edit scientific measurements directly.
 
 ## Submission vs SamplingEvent IDs
 
@@ -221,7 +241,7 @@ Security rules are default-deny. The collector can:
 
 Once a revision is `SUBMITTED`, collector science in that revision is immutable.
 
-QC reviewers may receive read access later if needed, but Workflow Manager/ArcGIS is the intended review interface.
+Server-owned validation data is excluded from collector create/update fields.
 
 ## Offline-first behavior
 
@@ -248,47 +268,40 @@ Initial composites support:
 
 Add more indexes when Phase 10/11 queries require them.
 
-## Firebase console creation checklist
-
-1. Open Firebase Console.
-2. Add project.
-3. Project name: `Central PA Watershed Dev`.
-4. Preferred project ID: `central-pa-watershed-dev` if available; otherwise use the closest available suffix and record the actual ID in GitHub.
-5. Google Analytics: leave disabled for now unless there is a separate research requirement.
-6. Create project.
-7. Open **Build / Firestore Database**.
-8. Create database.
-9. Choose **Standard edition**.
-10. Start in **Production mode** / locked rules rather than open test mode.
-11. Choose location **`nam7` United States (Central and East)**.
-12. Create database.
-13. Open **Authentication** and enable the development sign-in method selected for the app.
-14. Do not manually create fake production observations.
-15. Deploy/enter the version-controlled rules and indexes after the Firebase CLI is connected.
-
 ## Authentication recommendation
 
-For the development MVP, use email/password accounts restricted to known research/test users. Do not implement public self-registration.
+For the development MVP, use email/password accounts restricted to known research/test users. Do not expose a public self-registration workflow in the mobile app.
 
 Later, if Penn State identity integration is desired, evaluate an institutional identity provider separately rather than redesigning the scientific data model.
 
-## Version-controlled Phase 9 files
+## CLI deployment
 
-- `config/firebase_schema.json`
+Repository Firebase configuration is version controlled:
+
+- `.firebaserc`
+- `firebase.json`
 - `firebase/firestore.rules`
 - `firebase/firestore.indexes.json`
-- `docs/FIREBASE_STEP9.md`
+- `config/firebase_schema.json`
+
+After installing the Firebase CLI and authenticating, deploy with:
+
+```bash
+firebase deploy --only firestore:rules,firestore:indexes
+```
 
 ## Acceptance criteria
 
 Phase 9 is complete when:
 
 - dev Firebase project exists;
-- actual project ID/location are recorded;
-- Firestore is Standard edition and empty of real data;
-- Authentication is enabled for test users;
-- rules are deployed/tested;
-- expected collector actions succeed;
-- forbidden server-field/scientific-history overwrites fail;
+- project ID is recorded as `central-pa-watershed-dev`;
+- Firestore Standard database exists in `nam5`;
+- database remains empty of real science data;
+- Authentication Email/Password is enabled for controlled test accounts;
+- version-controlled rules and indexes are deployed;
+- rules pass expected allow/deny tests;
+- collector cannot overwrite server-owned validation/review/publication fields;
+- revision history prevents silent replacement of previously submitted measurements;
 - schema can feed Phase 10 validation without redesign;
 - mobile app can later use the same structure offline in Phase 11.
