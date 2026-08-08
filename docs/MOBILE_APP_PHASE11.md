@@ -132,3 +132,23 @@ The tested Phase 10 orchestrator accepts `SUBMITTED` or `RESUBMITTED`, moves the
 - `NEEDS_CORRECTION` when blocking ERRORs exist.
 
 Cloud deployment of that trigger is a separate infrastructure step because Firebase requires a billing-enabled project to deploy Cloud Functions. The mobile implementation can proceed independently against the dev Firestore schema.
+
+## Production UI foundation
+
+The Phase 11 visual system uses a restrained freshwater field-science palette and semantic design tokens rather than per-screen color values. The shared foundation defines background/surface/text/border/action/status colors, spacing, radii, typography, shadows, icon sizes, and a 48-point minimum touch target.
+
+Reusable mobile primitives now cover:
+
+- app screens and section surfaces
+- primary, secondary, and icon buttons
+- labeled text and select fields with required/optional and error states
+- scientific measurement inputs with explicit units and tabular numerals
+- submission status chips and the four required sync states
+- inline alerts and empty states
+- guided observation progress
+- GPS acquisition/quality states
+- grouped review summaries with edit affordances
+
+The sign-in and collector-home screens use the same visual system. Firebase Authentication behavior and server-owned scientific validation remain unchanged. Starter Expo navigation has been removed from the collector experience; Expo Router remains the navigation foundation.
+
+The observation flow remains intentionally gated until the Firestore site catalog and draft persistence are connected. The UI does not pretend that an unsaved observation is server-synced.
