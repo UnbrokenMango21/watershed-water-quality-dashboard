@@ -1,11 +1,22 @@
 # Step 5 — ArcGIS Pro Geodatabase Prototype
 
-**Status:** Active
+**Status:** Active  
 **Target:** ArcGIS Pro 3.7.x
 
-## Project setup
+## Final project setup
 
-Create a Map project named `Central_PA_Watershed_Platform` and store it on the Windows local disk (not OneDrive/Google Drive/shared cloud folders). The project creates a default file geodatabase automatically. Rename/use the working geodatabase as `CentralPA_Watershed.gdb`.
+The ArcGIS Pro project configuration is now fixed for this phase:
+
+- **Project name:** `MyProject`
+- **Chosen project location:** `C:\Mac\Home\Desktop\Watershed Project\Watershed Dashboard`
+- **Create a folder for this local project:** enabled
+- **Expected project folder:** `C:\Mac\Home\Desktop\Watershed Project\Watershed Dashboard\MyProject`
+- **Expected project file:** `C:\Mac\Home\Desktop\Watershed Project\Watershed Dashboard\MyProject\MyProject.aprx`
+- **Working geodatabase created by our setup script:** `CentralPA_Watershed.gdb`
+
+The setup script does **not** hard-code the project path. It reads the active ArcGIS Pro project's `homeFolder`, so the same script continues to work with this final project name/location.
+
+> Note: the chosen path is exposed by Parallels as a Windows path backed by the Mac home directory. This is the user's selected working location for the project. If file-geodatabase locking or performance issues appear later, the first troubleshooting step will be moving the `.aprx` and `.gdb` to native Windows storage. No change is required now.
 
 ## Prototype datasets
 
@@ -137,8 +148,8 @@ Fields:
 
 ## Phase 5 completion criteria
 
-- ArcGIS Pro project is saved locally.
-- `CentralPA_Watershed.gdb` exists and is the default geodatabase.
+- `MyProject.aprx` is saved in the selected project folder.
+- `CentralPA_Watershed.gdb` exists beneath the active project's home folder and is the default geodatabase.
 - Five empty prototype datasets exist with the field schemas above.
 - `SamplingSites` and `SamplingEvents` are point feature classes in WGS 1984.
 - No production/historical observations have been loaded yet.
