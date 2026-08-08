@@ -7,7 +7,7 @@ This sequence is the working implementation order for the Watershed Monitoring P
 - [x] 3. GitHub documentation / CHANGELOG / Issues foundation
 - [x] 4. Formal data dictionary
 - [x] 5. ArcGIS Pro geodatabase prototype
-- [ ] 6. ArcGIS domains + relationships + IDs
+- [x] 6. ArcGIS domains + relationships + IDs
 - [ ] 7. Publish clean ArcGIS Online staging environment
 - [ ] 8. Design Workflow Manager
 - [ ] 9. Create Firebase project and production schema
@@ -21,9 +21,11 @@ This sequence is the working implementation order for the Watershed Monitoring P
 
 ## Current active phase
 
-**Phase 6 — ArcGIS domains + relationships + IDs**
+**Phase 7 — Publish clean ArcGIS Online staging environment**
 
-Phase 5 was visually verified in ArcGIS Pro 3.7.1: `CentralPA_Watershed.gdb` exists, all five empty prototype datasets exist, `SamplingSites` and `SamplingEvents` use WGS 1984 / EPSG:4326, and the expected fields are present. Phase 6 now hardens the geodatabase with GlobalIDs, GUID foreign keys, relationship classes, coded-value domains, attachments, and editor tracking.
+Phase 6 is complete and verified in ArcGIS Pro 3.7.1. The hardened `CentralPA_Watershed.gdb` passed 51 read-only verification checks with 0 failures, including GlobalIDs, GUID foreign keys, five relationship classes, coded-value domain assignments, SamplingEvents attachments, and UTC editor tracking. A full save/reopen test also passed.
+
+Phase 7 will publish the empty, hardened schema to ArcGIS Online as a private staging service. The staging service must preserve relationships, GlobalIDs, attachments, domains, editor tracking, and internal/private fields while remaining restricted to the project owner/review team. Public-safe hosted views will be designed later; no production or historical records are loaded in Phase 7.
 
 ## Phase gates
 
