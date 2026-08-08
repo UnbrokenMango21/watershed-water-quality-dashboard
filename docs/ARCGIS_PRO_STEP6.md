@@ -1,6 +1,6 @@
 # Step 6 — ArcGIS IDs, Relationships, Domains, Attachments, and Editor Tracking
 
-**Status:** Active  
+**Status:** Active — automated setup completed; final verification in progress  
 **Target:** ArcGIS Pro 3.7.x  
 **Working geodatabase:** `CentralPA_Watershed.gdb`
 
@@ -24,6 +24,27 @@ No production/historical data has been loaded.
 6. Enable editor tracking in UTC on all core datasets.
 7. Preserve external/string IDs (`site_id`, `event_id`, `measurement_id`, etc.) for cross-system traceability while using GlobalID/GUID for ArcGIS relationships.
 
+## Current ArcGIS Pro evidence
+
+The Phase-6 setup script completed successfully. The ArcGIS Pro Catalog visibly contains:
+
+- `Sites_Events_Rel`
+- `Events_Measurements_Rel`
+- `Events_ValidationFlags_Rel`
+- `Events_AuditEvents_Rel`
+- `Measurements_ValidationFlags_Rel`
+- `SamplingEvents__ATTACH`
+- `SamplingEvents__ATTACHREL`
+
+The ArcGIS Pro Python output reports:
+
+- GlobalIDs on `SamplingSites`, `SamplingEvents`, `Measurements`, `ValidationFlags`, and `AuditEvents`
+- GUID foreign keys on `SamplingEvents.site_guid`, `Measurements.event_guid`, `ValidationFlags.event_guid`, `ValidationFlags.measurement_guid`, and `AuditEvents.event_guid`
+- Attachments enabled on `SamplingEvents`
+- UTC editor tracking enabled on all five core datasets
+
+A read-only verifier is available at `scripts/verify_arcgis_phase6.py` and should be used for the final gate.
+
 ## Relationship architecture
 
 ```text
@@ -46,7 +67,7 @@ Measurements.GlobalID
 
 The string UUID fields remain canonical cross-platform identifiers. The GlobalID/GUID fields are ArcGIS-native relationship keys.
 
-## GUID fields to add
+## GUID fields
 
 - `SamplingEvents.site_guid`
 - `Measurements.event_guid`
@@ -66,89 +87,18 @@ All are simple, one-to-many relationships.
 
 ## Coded-value domains
 
-### `DOM_SiteStatus`
-- `ACTIVE` — Active
-- `INACTIVE` — Inactive
-- `RETIRED` — Retired
-
-### `DOM_WorkflowStatus`
-- `DRAFT`
-- `SUBMITTED`
-- `VALIDATING`
-- `PENDING_REVIEW`
-- `NEEDS_CORRECTION`
-- `RESUBMITTED`
-- `APPROVED`
-- `REJECTED`
-- `PUBLISHING`
-- `PUBLISH_FAILED`
-- `PUBLISHED`
-
-### `DOM_ValidationOutcome`
-- `PASS`
-- `PASS_WITH_WARNINGS`
-- `FAIL`
-
-### `DOM_ReviewDecision`
-- `APPROVE`
-- `REQUEST_CORRECTION`
-- `REJECT`
-
-### `DOM_WeatherCondition`
-- `CLEAR`
-- `PARTLY_CLOUDY`
-- `CLOUDY`
-- `RAIN`
-- `SNOW`
-- `FOG`
-- `OTHER`
-- `UNKNOWN`
-
-### `DOM_TemperatureUnit`
-- `C` — Celsius
-- `F` — Fahrenheit
-
-### `DOM_Boolean01`
-- `0` — No
-- `1` — Yes
-
-### `DOM_TestType`
-- `IN_SITU_FIELD` — In-situ / Field Instrument
-- `PENN_STATE_LAB` — Penn State Lab
-- `EXTERNAL_LAB` — External Lab
-- `FIELD_KIT_COLORIMETRIC` — Field Kit / Colorimetric
-- `CONTINUOUS_SENSOR` — Continuous Sensor / Sonde
-- `IN_SITU_PSU_LAB` — In-situ/Penn State Lab
-- `OTHER` — Other
-
-### `DOM_DataCollectedBy`
-- `STUDENT_RESEARCHER` — Student/researcher
-- `FACULTY_STAFF` — Faculty/staff
-- `VOLUNTEER` — Volunteer/community monitor
-- `PARTNER_ORG` — Partner organization
-- `OTHER` — Other
-
-### `DOM_FlagSeverity`
-- `ERROR`
-- `PLAUSIBILITY_WARNING`
-- `ENVIRONMENTAL_ALERT`
-- `INFO`
-
-### `DOM_FlagCategory`
-- `SCHEMA`
-- `LOCATION`
-- `MEASUREMENT`
-- `METHOD`
-- `TEMPORAL`
-- `DUPLICATE`
-- `PROVENANCE`
-- `OTHER`
-
-### `DOM_ActorType`
-- `COLLECTOR`
-- `SUPERVISOR`
-- `SYSTEM`
-- `ADMIN`
+- `DOM_SiteStatus`
+- `DOM_WorkflowStatus`
+- `DOM_ValidationOutcome`
+- `DOM_ReviewDecision`
+- `DOM_WeatherCondition`
+- `DOM_TemperatureUnit`
+- `DOM_Boolean01`
+- `DOM_TestType`
+- `DOM_DataCollectedBy`
+- `DOM_FlagSeverity`
+- `DOM_FlagCategory`
+- `DOM_ActorType`
 
 ## Domain assignments
 
@@ -181,11 +131,11 @@ All are simple, one-to-many relationships.
 
 ## Attachments
 
-Enable attachments on `SamplingEvents`. This is where field photos and related collection evidence belong. ArcGIS will create its attachment table and attachment relationship class automatically.
+Attachments are enabled on `SamplingEvents`. ArcGIS created `SamplingEvents__ATTACH` and `SamplingEvents__ATTACHREL` automatically.
 
 ## Editor tracking
 
-Enable editor tracking on all five core datasets with UTC timestamps and ArcGIS-managed fields:
+Editor tracking is enabled on all five core datasets with UTC timestamps and ArcGIS-managed fields:
 
 - `arcgis_created_by`
 - `arcgis_created_at`
@@ -193,6 +143,20 @@ Enable editor tracking on all five core datasets with UTC timestamps and ArcGIS-
 - `arcgis_edited_at`
 
 These do not replace scientific provenance fields such as `collected_at`, `submitted_at`, `reviewed_at`, or immutable `AuditEvents`; they record GIS-level editing activity.
+
+## Final verification
+
+Run `scripts/verify_arcgis_phase6.py` from the ArcGIS Pro Python Window. It performs read-only checks for:
+
+1. GlobalID fields and types
+2. GUID foreign-key fields and types
+3. All five relationship classes
+4. All coded-value domains
+5. All intended domain assignments
+6. Attachment table and relationship
+7. Editor tracking state and UTC configuration where exposed by ArcPy
+
+Phase 6 closes only when the verifier reports `PHASE 6 VERIFIED: ALL CHECKS PASSED` and the project saves/reopens cleanly.
 
 ## Important rules
 
@@ -202,13 +166,3 @@ These do not replace scientific provenance fields such as `collected_at`, `submi
 - `GlobalID` is ArcGIS-maintained; GUID foreign keys are populated by our import/publishing logic.
 - `APPROVED` is not equivalent to `PUBLISHED`.
 - Supervisor corrections still return to the collector rather than directly modifying scientific values.
-
-## Completion criteria
-
-- All five core datasets have GlobalIDs.
-- Required GUID foreign-key fields exist.
-- Five relationship classes exist and use GlobalID/GUID keys.
-- Domains exist and are assigned to the intended fields.
-- `SamplingEvents` has attachments enabled.
-- Editor tracking is enabled in UTC on the five core datasets.
-- Project saves and reopens cleanly.
