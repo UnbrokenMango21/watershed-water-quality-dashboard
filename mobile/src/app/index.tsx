@@ -2,8 +2,9 @@ import { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { BrandMark } from '@/components/brand-mark';
+import { AppIcon } from '@/components/ui/app-icon';
 import { SecondaryButton } from '@/components/ui/button';
-import { EmptyState, SectionCard } from '@/components/ui/surface';
+import { AppScreen, EmptyState, SectionCard } from '@/components/ui/surface';
 import { StatusChip } from '@/components/ui/status';
 import { Radii, Shadows, Spacing, Typography } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
@@ -33,113 +34,102 @@ export default function HomeScreen() {
   const initials = initialsForEmail(user?.email);
 
   return (
-    <View style={[styles.screen, { backgroundColor: theme.background }]}>
-      <View style={styles.content}>
-        <View style={styles.header}>
-          <View style={styles.headerIdentity}>
-            <BrandMark size="small" />
-            <View style={styles.headerCopy}>
-              <Text style={[styles.eyebrow, { color: theme.primary }]}>CENTRAL PA WATERSHED</Text>
-              <Text style={[styles.greeting, { color: theme.textSecondary }]}>{greeting}</Text>
-              <Text style={[styles.title, { color: theme.textPrimary }]}>Field Collection</Text>
-            </View>
+    <AppScreen contentStyle={styles.content}>
+      <View style={styles.header}>
+        <View style={styles.headerIdentity}>
+          <BrandMark size="small" />
+          <View style={styles.headerCopy}>
+            <Text style={[styles.eyebrow, { color: theme.primary }]}>CENTRAL PA WATERSHED</Text>
+            <Text style={[styles.greeting, { color: theme.textSecondary }]}>{greeting}</Text>
+            <Text style={[styles.title, { color: theme.textPrimary }]}>Field Collection</Text>
           </View>
-
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Collector account"
-            accessibilityState={{ expanded: profileOpen }}
-            onPress={() => setProfileOpen((open) => !open)}
-            style={({ pressed }) => [
-              styles.avatar,
-              {
-                backgroundColor: pressed ? theme.surfaceSecondary : theme.surface,
-                borderColor: theme.border,
-              },
-            ]}>
-            <Text style={[styles.avatarText, { color: theme.primary }]}>{initials}</Text>
-          </Pressable>
         </View>
 
-        {profileOpen ? (
-          <View
-            style={[
-              styles.profileCard,
-              {
-                backgroundColor: theme.surface,
-                borderColor: theme.border,
-              },
-            ]}>
-            <View style={styles.profileCopy}>
-              <Text style={[styles.profileLabel, { color: theme.textMuted }]}>COLLECTOR ACCOUNT</Text>
-              <Text numberOfLines={1} style={[styles.profileEmail, { color: theme.textPrimary }]}>
-                {user?.email ?? 'Signed-in collector'}
-              </Text>
-            </View>
-            <SecondaryButton label="Sign out" icon="signOut" onPress={signOut} />
-          </View>
-        ) : null}
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Collector account"
+          accessibilityState={{ expanded: profileOpen }}
+          onPress={() => setProfileOpen((open) => !open)}
+          style={({ pressed }) => [
+            styles.avatar,
+            {
+              backgroundColor: pressed ? theme.surfaceSecondary : theme.surface,
+              borderColor: theme.border,
+            },
+          ]}>
+          <Text style={[styles.avatarText, { color: theme.primary }]}>{initials}</Text>
+        </Pressable>
+      </View>
 
-        <View style={styles.capabilityRow}>
-          <StatusChip label="Offline-ready" tone="success" />
-          <Text style={[styles.capabilityText, { color: theme.textMuted }]}>
-            Sync state stays visible when drafts are connected.
+      {profileOpen ? (
+        <View
+          style={[
+            styles.profileCard,
+            {
+              backgroundColor: theme.surface,
+              borderColor: theme.border,
+            },
+          ]}>
+          <View style={styles.profileCopy}>
+            <Text style={[styles.profileLabel, { color: theme.textMuted }]}>COLLECTOR ACCOUNT</Text>
+            <Text numberOfLines={1} style={[styles.profileEmail, { color: theme.textPrimary }]}>
+              {user?.email ?? 'Signed-in collector'}
+            </Text>
+          </View>
+          <SecondaryButton label="Sign out" icon="signOut" onPress={signOut} />
+        </View>
+      ) : null}
+
+      <View style={styles.capabilityRow}>
+        <StatusChip label="Offline-ready" tone="success" />
+        <Text style={[styles.capabilityText, { color: theme.textMuted }]}>
+          Sync state stays visible when drafts are connected.
+        </Text>
+      </View>
+
+      <View style={[styles.newObservation, { backgroundColor: theme.primary }]}>
+        <View style={styles.heroTopRow}>
+          <View style={[styles.heroIcon, { backgroundColor: theme.surface }]}>
+            <AppIcon name="plus" color={theme.primary} size={22} />
+          </View>
+          <Text style={[styles.heroKicker, { color: theme.background }]}>PRIMARY FIELD ACTION</Text>
+        </View>
+
+        <View style={styles.heroCopy}>
+          <Text style={[styles.heroTitle, { color: theme.background }]}>New observation</Text>
+          <Text style={[styles.heroBody, { color: theme.background }]}>
+            Start a stream visit with site context, GPS, method provenance, and water-quality measurements.
           </Text>
         </View>
 
-        <View style={[styles.newObservation, { backgroundColor: theme.primary }]}>
-          <View style={styles.heroTopRow}>
-            <View style={[styles.heroIcon, { backgroundColor: theme.surface }]}>
-              <Text style={[styles.heroPlus, { color: theme.primary }]}>+</Text>
-            </View>
-            <Text style={[styles.heroKicker, { color: theme.background }]}>PRIMARY FIELD ACTION</Text>
+        <View style={styles.heroActionArea}>
+          <View style={[styles.heroDisabledButton, { backgroundColor: theme.surface }]}>
+            <Text style={[styles.heroDisabledLabel, { color: theme.textMuted }]}>Start observation</Text>
           </View>
-
-          <View style={styles.heroCopy}>
-            <Text style={[styles.heroTitle, { color: theme.background }]}>New observation</Text>
-            <Text style={[styles.heroBody, { color: theme.background }]}>
-              Start a stream visit with site context, GPS, method provenance, and water-quality measurements.
-            </Text>
-          </View>
-
-          <View style={styles.heroActionArea}>
-            <View style={[styles.heroDisabledButton, { backgroundColor: theme.surface }]}>
-              <Text style={[styles.heroDisabledLabel, { color: theme.textMuted }]}>Start observation</Text>
-            </View>
-            <Text style={[styles.heroHelper, { color: theme.background }]}>
-              Site catalog connection is the next implementation step.
-            </Text>
-          </View>
+          <Text style={[styles.heroHelper, { color: theme.background }]}>
+            Site catalog connection is the next implementation step.
+          </Text>
         </View>
-
-        <View style={styles.sectionHeadingRow}>
-          <Text style={[styles.sectionHeading, { color: theme.textPrimary }]}>Recent submissions</Text>
-        </View>
-
-        <SectionCard>
-          <EmptyState
-            icon="clipboard"
-            title="No observations yet"
-            body="Drafts and submitted observations will appear here with clear sync and review status."
-          />
-        </SectionCard>
       </View>
-    </View>
+
+      <View style={styles.sectionHeadingRow}>
+        <Text style={[styles.sectionHeading, { color: theme.textPrimary }]}>Recent submissions</Text>
+      </View>
+
+      <SectionCard>
+        <EmptyState
+          icon="clipboard"
+          title="No observations yet"
+          body="Drafts and submitted observations will appear here with clear sync and review status."
+        />
+      </SectionCard>
+    </AppScreen>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-  },
   content: {
-    flex: 1,
-    width: '100%',
-    maxWidth: 680,
-    alignSelf: 'center',
-    paddingHorizontal: Spacing.xl,
     paddingTop: Spacing.xl,
-    paddingBottom: Spacing.xxxl,
     gap: Spacing.lg,
   },
   header: {
@@ -228,12 +218,6 @@ const styles = StyleSheet.create({
     borderRadius: Radii.md,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  heroPlus: {
-    fontSize: 26,
-    lineHeight: 28,
-    fontWeight: '500',
-    marginTop: -2,
   },
   heroKicker: {
     ...Typography.eyebrow,
