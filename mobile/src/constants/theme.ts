@@ -160,30 +160,32 @@ export const Typography = {
 } satisfies Record<string, TextStyle>;
 
 export const Shadows = {
-  subtle: Platform.select<ViewStyle>({
-    ios: {
-      shadowColor: '#071F21',
-      shadowOpacity: 0.08,
-      shadowRadius: 14,
-      shadowOffset: { width: 0, height: 5 },
-    },
-    android: {
-      elevation: 2,
-    },
-    default: {},
-  }),
-  floating: Platform.select<ViewStyle>({
-    ios: {
-      shadowColor: '#071F21',
-      shadowOpacity: 0.12,
-      shadowRadius: 20,
-      shadowOffset: { width: 0, height: 8 },
-    },
-    android: {
-      elevation: 4,
-    },
-    default: {},
-  }),
+  subtle:
+    Platform.select<ViewStyle>({
+      ios: {
+        shadowColor: '#071F21',
+        shadowOpacity: 0.08,
+        shadowRadius: 14,
+        shadowOffset: { width: 0, height: 5 },
+      },
+      android: {
+        elevation: 2,
+      },
+      default: {},
+    }) ?? {},
+  floating:
+    Platform.select<ViewStyle>({
+      ios: {
+        shadowColor: '#071F21',
+        shadowOpacity: 0.12,
+        shadowRadius: 20,
+        shadowOffset: { width: 0, height: 8 },
+      },
+      android: {
+        elevation: 4,
+      },
+      default: {},
+    }) ?? {},
 } as const;
 
 export const IconSize = {
