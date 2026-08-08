@@ -1,0 +1,38 @@
+{
+  "workflowVersion": "0.1.0",
+  "initialState": "DRAFT",
+  "terminalStates": ["REJECTED", "PUBLISHED"],
+  "states": [
+    "DRAFT",
+    "SUBMITTED",
+    "VALIDATING",
+    "PENDING_REVIEW",
+    "NEEDS_CORRECTION",
+    "RESUBMITTED",
+    "APPROVED",
+    "REJECTED",
+    "PUBLISHING",
+    "PUBLISH_FAILED",
+    "PUBLISHED"
+  ],
+  "transitions": [
+    {"from":"DRAFT","to":"SUBMITTED","actor":"COLLECTOR"},
+    {"from":"SUBMITTED","to":"VALIDATING","actor":"SYSTEM"},
+    {"from":"VALIDATING","to":"PENDING_REVIEW","actor":"SYSTEM","condition":"validation permits human review"},
+    {"from":"PENDING_REVIEW","to":"NEEDS_CORRECTION","actor":"SUPERVISOR","requiresReason":true},
+    {"from":"NEEDS_CORRECTION","to":"RESUBMITTED","actor":"COLLECTOR"},
+    {"from":"RESUBMITTED","to":"VALIDATING","actor":"SYSTEM"},
+    {"from":"PENDING_REVIEW","to":"APPROVED","actor":"SUPERVISOR"},
+    {"from":"PENDING_REVIEW","to":"REJECTED","actor":"SUPERVISOR","requiresReason":true},
+    {"from":"APPROVED","to":"PUBLISHING","actor":"SYSTEM"},
+    {"from":"PUBLISHING","to":"PUBLISHED","actor":"SYSTEM","condition":"ArcGIS publication verified"},
+    {"from":"PUBLISHING","to":"PUBLISH_FAILED","actor":"SYSTEM"},
+    {"from":"PUBLISH_FAILED","to":"PUBLISHING","actor":"SYSTEM","condition":"retry policy permits retry"}
+  ],
+  "principles": [
+    "APPROVED does not mean PUBLISHED.",
+    "PUBLISHED is set only after the ArcGIS record is verified.",
+    "Every transition creates an immutable audit event.",
+    "Correction requests return to staging and must be revalidated."
+  ]
+}
