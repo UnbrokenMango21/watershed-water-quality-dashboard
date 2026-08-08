@@ -27,8 +27,8 @@ export function BrandMark({ size = 'large' }: BrandMarkProps) {
           backgroundColor: theme.primary,
         },
       ]}>
-      <View style={[styles.ripple, { borderColor: 'rgba(255,255,255,0.24)' }]} />
-      <AppIcon name="water" color="#FFFFFF" size={iconSize} />
+      <View style={[styles.ripple, { borderColor: theme.background }]} />
+      <AppIcon name="water" color={theme.background} size={iconSize} />
     </View>
   );
 }
@@ -46,6 +46,7 @@ const styles = StyleSheet.create({
     height: 42,
     borderRadius: 999,
     borderWidth: 1,
+    opacity: 0.2,
     transform: [{ translateX: 16 }, { translateY: 16 }],
   },
 });
