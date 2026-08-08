@@ -1,363 +1,278 @@
 # Watershed Monitoring Platform — Data Dictionary
 
-**Version:** 0.1.0  
-**Status:** Draft for architecture review  
-**Purpose:** Canonical data model that will drive ArcGIS Pro, Firebase staging, validation, Workflow Manager integration, and the dashboard.
+**Version:** 0.1.1  
+**Status:** Draft — Step 4 is still in progress  
+**Purpose:** Canonical data model for the current spreadsheet, future mobile collection, Firebase staging, automated validation, Workflow Manager review, ArcGIS publication, and dashboard views.
 
-## 1. Data-model principles
+## 1. Naming rule: storage names vs display labels
 
-1. **Sampling sites and sampling events are separate.** A site is a persistent place. A sampling event is one field visit/collection at a point in time.
-2. **Measurements are stored as numeric values, never numeric strings.**
-3. **One sampling event can contain many measurements.** Measurements use a normalized child table so new parameters can be added without redesigning the entire database.
-4. **Firebase is staging. ArcGIS is authoritative.** Unapproved submissions remain in Firebase; only approved and successfully published records become authoritative in ArcGIS.
-5. **Original field data is immutable.** Corrections create reviewed/current values and audit events; the originally submitted value is never silently replaced.
-6. **All timestamps are stored in UTC.** User interfaces may display local time.
-7. **Geometry uses WGS 84 latitude/longitude for interchange.** ArcGIS may project for analysis, but the source sampling location is preserved.
-8. **Required measurement parameters are protocol-driven.** Structural fields are always required; specific water-quality parameters can be required or optional by sampling protocol.
-9. **Quality scoring and validation are different concepts.** Hard errors, warnings, informational flags, and quality scores are stored independently.
-10. **Public views exclude internal identity/review fields.** Collector and reviewer identifiers are kept in protected/internal data only.
+Human-facing spreadsheet/dashboard labels may contain spaces, parentheses, symbols, and units. Backend field names remain machine-safe for Firebase, APIs, ArcGIS field names, scripts, and version control.
 
-## 2. Canonical entities
+Examples:
 
-| Entity | Purpose | Firebase | ArcGIS | Public |
+| Display label | Backend / canonical name |
+|---|---|
+| `DO (%)` | `do_percent` / parameter code `DO_PERCENT` |
+| `DO (ppm)` | `do_ppm` / parameter code `DO_PPM` |
+| `Conductivity (µS/cm)` | `conductivity_us_cm` / `CONDUCTIVITY_US_CM` |
+| `Q (m³/s)` | `discharge_m3_s` / `DISCHARGE_M3_S` |
+
+**Rule:** use the display label in spreadsheets, forms, dashboards, ArcGIS aliases, and exports; use the backend name in databases and code.
+
+## 2. Core data-model principles
+
+1. Sampling sites and sampling events are separate. A site is a persistent place; an event is one visit/collection at a point in time.
+2. Measurements are numeric, never numeric strings.
+3. One sampling event may contain many measurements.
+4. Firebase is staging; ArcGIS is authoritative.
+5. Original submitted data is immutable and remains auditable.
+6. Supervisors **do not directly edit scientific measurement values**. They approve, reject, or request correction. Corrections are made by the collector/researcher and resubmitted through validation.
+7. All important workflow transitions create immutable audit events.
+8. Validation flags and quality scores are separate concepts.
+9. Only approved and successfully published records become authoritative.
+10. Public dashboard views must exclude private/internal identity and access information, especially landowner information.
+11. All timestamps are stored in UTC; UIs may display local time.
+12. Measurement requiredness is protocol-driven and is not finalized yet.
+
+## 3. Canonical entities
+
+| Entity | Purpose | Firebase | ArcGIS | Public dashboard |
 |---|---|---:|---:|---:|
-| `SamplingSite` | Persistent monitoring location | Read/reference copy | Authoritative point feature class | Yes |
-| `SamplingEvent` | One field collection visit/submission | Staging document | Authoritative point feature class | Yes, filtered fields |
-| `Measurement` | One parameter value collected during an event | Nested under submission | Related table | Yes |
-| `ValidationFlag` | Machine-generated QC finding | Subcollection/array | Related table or protected service | No by default |
-| `AuditEvent` | Immutable history of important state/change events | Subcollection | Protected related table/archive | No |
-| `ParameterDefinition` | Parameter metadata, units, precision, requiredness defaults | App/config cache | Optional reference table | No direct public editing |
+| `SamplingSite` | Persistent monitoring location | Reference/cache | Authoritative point feature | Public-safe fields only |
+| `SamplingEvent` | One field collection / submission | Staging document | Authoritative event record | Public-safe fields only |
+| `Measurement` | Numeric parameter value | Nested/child records | Related table | Yes |
+| `ValidationFlag` | Machine-generated QC finding | Child records | Protected/internal table | No by default |
+| `AuditEvent` | Immutable state/change history | Child records | Protected/internal table/archive | No |
+| `ParameterDefinition` | Parameter labels, units, precision | Config | Reference/config | Read-only labels as needed |
 
-## 3. `SamplingSite`
-
-**ArcGIS type:** Point feature class  
-**Primary ID:** `siteId` (UUID string)  
-**Relationship:** `SamplingSite.siteId` 1:N `SamplingEvent.siteId`
-
-| Field | Type | Required | Units / Domain | Source | Notes |
-|---|---|---:|---|---|---|
-| `siteId` | UUID/string(36) | Yes | Unique | System | Stable ID; never reused |
-| `siteCode` | string(32) | Yes | Unique human-readable code | Admin | Example: `WB-001` |
-| `siteName` | string(160) | Yes | — | Admin | Human-readable location name |
-| `watershedName` | string(120) | Yes | Controlled where possible | Admin/GIS | Watershed or basin name |
-| `siteStatus` | string(20) | Yes | `ACTIVE`, `INACTIVE`, `RETIRED` | Admin | Controls collection availability |
-| `latitude` | double | Yes | decimal degrees | Geometry | Convenience/export field |
-| `longitude` | double | Yes | decimal degrees | Geometry | Convenience/export field |
-| `accessNotes` | string(1000) | No | — | Admin | Safe access / location notes |
-| `siteDescription` | string(2000) | No | — | Admin | General site metadata |
-| `createdAt` | datetime UTC | Yes | ISO-8601 | System | Creation timestamp |
-| `updatedAt` | datetime UTC | Yes | ISO-8601 | System | Last metadata update |
-| `schemaVersion` | string(20) | Yes | SemVer | System | Schema used for record |
-
-## 4. `SamplingEvent`
+## 4. SamplingSite
 
 **ArcGIS type:** Point feature class  
-**Firebase type:** `submissions/{submissionId}` document  
-**Primary ID:** `eventId` (UUID string)  
-**Relationship:** N:1 to `SamplingSite`; 1:N to `Measurement`, `ValidationFlag`, and `AuditEvent`.
+**Primary key:** `site_id` UUID  
+**Relationship:** `SamplingSite.site_id` 1:N `SamplingEvent.site_id`
 
-### 4.1 Identity and timing
+| Field | Type | Required | Public? | Notes |
+|---|---|---:|---:|---|
+| `site_id` | UUID/string(36) | Yes | Yes | Stable system ID; never reused |
+| `site_code` | string(32) | Yes | Yes | Human-safe code, e.g. `WB-001` |
+| `site_name_public` | string(160) | Yes before publication | Yes | Public-safe dashboard label |
+| `site_name_internal` | string(200) | No | **No** | Internal identifier; may include private/local naming context |
+| `landowner_name` | string(200) | No | **Never** | Backend identification only |
+| `landowner_notes` | string(1000) | No | **Never** | Backend access/context only |
+| `access_notes_internal` | string(1000) | No | **Never** | Gate/access/contact/safety details |
+| `watershed_name` | string(120) | No | Yes | Watershed/basin name |
+| `site_status` | string(20) | Yes | Yes | `ACTIVE`, `INACTIVE`, `RETIRED` |
+| `latitude` | double | Yes | Yes | Decimal degrees |
+| `longitude` | double | Yes | Yes | Decimal degrees |
+| `site_description_public` | string(2000) | No | Yes | Public-safe site context |
+| `created_at` | datetime UTC | Yes | No | System timestamp |
+| `updated_at` | datetime UTC | Yes | No | System timestamp |
+| `schema_version` | string(20) | Yes | No | SemVer |
 
-| Field | Type | Required | Units / Domain | Source | Notes |
-|---|---|---:|---|---|---|
-| `eventId` | UUID/string(36) | Yes | Unique | System | Canonical event identifier |
-| `submissionId` | UUID/string(36) | Yes | Unique | Mobile/backend | Staging submission identifier; retained after publication |
-| `siteId` | UUID/string(36) | Yes | FK → SamplingSite | User selection/system | Required monitoring site |
-| `collectorUserId` | string(128) | Yes | Internal | Authentication | Never exposed in public view |
-| `collectedAt` | datetime UTC | Yes | ISO-8601 | Device/user | Actual sampling time |
-| `submittedAt` | datetime UTC | Yes after submit | ISO-8601 | Backend | Server timestamp |
-| `reviewedAt` | datetime UTC | No | ISO-8601 | Workflow | Set after human review |
-| `publishedAt` | datetime UTC | No | ISO-8601 | Publishing service | Set only after verified ArcGIS publication |
+### Site privacy rule
 
-### 4.2 Location and field context
+The dashboard and any public hosted feature-layer view must **not expose** `site_name_internal`, `landowner_name`, `landowner_notes`, or `access_notes_internal`. If a current spreadsheet `SiteName` contains a landowner/person name, it is imported into an internal field and a separate `site_name_public` must be assigned before public release.
 
-| Field | Type | Required | Units / Domain | Source | Notes |
-|---|---|---:|---|---|---|
-| `latitude` | double | Yes | decimal degrees | Device GPS | Actual collection location, not just site centroid |
-| `longitude` | double | Yes | decimal degrees | Device GPS | Actual collection location |
-| `gpsAccuracyM` | double | Yes | meters | Device GPS | Horizontal accuracy reported by device |
-| `siteDistanceM` | double | No | meters | Validation engine | Distance from expected site point |
-| `weatherCondition` | string(30) | No | Weather domain | Collector | Optional field condition |
-| `airTemperatureC` | double | No | °C | Collector/instrument | Canonical storage in Celsius; Fahrenheit is display-only |
-| `streamflowCondition` | string(30) | No | Flow-condition domain | Collector | Qualitative condition |
-| `streamflowValueCfs` | double | No | ft³/s | Collector/instrument | Only when quantitative flow is actually measured |
-| `fieldNotesOriginal` | string(4000) | No | — | Collector | Original notes; immutable after submission |
-| `fieldNotesReviewed` | string(4000) | No | — | Reviewer | Optional reviewed/corrected interpretation |
-| `photoCount` | integer | Yes | >= 0 | System | Derived from attachments |
+## 5. SamplingEvent
 
-### 4.3 Workflow, validation, and quality
+**Firebase:** `submissions/{submission_id}`  
+**ArcGIS:** authoritative event feature/table  
+**Primary key:** `event_id` UUID
 
-| Field | Type | Required | Units / Domain | Source | Notes |
-|---|---|---:|---|---|---|
-| `workflowStatus` | string(30) | Yes | Workflow-status domain | Backend/workflow | Current staging state |
-| `validationOutcome` | string(24) | No until validation | `PASS`, `PASS_WITH_WARNINGS`, `FAIL` | Validation engine | Not the same as supervisor approval |
-| `completenessScore` | double | No | 0–100 | Validation engine | Required-field/protocol completeness |
-| `locationQualityScore` | double | No | 0–100 | Validation engine | GPS/site-location quality |
-| `measurementQualityScore` | double | No | 0–100 | Validation engine | Measurement-specific QA score |
-| `temporalQualityScore` | double | No | 0–100 | Validation engine | Timestamp/recency/sequence quality |
-| `overallQualityScore` | double | No | 0–100 | Validation engine | Composite score; algorithm versioned |
-| `errorFlagCount` | integer | Yes | >= 0 | Validation engine | Count of ERROR flags |
-| `warningFlagCount` | integer | Yes | >= 0 | Validation engine | Count of WARNING flags |
-| `infoFlagCount` | integer | Yes | >= 0 | Validation engine | Count of INFO flags |
-| `reviewDecision` | string(30) | No | Review-decision domain | Supervisor | Approval gate outcome |
-| `reviewerUserId` | string(128) | No | Internal | Workflow | Protected field |
-| `reviewerComments` | string(4000) | No | — | Supervisor | Required for rejection/correction request |
+### 5.1 Identity, collection context, and review
 
-### 4.4 Publication and version provenance
+| Field | Type | Required | Public? | Notes |
+|---|---|---:|---:|---|
+| `event_id` | UUID/string(36) | Yes | No | Canonical event ID |
+| `submission_id` | UUID/string(36) | Yes | No | Firebase staging ID retained after publication |
+| `site_id` | UUID/string(36) | Yes | Yes | FK → `SamplingSite` |
+| `test_type` | string(80) | Yes | Yes | Current records: `In-situ/Penn State Lab`; future values allowed through controlled domain |
+| `data_collected_by` | string(80) | Yes | Yes | Current records: `Student/researcher`; classification, not personal identity |
+| `collector_user_id` | string(128) | Yes for future app | **No** | Authenticated person/account ID |
+| `collected_at` | datetime UTC | Yes | Yes | Actual sampling date/time |
+| `submitted_at` | datetime UTC | Yes after submit | No | Server timestamp |
+| `review_status` | string(30) | Yes | Optional | Human review status; see domain below |
+| `review_comment` | string(4000) | No | **No by default** | Supervisor feedback/internal QC note |
+| `reviewer_user_id` | string(128) | No | **No** | Protected reviewer identity |
+| `reviewed_at` | datetime UTC | No | No | Review timestamp |
+| `published_at` | datetime UTC | No | No | Set only after ArcGIS publication is verified |
 
-| Field | Type | Required | Units / Domain | Source | Notes |
-|---|---|---:|---|---|---|
-| `arcgisGlobalId` | GUID/string(38) | No until published | ArcGIS GUID | Publishing service | Returned/verified ArcGIS record identifier |
-| `arcgisObjectId` | integer | No until published | ArcGIS OID | Publishing service | Convenience only; GlobalID is the durable reference |
-| `schemaVersion` | string(20) | Yes | SemVer | App/backend | Example `0.1.0` |
-| `validationRulesVersion` | string(20) | Yes after validation | SemVer | Validation engine | Exact rule set used |
-| `qualityAlgorithmVersion` | string(20) | Yes after scoring | SemVer | Validation engine | Exact scoring algorithm used |
-| `mobileAppVersion` | string(30) | Yes | SemVer/build | Mobile app | Submission client version |
-| `publishAttemptCount` | integer | Yes | >= 0 | Publishing service | Supports retry/audit |
-| `lastPublishErrorCode` | string(120) | No | — | Publishing service | Protected diagnostic field |
+### 5.2 Location and conditions
 
-## 5. `Measurement`
+| Field | Type | Required | Public? | Notes |
+|---|---|---:|---:|---|
+| `latitude` | double | Yes | Yes | Actual collection latitude |
+| `longitude` | double | Yes | Yes | Actual collection longitude |
+| `gps_accuracy_m` | double | TBD for current historical data | No | Future mobile GPS accuracy |
+| `site_distance_m` | double | No | No | Calculated distance from registered site |
+| `weather_condition` | string(50) | No | Yes | Current spreadsheet field |
+| `field_notes_original` | string(4000) | No | No by default | Immutable collector notes |
+| `photo_count` | integer | Yes for app | No | Derived from attachments |
 
-**ArcGIS type:** Related table  
-**Firebase representation:** Nested `measurements` map/array inside the staging submission.  
-**Primary ID:** `measurementId` (UUID string)  
-**Relationship:** N:1 to `SamplingEvent.eventId`.
+### 5.3 Workflow and quality
 
-This normalized structure avoids storing measurements as text and avoids adding a new database column every time a new water-quality parameter is introduced.
+| Field | Type | Required | Public? | Notes |
+|---|---|---:|---:|---|
+| `workflow_status` | string(30) | Yes | No | Full staging/publication state machine |
+| `validation_outcome` | string(24) | After validation | No | `PASS`, `PASS_WITH_WARNINGS`, `FAIL` |
+| `completeness_score` | double | No | TBD | 0–100 |
+| `location_quality_score` | double | No | TBD | 0–100 |
+| `measurement_quality_score` | double | No | TBD | 0–100 |
+| `temporal_quality_score` | double | No | TBD | 0–100 |
+| `overall_quality_score` | double | No | TBD | 0–100; dashboard exposure not yet decided |
+| `error_flag_count` | integer | Yes after validation | No | ERROR findings |
+| `warning_flag_count` | integer | Yes after validation | No | WARNING findings |
+| `info_flag_count` | integer | Yes after validation | No | INFO findings |
 
-| Field | Type | Required | Units / Domain | Source | Notes |
-|---|---|---:|---|---|---|
-| `measurementId` | UUID/string(36) | Yes | Unique | System | Stable measurement record ID |
-| `eventId` | UUID/string(36) | Yes | FK → SamplingEvent | System | Parent event |
-| `parameterCode` | string(40) | Yes | Parameter catalog | App | Example `PH`, `DO_MG_L` |
-| `valueOriginal` | double | Yes | Canonical parameter unit | Collector/instrument | Immutable submitted value |
-| `valueReviewed` | double | No | Same unit | Reviewer | Only populated if a justified correction is made |
-| `valueCurrent` | double | Yes after review/publish | Same unit | System | Effective value used downstream; original unless reviewed |
-| `unitCode` | string(24) | Yes | Parameter catalog | App/system | Explicit even when canonical |
-| `measurementMethod` | string(80) | No | Controlled/free text TBD | Collector/protocol | Meter, strip, lab method, etc. |
-| `instrumentId` | string(80) | No | Internal catalog | Collector/protocol | Optional instrument traceability |
-| `detectionLimit` | double | No | Same unit | Protocol/instrument | If applicable |
-| `isBelowDetectionLimit` | boolean | Yes | true/false | Collector/validation | Never encode `<0.1` in a numeric field |
-| `requiredByProtocol` | boolean | Yes | true/false | Protocol config | Captures requirement at collection time |
-| `measurementNotes` | string(1000) | No | — | Collector/reviewer | Parameter-specific notes |
-| `schemaVersion` | string(20) | Yes | SemVer | System | Record schema version |
+### 5.4 Version/provenance
 
-### 5.1 Initial parameter catalog
+| Field | Type | Required | Public? | Notes |
+|---|---|---:|---:|---|
+| `arcgis_global_id` | GUID | After publication | No | Durable ArcGIS publication reference |
+| `arcgis_object_id` | integer | After publication | No | Convenience reference only |
+| `schema_version` | string(20) | Yes | No | Data schema version |
+| `validation_rules_version` | string(20) | After validation | No | Exact validation rules used |
+| `quality_algorithm_version` | string(20) | After scoring | No | Exact scoring algorithm used |
+| `mobile_app_version` | string(30) | Future app | No | Client version/build |
+| `publish_attempt_count` | integer | Yes | No | Retry/audit support |
+| `last_publish_error_code` | string(120) | No | No | Protected diagnostic field |
 
-Validation limits are intentionally **not hard-coded here yet**. Instrument limits and scientific thresholds will be defined in versioned validation rules after the data model is approved.
+## 6. Measurement
 
-| Code | Parameter | Canonical unit | Storage type | Typical UI precision | MVP status |
-|---|---|---|---|---:|---|
-| `PH` | pH | pH units | double | 2 decimals | Core |
-| `DO_MG_L` | Dissolved oxygen | mg/L | double | 2 | Core |
-| `DO_PERCENT` | Dissolved oxygen saturation | % | double | 1 | Core |
-| `WATER_TEMP_C` | Water temperature | °C | double | 2 | Core |
-| `CONDUCTIVITY_US_CM` | Conductivity / specific conductance | µS/cm | double | 1 | Core |
-| `TDS_MG_L` | Total dissolved solids | mg/L | double | 1 | Core |
-| `NITRATE_MG_L` | Nitrate | mg/L | double | 2 | Configurable |
-| `PHOSPHATE_MG_L` | Phosphate | mg/L | double | 2 | Configurable |
-| `CHLORIDE_MG_L` | Chloride | mg/L | double | 2 | Configurable |
-| `SULFATE_MG_L` | Sulfate | mg/L | double | 2 | Configurable |
-| `SALINITY_PPT` | Salinity | ppt | double | 2 | Configurable |
-
-## 6. `ValidationFlag`
-
-**Purpose:** Stores each machine-generated finding independently of the overall score.
-
-| Field | Type | Required | Domain / Notes |
-|---|---|---:|---|
-| `flagId` | UUID/string(36) | Yes | Unique |
-| `eventId` | UUID/string(36) | Yes | Parent event |
-| `measurementId` | UUID/string(36) | No | Set when flag is parameter-specific |
-| `ruleId` | string(80) | Yes | Stable rule identifier |
-| `ruleVersion` | string(20) | Yes | Rule version |
-| `severity` | string(12) | Yes | `ERROR`, `WARNING`, `INFO` |
-| `category` | string(40) | Yes | `SCHEMA`, `LOCATION`, `MEASUREMENT`, `TEMPORAL`, `DUPLICATE`, `OTHER` |
-| `message` | string(1000) | Yes | Human-readable explanation |
-| `observedValue` | string(200) | No | Text snapshot for audit only; canonical measurement remains numeric |
-| `createdAt` | datetime UTC | Yes | Server timestamp |
-| `resolved` | boolean | Yes | Whether reviewer/collector addressed the flag |
-| `resolutionNote` | string(1000) | No | Required when manually resolved/overridden |
-
-## 7. `AuditEvent`
-
-**Purpose:** Append-only history. Audit rows are never edited or deleted during normal operation.
+**ArcGIS type:** related table  
+**Firebase:** nested/child records within submission  
+**Primary key:** `measurement_id` UUID  
+**Relationship:** N:1 to `SamplingEvent.event_id`
 
 | Field | Type | Required | Notes |
 |---|---|---:|---|
-| `auditEventId` | UUID/string(36) | Yes | Unique event ID |
-| `submissionId` | UUID/string(36) | Yes | Submission being tracked |
-| `eventId` | UUID/string(36) | No | Populated after event ID exists |
-| `eventType` | string(50) | Yes | Examples: `CREATED`, `SUBMITTED`, `VALIDATED`, `RETURNED`, `RESUBMITTED`, `APPROVED`, `REJECTED`, `PUBLISH_STARTED`, `PUBLISH_FAILED`, `PUBLISHED`, `VALUE_CORRECTED` |
-| `actorType` | string(20) | Yes | `COLLECTOR`, `SUPERVISOR`, `SYSTEM`, `ADMIN` |
-| `actorUserId` | string(128) | No | Null for system-generated events |
-| `occurredAt` | datetime UTC | Yes | Server timestamp |
-| `previousState` | string(30) | No | Workflow state before event |
-| `newState` | string(30) | No | Workflow state after event |
-| `fieldPath` | string(200) | No | For value-level changes |
-| `oldValue` | string(1000) | No | Audit snapshot only |
-| `newValue` | string(1000) | No | Audit snapshot only |
-| `reason` | string(2000) | No | Required for manual correction/rejection/override |
-| `schemaVersion` | string(20) | Yes | Audit schema version |
+| `measurement_id` | UUID/string(36) | Yes | Stable record ID |
+| `event_id` | UUID/string(36) | Yes | Parent sampling event |
+| `parameter_code` | string(40) | Yes | Stable machine code |
+| `value_original` | double | Yes | Immutable submitted/imported numeric value |
+| `value_current` | double | Yes after accepted correction | Effective value used downstream |
+| `unit_code` | string(24) | Yes | Explicit unit |
+| `source_column` | string(80) | No | Original spreadsheet/app label for provenance |
+| `measurement_method` | string(120) | No | Instrument/lab method if available in future |
+| `instrument_id` | string(80) | No | Future traceability |
+| `required_by_protocol` | boolean | Yes once protocols are defined | Requiredness at time of collection |
+| `measurement_notes` | string(1000) | No | Parameter-specific notes |
+| `schema_version` | string(20) | Yes | Measurement schema version |
 
-## 8. Controlled domains
+**Correction policy:** supervisors cannot populate or change scientific `value_current` directly. If a value is wrong, the supervisor requests correction. The collector/researcher submits the corrected value; the original remains preserved in audit history.
 
-### 8.1 Workflow status
+## 7. Current spreadsheet / historical import schema
 
-`DRAFT` → `SUBMITTED` → `VALIDATING` → `PENDING_REVIEW`
+The following columns are required to be supported for the current dataset. Human-facing labels should use units in parentheses.
 
-From `PENDING_REVIEW`:
-- `NEEDS_CORRECTION` → `RESUBMITTED` → `VALIDATING`
+| Spreadsheet label | Backend mapping | Data type | Initial/default value or notes |
+|---|---|---|---|
+| `SiteID` | `site_id` / import site key | string | Existing identifier mapped to stable site UUID |
+| `SiteName` | `site_name_internal` or `site_name_public` after privacy review | string | **Must be screened for landowner/private names before public display** |
+| `Test Type` | `test_type` | string | Current records: `In-situ/Penn State Lab` |
+| `Data Collected By` | `data_collected_by` | string | Current records: `Student/researcher` |
+| `Review Status` | `review_status` | string | Review/QC state |
+| `Review Comment` | `review_comment` | string | Internal by default |
+| `Latitude` | `latitude` | double | decimal degrees |
+| `Longitude` | `longitude` | double | decimal degrees |
+| `Date` | `collected_at` | datetime | Convert to canonical UTC timestamp where time is known |
+| `Weather Condition` | `weather_condition` | string | controlled later |
+| `Temp (F)` | source/derived temperature Fahrenheit | double | Preserve current source column; may be derived from canonical °C later |
+| `Temp (C)` | `WATER_TEMP_C` | double | °C |
+| `pH` | `PH` | double | pH |
+| `DO (%)` | `DO_PERCENT` | double | % |
+| `DO (ppm)` | `DO_PPM` | double | ppm |
+| `Conductivity (µS/cm)` | `CONDUCTIVITY_US_CM` | double | µS/cm |
+| `TDS (ppm)` | `TDS_PPM` | double | ppm |
+| `ORP (mV)` | `ORP_MV` | double | mV |
+| `Chloride (mg/L)` | `CHLORIDE_MG_L` | double | mg/L |
+| `Sulphate (mg/L)` | `SULFATE_MG_L` | double | mg/L; display spelling follows current dataset |
+| `Nitrate (mg/L)` | `NITRATE_MG_L` | double | mg/L |
+| `Phosphate (mg/L)` | `PHOSPHATE_MG_L` | double | mg/L |
+| `Q (m³/s)` | `DISCHARGE_M3_S` | double | cubic meters per second |
+
+### Temperature preservation rule
+
+Current data may contain both `Temp (F)` and `Temp (C)`. The import process will preserve both source values for traceability. Canonical analytics should use Celsius. Fahrenheit can be retained as source provenance and/or generated as a display/export value. We will validate that paired F/C values are consistent rather than silently choosing one.
+
+## 8. Initial parameter catalog
+
+| Code | Display label | Canonical unit | Type | Notes |
+|---|---|---|---|---|
+| `PH` | `pH` | pH | double | No parenthetical unit needed |
+| `WATER_TEMP_C` | `Temp (C)` | °C | double | Canonical analytics temperature |
+| `WATER_TEMP_F` | `Temp (F)` | °F | double | Source/display support for existing data |
+| `DO_PERCENT` | `DO (%)` | % | double | Dissolved oxygen saturation |
+| `DO_PPM` | `DO (ppm)` | ppm | double | Existing dataset label/value |
+| `CONDUCTIVITY_US_CM` | `Conductivity (µS/cm)` | µS/cm | double | Conductivity/specific conductance |
+| `TDS_PPM` | `TDS (ppm)` | ppm | double | Total dissolved solids |
+| `ORP_MV` | `ORP (mV)` | mV | double | Oxidation-reduction potential |
+| `CHLORIDE_MG_L` | `Chloride (mg/L)` | mg/L | double |  |
+| `SULFATE_MG_L` | `Sulphate (mg/L)` | mg/L | double | Internal code uses standard `SULFATE` spelling |
+| `NITRATE_MG_L` | `Nitrate (mg/L)` | mg/L | double |  |
+| `PHOSPHATE_MG_L` | `Phosphate (mg/L)` | mg/L | double |  |
+| `DISCHARGE_M3_S` | `Q (m³/s)` | m³/s | double | Quantitative discharge/streamflow |
+
+Validation thresholds and mandatory/optional parameter rules are intentionally **not finalized yet**.
+
+## 9. Review status domain
+
+Initial review-facing states:
+
+- `PENDING_REVIEW`
+- `NEEDS_CORRECTION`
+- `APPROVED`
 - `REJECTED`
-- `APPROVED` → `PUBLISHING` → `PUBLISHED`
-- `PUBLISHING` → `PUBLISH_FAILED` → retry → `PUBLISHING`
 
-### 8.2 Review decision
+The complete technical workflow also includes `DRAFT`, `SUBMITTED`, `VALIDATING`, `RESUBMITTED`, `PUBLISHING`, `PUBLISH_FAILED`, and `PUBLISHED`.
 
-- `APPROVE`
-- `REQUEST_CORRECTION`
-- `REJECT`
+## 10. Public/private publication boundary
 
-### 8.3 Site status
+A public ArcGIS hosted feature-layer view / dashboard data source will contain only public-safe fields. At minimum, the following are **excluded** from normal viewer access:
 
-- `ACTIVE`
-- `INACTIVE`
-- `RETIRED`
+- `landowner_name`
+- `landowner_notes`
+- `site_name_internal`
+- `access_notes_internal`
+- `collector_user_id`
+- `reviewer_user_id`
+- `review_comment` unless we explicitly decide to publish sanitized QC notes later
+- Firebase submission identifiers
+- authentication/account identifiers
+- internal audit events
+- diagnostic publication errors
 
-### 8.4 Weather condition
+The dashboard uses `site_name_public` and never directly uses an unscreened private/internal site-name field.
 
-Initial domain: `CLEAR`, `PARTLY_CLOUDY`, `CLOUDY`, `RAIN`, `SNOW`, `FOG`, `OTHER`, `UNKNOWN`.
+## 11. AuditEvent
 
-### 8.5 Streamflow condition
+Audit history is append-only. Important events include `CREATED`, `SUBMITTED`, `VALIDATED`, `RETURNED`, `RESUBMITTED`, `APPROVED`, `REJECTED`, `PUBLISH_STARTED`, `PUBLISH_FAILED`, and `PUBLISHED`.
 
-Initial domain: `DRY`, `VERY_LOW`, `LOW`, `NORMAL`, `HIGH`, `FLOOD`, `UNKNOWN`.
+Required audit attributes include:
 
-## 9. Required vs optional data
+- audit event ID
+- submission/event ID
+- event type
+- actor type and protected actor ID where applicable
+- UTC timestamp
+- previous/new workflow state
+- affected field/measurement when relevant
+- old/new snapshot when relevant
+- reason/comment
+- schema/rule version
 
-### Always required for a submitted event
+## 12. Open Step-4 decisions
 
-- `submissionId`
-- `eventId`
-- `siteId`
-- authenticated `collectorUserId`
-- `collectedAt`
-- location (`latitude`, `longitude`, `gpsAccuracyM`)
-- `mobileAppVersion`
-- `schemaVersion`
-- all measurement parameters marked `requiredByProtocol = true`
+Step 4 remains open. We still need to decide:
 
-### Optional unless a protocol says otherwise
+1. Mandatory vs optional measurement parameters for each sampling protocol.
+2. Test-type controlled vocabulary beyond `In-situ/Penn State Lab`.
+3. Whether instrument/method information is required for future submissions.
+4. Error vs warning thresholds and instrument limits.
+5. Required GPS accuracy for mobile collection.
+6. Public dashboard treatment of quality scores (0–100 vs simplified status).
+7. Exact handling of historical rows that contain private names in `SiteName`.
+8. Date/time assumptions for historical rows where only a date is available.
+9. Final public site naming convention.
 
-- weather condition
-- air temperature
-- streamflow condition/value
-- notes
-- photos
-- instrument/method metadata
-- non-core measurements
-
-The application must not hard-code parameter requiredness in UI components. The requirement comes from the active sampling protocol/configuration.
-
-## 10. Correction policy
-
-- The app preserves `valueOriginal` exactly as submitted.
-- A collector correction before approval creates an audit event and updates the staging current value while retaining the original snapshot/history.
-- A supervisor must never silently alter a submitted value.
-- If a supervisor is permitted to correct a transcription error, the system stores `valueReviewed`, the reason, reviewer ID, and timestamp.
-- `valueCurrent` is the value used for approved publication.
-- Scientific anomalies are warnings unless a rule demonstrates that the value is structurally/impossibly invalid.
-
-## 11. Privacy and publication views
-
-Public ArcGIS views/dashboard layers should exclude at minimum:
-
-- `collectorUserId`
-- `reviewerUserId`
-- internal review comments when sensitive
-- authentication identifiers
-- diagnostic publish errors
-- device identifiers
-- internal audit details
-
-Public outputs should expose the approved scientific observation, site metadata, measurement time, relevant QA/QC indicators, and non-sensitive provenance only.
-
-## 12. ArcGIS Pro implementation target
-
-Phase 5 should create the following initial geodatabase objects:
-
-1. `SamplingSites` — point feature class
-2. `SamplingEvents` — point feature class
-3. `Measurements` — table
-4. `ValidationFlags` — table
-5. `AuditEvents` — table
-
-Relationships:
-
-- `SamplingSites.siteId` 1:N `SamplingEvents.siteId`
-- `SamplingEvents.eventId` 1:N `Measurements.eventId`
-- `SamplingEvents.eventId` 1:N `ValidationFlags.eventId`
-- `SamplingEvents.eventId` 1:N `AuditEvents.eventId`
-
-Attachments should be enabled on `SamplingEvents`.
-
-## 13. Firebase staging representation
-
-A submission document should be conceptually shaped as:
-
-```json
-{
-  "submissionId": "uuid",
-  "eventId": "uuid",
-  "siteId": "uuid",
-  "collectorUserId": "auth-uid",
-  "collectedAt": "timestamp",
-  "submittedAt": "timestamp",
-  "location": {
-    "latitude": 0.0,
-    "longitude": 0.0,
-    "accuracyM": 0.0
-  },
-  "conditions": {
-    "weatherCondition": "CLOUDY",
-    "airTemperatureC": 0.0,
-    "streamflowCondition": "NORMAL"
-  },
-  "measurements": {
-    "PH": {
-      "valueOriginal": 7.25,
-      "valueCurrent": 7.25,
-      "unitCode": "PH",
-      "requiredByProtocol": true
-    }
-  },
-  "workflow": {
-    "status": "SUBMITTED"
-  },
-  "quality": {
-    "validationOutcome": null,
-    "overallQualityScore": null
-  },
-  "versions": {
-    "schemaVersion": "0.1.0",
-    "validationRulesVersion": null,
-    "qualityAlgorithmVersion": null,
-    "mobileAppVersion": "0.1.0"
-  }
-}
-```
-
-Audit events and validation flags should use subcollections or dedicated collections rather than continually expanding one document.
-
-## 14. Open decisions before Phase 5 is finalized
-
-These decisions require project/scientific confirmation rather than guessing:
-
-1. Which measurement parameters are mandatory for the default sampling protocol?
-2. Exact instrument/method metadata required for each parameter.
-3. Scientific validation thresholds versus instrument hard limits.
-4. GPS accuracy threshold for warning/error behavior.
-5. Whether quantitative streamflow is part of MVP or only qualitative condition.
-6. Whether supervisor value correction is allowed at all, or whether all corrections must return to the collector.
-7. Public visibility policy for quality scores and validation warnings.
-
-Until these are confirmed, the schema supports them without hard-coding scientifically unsupported rules.
+Do not start Step 5 until these Step-4 decisions and the current-data import mapping are reviewed.
