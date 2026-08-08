@@ -1,10 +1,9 @@
 import { signInWithEmailAndPassword } from '@react-native-firebase/auth';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import {
-  ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
-  Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -12,6 +11,13 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { BrandMark } from '@/components/brand-mark';
+import { AppIcon } from '@/components/ui/app-icon';
+import { PrimaryButton } from '@/components/ui/button';
+import { TextField } from '@/components/ui/field';
+import { InlineAlert } from '@/components/ui/status';
+import { MaxContentWidth, Spacing, Typography } from '@/constants/theme';
+import { useTheme } from '@/hooks/use-theme';
 import { auth } from '@/lib/firebase';
 
 function friendlyAuthError(error: unknown) {
@@ -26,6 +32,8 @@ function friendlyAuthError(error: unknown) {
 }
 
 export function SignInScreen() {
+  const theme = useTheme();
+  const passwordRef = useRef<TextInput>(null);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
@@ -49,65 +57,77 @@ export function SignInScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.background }]}>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 8 : 0}
         style={styles.keyboardView}>
-        <View style={styles.card}>
-          <View style={styles.heading}>
-            <Text style={styles.eyebrow}>CENTRAL PA WATERSHED</Text>
-            <Text style={styles.title}>Field Collection</Text>
-            <Text style={styles.subtitle}>Sign in with your collector account.</Text>
+        <ScrollView
+          automaticallyAdjustKeyboardInsets
+          contentContainerStyle={styles.content}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}>
+          <View style={styles.brandSection}>
+            <BrandMark />
+            <View style={styles.brandCopy}>
+              <Text style={[styles.eyebrow, { color: theme.primary }]}>CENTRAL PA WATERSHED</Text>
+              <Text style={[styles.title, { color: theme.textPrimary }]}>Field Collection</Text>
+              <Text style={[styles.subtitle, { color: theme.textSecondary }]}>
+                Reliable water-quality observations, captured where the work happens.
+              </Text>
+            </View>
           </View>
 
           <View style={styles.form}>
-            <View style={styles.field}>
-              <Text style={styles.label}>Email</Text>
-              <TextInput
-                autoCapitalize="none"
-                autoComplete="email"
-                autoCorrect={false}
-                editable={!busy}
-                keyboardType="email-address"
-                onChangeText={setEmail}
-                placeholder="collector@example.org"
-                returnKeyType="next"
-                style={styles.input}
-                textContentType="username"
-                value={email}
-              />
-            </View>
+            <TextField
+              autoCapitalize="none"
+              autoComplete="email"
+              autoCorrect={false}
+              editable={!busy}
+              keyboardType="email-address"
+              label="Email"
+              onChangeText={setEmail}
+              onSubmitEditing={() => passwordRef.current?.focus()}
+              placeholder="collector@example.org"
+              requirement="required"
+              returnKeyType="next"
+              textContentType="username"
+              value={email}
+            />
 
-            <View style={styles.field}>
-              <Text style={styles.label}>Password</Text>
-              <TextInput
-                autoCapitalize="none"
-                autoComplete="current-password"
-                editable={!busy}
-                onChangeText={setPassword}
-                onSubmitEditing={handleSignIn}
-                placeholder="Password"
-                returnKeyType="go"
-                secureTextEntry
-                style={styles.input}
-                textContentType="password"
-                value={password}
-              />
-            </View>
+            <TextField
+              autoCapitalize="none"
+              autoComplete="current-password"
+              editable={!busy}
+              inputRef={passwordRef}
+              label="Password"
+              onChangeText={setPassword}
+              onSubmitEditing={handleSignIn}
+              placeholder="Enter password"
+              requirement="required"
+              returnKeyType="go"
+              secureTextEntry
+              textContentType="password"
+              value={password}
+            />
 
-            {errorMessage ? <Text style={styles.error}>{errorMessage}</Text> : null}
+            {errorMessage ? <InlineAlert tone="danger" title={errorMessage} /> : null}
 
-            <Pressable
-              accessibilityRole="button"
-              disabled={busy}
+            <PrimaryButton
+              accessibilityHint="Signs in to the field collection workspace"
+              label="Sign in"
+              loading={busy}
               onPress={handleSignIn}
-              style={({ pressed }) => [styles.button, pressed && !busy && styles.buttonPressed, busy && styles.buttonDisabled]}>
-              {busy ? <ActivityIndicator color="#ffffff" /> : <Text style={styles.buttonText}>Sign in</Text>}
-            </Pressable>
+            />
           </View>
 
-          <Text style={styles.footer}>Collector access only. Scientific data is synchronized securely through Firebase.</Text>
-        </View>
+          <View style={styles.footer}>
+            <AppIcon name="lock" color={theme.textMuted} size={15} />
+            <Text style={[styles.footerText, { color: theme.textMuted }]}>
+              Collector access only · Authentication is handled securely through Firebase.
+            </Text>
+          </View>
+        </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -116,94 +136,50 @@ export function SignInScreen() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#f4f7f8',
   },
   keyboardView: {
     flex: 1,
-    justifyContent: 'center',
-    paddingHorizontal: 24,
   },
-  card: {
+  content: {
+    flexGrow: 1,
     width: '100%',
-    maxWidth: 460,
+    maxWidth: Math.min(MaxContentWidth, 520),
     alignSelf: 'center',
-    backgroundColor: '#ffffff',
-    borderRadius: 20,
-    padding: 24,
-    gap: 28,
-    shadowColor: '#000000',
-    shadowOpacity: 0.08,
-    shadowRadius: 20,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 3,
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.xl,
+    paddingTop: Spacing.xxxl,
+    paddingBottom: Spacing.xl,
+    gap: Spacing.xxl,
   },
-  heading: {
-    gap: 7,
+  brandSection: {
+    gap: Spacing.lg,
+  },
+  brandCopy: {
+    gap: Spacing.xs,
   },
   eyebrow: {
-    fontSize: 12,
-    fontWeight: '700',
-    letterSpacing: 1.2,
-    color: '#35626f',
+    ...Typography.eyebrow,
   },
   title: {
-    fontSize: 31,
-    fontWeight: '700',
-    color: '#13272d',
+    ...Typography.screenTitle,
+    fontSize: 34,
+    lineHeight: 40,
   },
   subtitle: {
-    fontSize: 16,
-    lineHeight: 22,
-    color: '#5b6b70',
+    ...Typography.body,
+    maxWidth: 430,
   },
   form: {
-    gap: 18,
-  },
-  field: {
-    gap: 7,
-  },
-  label: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#253b42',
-  },
-  input: {
-    minHeight: 50,
-    borderWidth: 1,
-    borderColor: '#ccd7da',
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    fontSize: 16,
-    color: '#13272d',
-    backgroundColor: '#ffffff',
-  },
-  error: {
-    fontSize: 14,
-    lineHeight: 20,
-    color: '#9b2c2c',
-  },
-  button: {
-    minHeight: 52,
-    borderRadius: 12,
-    backgroundColor: '#176b78',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 16,
-  },
-  buttonPressed: {
-    opacity: 0.88,
-  },
-  buttonDisabled: {
-    opacity: 0.62,
-  },
-  buttonText: {
-    color: '#ffffff',
-    fontSize: 16,
-    fontWeight: '700',
+    gap: Spacing.lg,
   },
   footer: {
-    fontSize: 12,
-    lineHeight: 18,
-    color: '#738186',
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: Spacing.xs,
+    paddingTop: Spacing.xs,
+  },
+  footerText: {
+    ...Typography.caption,
+    flex: 1,
   },
 });
