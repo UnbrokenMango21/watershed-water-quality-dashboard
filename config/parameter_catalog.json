@@ -1,21 +1,34 @@
 {
-  "catalogVersion": "0.1.0",
+  "catalogVersion": "0.1.1",
+  "namingPolicy": {
+    "displayLabelsUseUnitsInParentheses": true,
+    "backendNamesAreMachineSafe": true,
+    "examples": {
+      "DO (%)": "DO_PERCENT",
+      "Conductivity (µS/cm)": "CONDUCTIVITY_US_CM",
+      "Q (m³/s)": "DISCHARGE_M3_S"
+    }
+  },
   "parameters": [
-    {"code":"PH","name":"pH","canonicalUnit":"pH","storageType":"double","uiDecimals":2,"mvpStatus":"core"},
-    {"code":"DO_MG_L","name":"Dissolved Oxygen","canonicalUnit":"mg/L","storageType":"double","uiDecimals":2,"mvpStatus":"core"},
-    {"code":"DO_PERCENT","name":"Dissolved Oxygen Saturation","canonicalUnit":"%","storageType":"double","uiDecimals":1,"mvpStatus":"core"},
-    {"code":"WATER_TEMP_C","name":"Water Temperature","canonicalUnit":"degC","storageType":"double","uiDecimals":2,"mvpStatus":"core"},
-    {"code":"CONDUCTIVITY_US_CM","name":"Conductivity / Specific Conductance","canonicalUnit":"uS/cm","storageType":"double","uiDecimals":1,"mvpStatus":"core"},
-    {"code":"TDS_MG_L","name":"Total Dissolved Solids","canonicalUnit":"mg/L","storageType":"double","uiDecimals":1,"mvpStatus":"core"},
-    {"code":"NITRATE_MG_L","name":"Nitrate","canonicalUnit":"mg/L","storageType":"double","uiDecimals":2,"mvpStatus":"configurable"},
-    {"code":"PHOSPHATE_MG_L","name":"Phosphate","canonicalUnit":"mg/L","storageType":"double","uiDecimals":2,"mvpStatus":"configurable"},
-    {"code":"CHLORIDE_MG_L","name":"Chloride","canonicalUnit":"mg/L","storageType":"double","uiDecimals":2,"mvpStatus":"configurable"},
-    {"code":"SULFATE_MG_L","name":"Sulfate","canonicalUnit":"mg/L","storageType":"double","uiDecimals":2,"mvpStatus":"configurable"},
-    {"code":"SALINITY_PPT","name":"Salinity","canonicalUnit":"ppt","storageType":"double","uiDecimals":2,"mvpStatus":"configurable"}
+    {"code":"PH","backendName":"ph","displayLabel":"pH","canonicalUnit":"pH","storageType":"double","uiDecimals":2,"mvpStatus":"core"},
+    {"code":"WATER_TEMP_C","backendName":"water_temp_c","displayLabel":"Temp (C)","canonicalUnit":"degC","storageType":"double","uiDecimals":2,"mvpStatus":"core"},
+    {"code":"WATER_TEMP_F","backendName":"water_temp_f","displayLabel":"Temp (F)","canonicalUnit":"degF","storageType":"double","uiDecimals":2,"mvpStatus":"source_or_display"},
+    {"code":"DO_PERCENT","backendName":"do_percent","displayLabel":"DO (%)","canonicalUnit":"percent","storageType":"double","uiDecimals":1,"mvpStatus":"core"},
+    {"code":"DO_PPM","backendName":"do_ppm","displayLabel":"DO (ppm)","canonicalUnit":"ppm","storageType":"double","uiDecimals":2,"mvpStatus":"core"},
+    {"code":"CONDUCTIVITY_US_CM","backendName":"conductivity_us_cm","displayLabel":"Conductivity (µS/cm)","canonicalUnit":"uS/cm","storageType":"double","uiDecimals":1,"mvpStatus":"core"},
+    {"code":"TDS_PPM","backendName":"tds_ppm","displayLabel":"TDS (ppm)","canonicalUnit":"ppm","storageType":"double","uiDecimals":1,"mvpStatus":"core"},
+    {"code":"ORP_MV","backendName":"orp_mv","displayLabel":"ORP (mV)","canonicalUnit":"mV","storageType":"double","uiDecimals":1,"mvpStatus":"core"},
+    {"code":"CHLORIDE_MG_L","backendName":"chloride_mg_l","displayLabel":"Chloride (mg/L)","canonicalUnit":"mg/L","storageType":"double","uiDecimals":2,"mvpStatus":"core"},
+    {"code":"SULFATE_MG_L","backendName":"sulfate_mg_l","displayLabel":"Sulphate (mg/L)","canonicalUnit":"mg/L","storageType":"double","uiDecimals":2,"mvpStatus":"core"},
+    {"code":"NITRATE_MG_L","backendName":"nitrate_mg_l","displayLabel":"Nitrate (mg/L)","canonicalUnit":"mg/L","storageType":"double","uiDecimals":2,"mvpStatus":"core"},
+    {"code":"PHOSPHATE_MG_L","backendName":"phosphate_mg_l","displayLabel":"Phosphate (mg/L)","canonicalUnit":"mg/L","storageType":"double","uiDecimals":2,"mvpStatus":"core"},
+    {"code":"DISCHARGE_M3_S","backendName":"discharge_m3_s","displayLabel":"Q (m³/s)","canonicalUnit":"m3/s","storageType":"double","uiDecimals":4,"mvpStatus":"core"}
   ],
   "notes": [
-    "Requiredness is defined by sampling protocol, not hard-coded in this catalog.",
+    "Requiredness is defined by sampling protocol and remains a Step-4 decision.",
     "Scientific thresholds and instrument hard limits will live in versioned validation-rule configuration.",
-    "Numeric measurements must remain numeric through mobile, Firebase, validation, ArcGIS, and dashboard layers."
+    "Numeric measurements must remain numeric through mobile, Firebase, validation, ArcGIS, and dashboard layers.",
+    "Current historical data may contain both Temp (F) and Temp (C); preserve source values and validate their consistency.",
+    "Display labels are for spreadsheets/UI/ArcGIS aliases. Backend names and codes are used in databases and code."
   ]
 }
