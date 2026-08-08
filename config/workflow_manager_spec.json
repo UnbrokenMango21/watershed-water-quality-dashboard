@@ -1,0 +1,132 @@
+{
+  "version": "0.1.0",
+  "status": "design-locked-awaiting-workflow-item-permission",
+  "workflowItem": {
+    "name": "Central_PA_Watershed_QC_Workflow",
+    "visibility": "private",
+    "timezone": "America/New_York"
+  },
+  "jobTemplate": {
+    "name": "Water Quality Submission Review",
+    "state": "active",
+    "category": "Water Quality QC",
+    "initialStatus": "PENDING_REVIEW",
+    "defaultAssignment": "QC_REVIEWERS",
+    "oneJobPer": "SamplingEvent"
+  },
+  "externalReference": {
+    "referenceName": "SamplingEventReview",
+    "serviceItemId": "b7775c1bdada4aa8b0787714eca3eb15",
+    "serviceName": "Central_PA_Watershed_QC_Staging",
+    "layerName": "SamplingEvents",
+    "layerId": 20,
+    "relationship": "1-1",
+    "linkIdField": "event_id"
+  },
+  "roles": {
+    "COLLECTOR": "Creates and corrects submissions in the mobile app; never approves.",
+    "VALIDATION_SERVICE": "Runs automated structural, plausibility, environmental, quality-score and anomaly checks.",
+    "QC_REVIEWER": "Reviews evidence and chooses APPROVE, NEEDS_CORRECTION, or REJECT; cannot directly edit scientific measurements.",
+    "PUBLISHING_SERVICE": "Receives approved work later and publishes authoritative ArcGIS records."
+  },
+  "states": [
+    "PENDING_REVIEW",
+    "IN_REVIEW",
+    "NEEDS_CORRECTION",
+    "RESUBMITTED",
+    "APPROVED",
+    "REJECTED",
+    "READY_FOR_PUBLICATION",
+    "PUBLISHED",
+    "CLOSED"
+  ],
+  "diagram": {
+    "name": "Water Quality QC Review v0.1",
+    "steps": [
+      {"id": "START", "type": "Start/End", "name": "Start"},
+      {"id": "INIT", "type": "Manual Step", "name": "Initialize Review"},
+      {"id": "ASSIGN", "type": "Advanced Assignment", "name": "Assign QC Reviewer"},
+      {"id": "REVIEW", "type": "Manual Step", "name": "Review Submission"},
+      {"id": "DECISION", "type": "Question", "name": "QC Decision", "choices": ["APPROVE", "NEEDS_CORRECTION", "REJECT"]},
+      {"id": "APPROVE", "type": "Manual Step", "name": "Record Approval"},
+      {"id": "CORRECTION_COMMENT", "type": "Add Comment", "name": "Enter Required Correction Comment"},
+      {"id": "WAIT_CORRECTION", "type": "Manual Step", "name": "Wait for Collector Correction"},
+      {"id": "RETURN_REVIEW", "type": "Manual Step", "name": "Return Resubmission to Review"},
+      {"id": "REJECT_COMMENT", "type": "Add Comment", "name": "Enter Required Rejection Reason"},
+      {"id": "REJECT", "type": "Manual Step", "name": "Record Rejection"},
+      {"id": "READY", "type": "Manual Step", "name": "Ready for Publication"},
+      {"id": "END_REJECT", "type": "Start/End", "name": "Rejected / Closed"},
+      {"id": "END_APPROVE", "type": "Start/End", "name": "Approved / Await Publication"}
+    ]
+  },
+  "reviewVisibleFields": [
+    "event_id",
+    "submission_id",
+    "site_id",
+    "data_collected_by",
+    "test_type",
+    "test_type_other",
+    "method_name",
+    "instrument_name",
+    "collected_at",
+    "latitude",
+    "longitude",
+    "gps_accuracy_m",
+    "site_distance_m",
+    "weather_condition",
+    "temp_f",
+    "temp_c",
+    "workflow_status",
+    "validation_outcome",
+    "completeness_score",
+    "location_quality_score",
+    "method_quality_score",
+    "validation_quality_score",
+    "temporal_quality_score",
+    "historical_quality_score",
+    "overall_quality_score",
+    "anomaly_score",
+    "error_flag_count",
+    "warning_flag_count",
+    "info_flag_count",
+    "review_decision",
+    "review_comment",
+    "reviewed_at"
+  ],
+  "reviewHiddenOrRestrictedFields": [
+    "collector_user_id",
+    "reviewer_user_id",
+    "last_publish_error_code"
+  ],
+  "decisionRules": {
+    "APPROVE": {
+      "requiresHumanDecision": true,
+      "blockedWhenErrorFlagCountGreaterThan": 0,
+      "setsWorkflowStatus": "APPROVED",
+      "setsReviewDecision": "APPROVE"
+    },
+    "NEEDS_CORRECTION": {
+      "requiresComment": true,
+      "setsWorkflowStatus": "NEEDS_CORRECTION",
+      "setsReviewDecision": "NEEDS_CORRECTION",
+      "returnsToCollector": true,
+      "requiresRevalidationBeforeReview": true
+    },
+    "REJECT": {
+      "requiresComment": true,
+      "setsWorkflowStatus": "REJECTED",
+      "setsReviewDecision": "REJECT",
+      "terminal": true
+    }
+  },
+  "scientificDataPolicy": {
+    "supervisorMayEditScientificMeasurements": false,
+    "correctionPath": "collector-corrects-source -> Firebase -> validation -> staging refresh -> reviewer re-review",
+    "warningsAreAutomaticRejection": false,
+    "environmentalAlertsAreAutomaticRejection": false
+  },
+  "deferredIntegrations": {
+    "phase12": "Automated Firebase/validation -> Workflow Manager job creation and correction-loop callbacks.",
+    "phase13": "Approved Workflow Manager decision -> authoritative ArcGIS publication."
+  }
+}
