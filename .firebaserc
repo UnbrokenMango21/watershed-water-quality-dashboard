@@ -1,0 +1,6 @@
+{
+  "projects": {
+    "default": "central-pa-watershed-dev",
+    "dev": "central-pa-watershed-dev"
+  }
+}
