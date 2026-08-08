@@ -1,5 +1,5 @@
 {
-  "version": "0.1.1",
+  "version": "0.1.2",
   "database": "Cloud Firestore Standard",
   "environmentStrategy": {
     "developmentProject": "central-pa-watershed-dev",
@@ -219,11 +219,12 @@
     ],
     "serverOnly": [
       "SUBMITTED -> VALIDATING",
+      "RESUBMITTED -> VALIDATING",
       "VALIDATING -> PENDING_REVIEW",
+      "VALIDATING -> NEEDS_CORRECTION",
       "PENDING_REVIEW -> NEEDS_CORRECTION",
       "PENDING_REVIEW -> APPROVED",
       "PENDING_REVIEW -> REJECTED",
-      "RESUBMITTED -> VALIDATING",
       "APPROVED -> PUBLISHING",
       "PUBLISHING -> PUBLISHED",
       "PUBLISHING -> PUBLISH_FAILED"
