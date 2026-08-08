@@ -27,7 +27,7 @@ export function ReviewSection({ title, items, onEdit }: ReviewSectionProps) {
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={`Edit ${title}`}
-            hitSlop={8}
+            hitSlop={4}
             onPress={onEdit}
             style={({ pressed }) => [styles.edit, { opacity: pressed ? 0.6 : 1 }]}>
             <AppIcon name="edit" color={theme.primary} size={16} />
@@ -57,7 +57,7 @@ const styles = StyleSheet.create({
     gap: Spacing.md,
   },
   header: {
-    minHeight: 28,
+    minHeight: 48,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -67,7 +67,7 @@ const styles = StyleSheet.create({
     ...Typography.sectionTitle,
   },
   edit: {
-    minHeight: 32,
+    minHeight: 48,
     borderRadius: Radii.sm,
     flexDirection: 'row',
     alignItems: 'center',
