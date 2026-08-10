@@ -15,12 +15,14 @@ export type ProductEventName =
 export type ProductScreenName =
   | 'sign_in'
   | 'home'
+  | 'account'
   | 'site'
   | 'visit'
   | 'method'
   | 'measurements'
   | 'review'
-  | 'submission_detail';
+  | 'submission_detail'
+  | 'revision_detail';
 
 export async function trackProductEvent(name: ProductEventName): Promise<void> {
   try {
