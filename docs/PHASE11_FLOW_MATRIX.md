@@ -7,42 +7,45 @@ Status vocabulary:
 - Every non-pass entry includes the concrete remaining gate. Phase 11 cannot be
   declared product-complete while any unexplained gap remains.
 
-Current iOS evidence uses the installed EAS development build on the iPhone 17
-Pro simulator with Metro and a checksum-verified Maestro 2.7.0 binary in
-`/tmp`. Android native execution remains a later gate; JavaScript export is not
-claimed as device parity.
+Current iOS runtime evidence uses the installed EAS development build on the
+ iPhone 17 Pro simulator with Metro and a checksum-verified Maestro 2.7.0 binary
+in `/tmp`. Source has since received release-candidate hardening, so those new
+changes require a final native regression. Android JavaScript export passes and
+an Android EAS development build has been submitted; device/emulator execution
+remains a gate.
 
 | Area | User-visible flow/state | IMPLEMENTED | TESTED iOS | TESTED Android | Evidence / remaining work |
 | --- | --- | --- | --- | --- | --- |
-| Auth | Initial auth restoration/loading | YES | PASS | NOT RUN | Repeated full iOS process relaunch retained the authenticated Firebase session; Android build pending |
+| Auth | Initial auth restoration/loading | YES | PASS | NOT RUN | Repeated full iOS process relaunch retained the authenticated Firebase session; Android runtime pending |
 | Auth | Email/password sign-in | YES | PASS | NOT RUN | User-confirmed synthetic collector sign-in; password never accessed; Android pending |
-| Auth | Empty required credentials | YES | NOT RUN | NOT RUN | Source mapping exists; safe signed-out runtime pass remains |
-| Auth | Invalid email | YES | NOT RUN | NOT RUN | Source mapping exists; safe signed-out runtime pass remains |
-| Auth | Invalid credentials | YES | NOT RUN | NOT RUN | Requires signed-out test without reading/requesting the account password |
-| Auth | Disabled account message | YES | NOT RUN | NOT RUN | Static Firebase-code mapping requires safe fixture or focused unit proof |
-| Auth | Network unavailable during sign-in | YES | NOT RUN | NOT RUN | Signed-out native offline test remains |
+| Auth | Empty required credentials | YES | NOT RUN | NOT RUN | Required-field errors, focus, and screen-reader announcements implemented; final signed-out native pass remains |
+| Auth | Invalid email | YES | NOT RUN | NOT RUN | Client format feedback plus accessible announcement implemented; final signed-out native pass remains |
+| Auth | Invalid credentials | YES | NOT RUN | NOT RUN | Safe Firebase error mapping implemented; requires signed-out runtime test without exposing credentials |
+| Auth | Disabled/throttled account messages | YES | NOT RUN | NOT RUN | Disabled-account, too-many-attempts, and unavailable-provider mappings implemented; safe fixture/runtime proof remains |
+| Auth | Network unavailable during sign-in | YES | NOT RUN | NOT RUN | Plain-language Firebase network recovery copy implemented; signed-out native offline test remains |
 | Auth | Persistent signed-in session after relaunch | YES | PASS | NOT RUN | Passed across repeated terminate/launch cycles; Android pending |
 | Account | Open/close collector profile | YES | NOT RUN | NOT RUN | Native interaction remains |
-| Account | Collector identity/email | YES | NOT RUN | NOT RUN | Native presentation remains; identity must not be logged |
+| Account | Collector identity/email | YES | NOT RUN | NOT RUN | Private in-app presentation implemented; CI privacy guard prevents identity telemetry |
 | Account | Sign out confirmation/action | YES | NOT RUN | NOT RUN | Requires deliberate signed-out test and normal persistent re-auth without password access |
-| Sites | Initial catalog loading | YES | NOT RUN | NOT RUN | Listener state implemented; deterministic loading fixture/runtime capture remains |
+| Sites | Initial catalog loading | YES | NOT RUN | NOT RUN | Explicit loading indicator/state implemented; deterministic native capture remains |
 | Sites | Available catalog | YES | PASS | NOT RUN | Live development project returned one valid mobile-safe synthetic site |
 | Sites | Invalid-document handling | YES | NOT RUN | NOT RUN | Parser count/copy implemented; safe malformed fixture test remains |
 | Sites | Permission/query error | YES | NOT RUN | NOT RUN | Plain-language error/retry implemented; injected denial/runtime test remains |
 | Sites | Empty catalog | YES | PASS | NOT RUN | Observed before synthetic fixture; Start remained unavailable |
-| Sites | Cached-offline catalog | YES | NOT RUN | NOT RUN | Firestore metadata path implemented; launch-offline catalog proof remains |
+| Sites | Cached-offline catalog | YES | NOT RUN | NOT RUN | Firestore cache metadata path implemented; launch-offline catalog proof remains |
+| Sites | Empty cache while offline | YES | NOT RUN | NOT RUN | Loading now times out to actionable reconnect/refresh guidance instead of spinning indefinitely; clean-install native proof remains |
 | Sites | Refresh/retry | YES | NOT RUN | NOT RUN | Real server refresh implemented; explicit native tap/response proof remains |
 | Sites | Site selection | YES | PASS | NOT RUN | Selected live safe site and persisted its safe name/code snapshot |
 | Home | Start observation prerequisite | YES | PASS | NOT RUN | Enabled only for valid server/cached catalog; real draft created |
-| Home | Draft list | YES | PASS | NOT RUN | Partial and correction drafts persisted and resumed after relaunch |
-| Home | Recent submissions loading/empty | YES | PASS | NOT RUN | Empty state observed before submission; Android pending |
+| Home | Draft list/loading | YES | PASS | NOT RUN | Partial/correction drafts persisted; explicit loading row added for release-candidate source |
+| Home | Recent submissions loading/empty | YES | PASS | NOT RUN | Empty state observed; release-candidate source also exposes explicit loading feedback |
 | Home | Recent submitted/correction records | YES | PASS | NOT RUN | Submitted record and pinned correction request rendered from Firestore |
 | Home | Recent list error/offline | YES | NOT RUN | NOT RUN | Listener error/cache copy implemented; native runtime state remains |
 | Observation | Create local draft | YES | PASS | NOT RUN | Atomic per-UID draft created without fake science defaults |
 | Observation | Resume interrupted draft | YES | PASS | NOT RUN | Passed repeatedly for initial and correction revisions after full relaunch |
 | Observation | Select site | YES | PASS | NOT RUN | Live catalog selection persisted |
 | Observation | Collection date/time defaults | YES | PASS | NOT RUN | Native Expo UI controls rendered local date/time |
-| Observation | Edit collection date/time | YES | NOT RUN | NOT RUN | Native controls wired; explicit changed-date round-trip remains |
+| Observation | Edit collection date/time | YES | NOT RUN | NOT RUN | Native controls wired; release-candidate source also wraps iOS rows for large text; changed-date runtime proof remains |
 | GPS | First permission request | YES | PASS | NOT RUN | Real iOS system prompt exercised |
 | GPS | Permission denied/blocked guidance | YES | PASS | NOT RUN | Denied first prompt; app exposed settings guidance and blocked continuation |
 | GPS | Recheck after system settings | YES | PASS | NOT RUN | Permission recovery code implemented; simulator permission grant plus return exercised |
@@ -81,6 +84,7 @@ claimed as device parity.
 | Submission | Submission detail/status | YES | PASS | NOT RUN | Live status, sync, measurements, provenance, notes, and history rendered |
 | Submission | Recent submissions list | YES | PASS | NOT RUN | Relaunch showed submitted record from Firestore |
 | Validation | Permitted validation results | YES | PASS | NOT RUN | Server-authored warning/message/rule code rendered read-only |
+| Validation | Server data-confidence result | YES | NOT RUN | NOT RUN | Release-candidate source parses server-owned confidence metadata and explicitly labels it data confidence, not water health; server-score fixture/native proof remains |
 | Validation | Blocking ERROR presentation | YES | NOT RUN | NOT RUN | Severity mapping implemented; a safe server ERROR fixture remains |
 | Correction | NEEDS_CORRECTION detail/action | YES | PASS | NOT RUN | Live server decision, reviewer comment, warning, and creation action exercised |
 | Correction | New correction revision | YES | PASS | NOT RUN | Revision 2 copied prior science under existing contract and remained locally resumable |
@@ -88,14 +92,14 @@ claimed as device parity.
 | Correction | Prior revision remains immutable | YES | PASS | NOT RUN | Revision 1 retained original nitrate value; revision 2 retained corrected value |
 | Correction | Two-revision history/detail | YES | PASS | NOT RUN | Both read-only rows and distinct detail values exercised |
 | Offline | App launch with cached catalog/data | YES | NOT RUN | NOT RUN | Persistence exists; terminate/launch while network disabled remains |
-| Offline | Empty cache explanation | YES | NOT RUN | NOT RUN | Explicit site/recent recovery copy exists; clean-install offline proof remains |
-| Analytics | Fixed privacy-safe coarse events | YES | NOT RUN | NOT RUN | Source audit/final delegated privacy review remains; no science/GPS/notes/identity payloads allowed |
-| Accessibility | Accessible names/roles/states | PARTIAL | PASS | NOT RUN | Maestro hierarchy confirms core controls; exhaustive delegated audit remains |
-| Accessibility | Dynamic Type/large text | PARTIAL | NOT RUN | NOT RUN | Responsive source patterns exist; largest text-size device pass remains |
-| Accessibility | Screen-reader announcements | PARTIAL | NOT RUN | NOT RUN | Live regions/announcements implemented; VoiceOver/TalkBack pass remains |
-| Accessibility | Contrast and non-color cues | PARTIAL | PASS | NOT RUN | Light-theme visual review and semantic icons/copy passed; automated/final audit remains |
-| Accessibility | 48-point minimum targets | PARTIAL | PASS | NOT RUN | Core hierarchy bounds pass; exhaustive screen/control inventory remains |
-| Outdoor | Direct-sunlight light theme | PARTIAL | PASS | NOT RUN | Field-paper/ink/high-contrast visual inspection passed; brightness/outdoor simulation remains |
-| Outdoor | High-legibility numeric entry | YES | PASS | NOT RUN | Large tabular numeric fields and unit visibility exercised; Android pending |
-| Platform | iOS product-complete parity | PARTIAL | NOT RUN | N/A | Main lifecycle passes; auth/account negatives, state fixtures, accessibility, EAS rebuild, and final regression remain |
-| Platform | Android product-complete parity | PARTIAL | N/A | NOT RUN | Android export passes; EAS build, emulator/device flows, and accessibility remain |
+| Offline | Empty cache explanation | YES | NOT RUN | NOT RUN | Release-candidate source now exits indefinite loading with explicit reconnect/refresh guidance; clean-install offline proof remains |
+| Analytics | Fixed privacy-safe coarse events | YES | NOT RUN | NOT RUN | CI enforces wrapper-only Analytics, forbidden payload terms, no identity properties, iOS no-Ad-ID support, Android AD_ID blocking, and disabled automatic native screen reporting; runtime DebugView is optional evidence, not a privacy prerequisite |
+| Accessibility | Accessible names/roles/states | YES | PASS | NOT RUN | Core hierarchy passed on iOS; source audit covers buttons, fields, status, progress, account, and loading states; Android/TalkBack remains |
+| Accessibility | Dynamic Type/large text | YES | NOT RUN | NOT RUN | Scalable system type, min-height controls, wrapping status/header/date rows, and scrollable forms implemented; largest native text-size pass remains |
+| Accessibility | Screen-reader announcements | YES | NOT RUN | NOT RUN | Alerts/live regions plus auth/method/measurement announcements implemented; VoiceOver/TalkBack pass remains |
+| Accessibility | Contrast and non-color cues | YES | PASS | NOT RUN | Creekline token review plus semantic text/icons/state copy passed; final dark/light native spot-check remains |
+| Accessibility | 48-point minimum targets | YES | PASS | NOT RUN | Buttons, rows, retry controls, account target, numeric toolbar, and primary interactions meet the source design minimum; Android native spot-check remains |
+| Outdoor | Direct-sunlight light theme | YES | PASS | NOT RUN | Field-paper/ink/high-contrast light theme visually inspected; physical outdoor brightness test remains optional field acceptance evidence |
+| Outdoor | High-legibility numeric entry | YES | PASS | NOT RUN | Large tabular numeric fields and persistent unit visibility exercised; Android pending |
+| Platform | iOS product-complete parity | PARTIAL | NOT RUN | N/A | Main lifecycle passes; release-candidate auth/account negatives, cached launch, accessibility, and final EAS/native regression remain |
+| Platform | Android product-complete parity | PARTIAL | N/A | NOT RUN | JavaScript export/CI passes and EAS native build is submitted; APK install/runtime, Firebase flow, and TalkBack remain |
