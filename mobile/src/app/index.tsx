@@ -1,14 +1,22 @@
-import { useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useRouter } from 'expo-router';
+import { useEffect, useState } from 'react';
+import { Alert, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
 
 import { BrandMark } from '@/components/brand-mark';
 import { AppIcon } from '@/components/ui/app-icon';
-import { SecondaryButton } from '@/components/ui/button';
-import { AppScreen, EmptyState, SectionCard } from '@/components/ui/surface';
-import { StatusChip } from '@/components/ui/status';
-import { Radii, Shadows, Spacing, Typography } from '@/constants/theme';
+import { PrimaryButton, SecondaryButton } from '@/components/ui/button';
+import { ListRow } from '@/components/ui/list-row';
+import { InlineAlert, StatusChip, SubmissionStatusChip, SyncStatus } from '@/components/ui/status';
+import { AppScreen, EmptyState } from '@/components/ui/surface';
+import { minimumMeasurementCountFor, requiredMeasurementsFor } from '@/config/contracts';
+import type { PartialObservationDraft } from '@/domain/types';
+import { numericTextIsFinite } from '@/features/observations/measurement-presentation';
+import { Radii, Spacing, Typography } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useAuth } from '@/providers/auth-provider';
+import { useCollectorData } from '@/providers/collector-data-provider';
+import { useDrafts } from '@/providers/draft-provider';
+import { trackProductEvent, trackScreenView } from '@/services/analytics';
 
 function greetingForCurrentTime() {
   const hour = new Date().getHours();
@@ -20,113 +28,272 @@ function greetingForCurrentTime() {
 function initialsForEmail(email: string | null | undefined) {
   const localPart = email?.split('@')[0]?.trim();
   if (!localPart) return 'FC';
-
   const chunks = localPart.split(/[._-]+/).filter(Boolean);
   if (chunks.length >= 2) return `${chunks[0][0]}${chunks[1][0]}`.toUpperCase();
   return localPart.slice(0, 2).toUpperCase();
 }
 
+function nextStepForDraft(draft: PartialObservationDraft) {
+  if (!draft.siteId) return 'site' as const;
+  if (
+    !draft.collectedAt ||
+    !Number.isFinite(draft.latitude) ||
+    !Number.isFinite(draft.longitude) ||
+    !Number.isFinite(draft.gpsAccuracyM)
+  ) {
+    return 'visit' as const;
+  }
+  if (
+    !draft.testType ||
+    !draft.dataCollectedBy?.trim() ||
+    !draft.methodName?.trim() ||
+    !draft.instrumentName?.trim() ||
+    (draft.testType === 'Other' && !draft.testTypeOther?.trim())
+  ) {
+    return 'method' as const;
+  }
+  const validCodes = new Set(
+    draft.measurements
+      .filter(({ valueText }) => numericTextIsFinite(valueText))
+      .map(({ parameterCode }) => parameterCode),
+  );
+  const requiredMissing = requiredMeasurementsFor(draft.testType).some(
+    (code) => !validCodes.has(code),
+  );
+  if (
+    !draft.temperatureEnteredUnit ||
+    !numericTextIsFinite(draft.temperatureEnteredValueText ?? '') ||
+    requiredMissing ||
+    validCodes.size < minimumMeasurementCountFor(draft.testType)
+  ) {
+    return 'measurements' as const;
+  }
+  return 'review' as const;
+}
+
+const recentFormatter = new Intl.DateTimeFormat(undefined, {
+  month: 'short',
+  day: 'numeric',
+  hour: 'numeric',
+  minute: '2-digit',
+});
+
 export default function HomeScreen() {
   const theme = useTheme();
-  const { user, signOut } = useAuth();
-  const [profileOpen, setProfileOpen] = useState(false);
-  const greeting = useMemo(greetingForCurrentTime, []);
+  const router = useRouter();
+  const { user } = useAuth();
+  const { catalog, recent, refreshSites } = useCollectorData();
+  const {
+    createDraft,
+    drafts,
+    loading: draftsLoading,
+    retrySync,
+    transportFor,
+    unreadableDraftCount,
+  } = useDrafts();
+  const [starting, setStarting] = useState(false);
+  const greeting = greetingForCurrentTime();
   const initials = initialsForEmail(user?.email);
+  const canStart = catalog.sites.length > 0 && (catalog.source === 'server' || catalog.source === 'cached');
+  const draftIds = new Set(drafts.map(({ submissionId }) => submissionId));
+  const correctionRecords = recent.submissions.filter(
+    ({ status, submissionId }) => status === 'NEEDS_CORRECTION' && !draftIds.has(submissionId),
+  );
+  const recentRecords = recent.submissions.filter(
+    ({ status, submissionId }) => status !== 'NEEDS_CORRECTION' && !draftIds.has(submissionId),
+  );
+
+  useEffect(() => {
+    void trackScreenView('home');
+  }, []);
+
+  function openDraft(draft: PartialObservationDraft) {
+    void trackProductEvent('draft_resumed');
+    const step = nextStepForDraft(draft);
+    const params = { submissionId: draft.submissionId, revisionId: draft.revisionId };
+    if (step === 'site') router.push({ pathname: '/observation/[submissionId]/[revisionId]/site', params });
+    if (step === 'visit') router.push({ pathname: '/observation/[submissionId]/[revisionId]/visit', params });
+    if (step === 'method') router.push({ pathname: '/observation/[submissionId]/[revisionId]/method', params });
+    if (step === 'measurements') router.push({ pathname: '/observation/[submissionId]/[revisionId]/measurements', params });
+    if (step === 'review') router.push({ pathname: '/observation/[submissionId]/[revisionId]/review', params });
+  }
+
+  async function startObservation() {
+    setStarting(true);
+    try {
+      const draft = await createDraft();
+      router.push({
+        pathname: '/observation/[submissionId]/[revisionId]/site',
+        params: { submissionId: draft.submissionId, revisionId: draft.revisionId },
+      });
+    } catch {
+      Alert.alert('Could not create draft', 'The app could not save a new draft on this device. Try again.');
+    } finally {
+      setStarting(false);
+    }
+  }
+
+  const catalogCopy = catalog.source === 'loading'
+    ? 'Loading sites'
+    : catalog.source === 'cached'
+      ? `Offline — using ${catalog.sites.length} saved ${catalog.sites.length === 1 ? 'site' : 'sites'}`
+      : catalog.source === 'server'
+        ? `${catalog.sites.length} active ${catalog.sites.length === 1 ? 'site' : 'sites'} available`
+        : catalog.source === 'empty'
+          ? 'No active sites available'
+          : 'Site catalog unavailable';
 
   return (
-    <AppScreen contentStyle={styles.content}>
+    <AppScreen
+      contentStyle={styles.content}
+      refreshControl={
+        <RefreshControl
+          colors={[theme.primary]}
+          onRefresh={() => void refreshSites()}
+          refreshing={catalog.refreshing}
+          tintColor={theme.primary}
+        />
+      }>
       <View style={styles.header}>
         <View style={styles.headerIdentity}>
           <BrandMark size="small" />
           <View style={styles.headerCopy}>
-            <Text style={[styles.eyebrow, { color: theme.primary }]}>CENTRAL PA WATERSHED</Text>
+            <Text style={[styles.eyebrow, { color: theme.brand }]}>CENTRAL PA WATERSHED</Text>
             <Text style={[styles.greeting, { color: theme.textSecondary }]}>{greeting}</Text>
-            <Text style={[styles.title, { color: theme.textPrimary }]}>Field Collection</Text>
+            <Text accessibilityRole="header" style={[styles.title, { color: theme.textPrimary }]}>Field Collection</Text>
           </View>
         </View>
-
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Collector account"
-          accessibilityState={{ expanded: profileOpen }}
-          onPress={() => setProfileOpen((open) => !open)}
+          onPress={() => router.push('/account')}
           style={({ pressed }) => [
             styles.avatar,
             {
-              backgroundColor: pressed ? theme.surfaceSecondary : theme.surface,
-              borderColor: theme.border,
+              backgroundColor: pressed ? theme.secondaryPressed : theme.surface,
+              borderColor: theme.controlBorder,
             },
           ]}>
-          <Text style={[styles.avatarText, { color: theme.primary }]}>{initials}</Text>
+          <Text style={[styles.avatarText, { color: theme.brand }]}>{initials}</Text>
         </Pressable>
       </View>
 
-      {profileOpen ? (
-        <View
-          style={[
-            styles.profileCard,
-            {
-              backgroundColor: theme.surface,
-              borderColor: theme.border,
-            },
-          ]}>
-          <View style={styles.profileCopy}>
-            <Text style={[styles.profileLabel, { color: theme.textMuted }]}>COLLECTOR ACCOUNT</Text>
-            <Text numberOfLines={1} style={[styles.profileEmail, { color: theme.textPrimary }]}>
-              {user?.email ?? 'Signed-in collector'}
-            </Text>
-          </View>
-          <SecondaryButton label="Sign out" icon="signOut" onPress={signOut} />
-        </View>
-      ) : null}
-
-      <View style={styles.capabilityRow}>
-        <StatusChip label="Offline-ready" tone="success" />
-        <Text style={[styles.capabilityText, { color: theme.textMuted }]}>
-          Drafts show exactly what is local, syncing, or server-synced.
-        </Text>
-      </View>
-
-      <View style={[styles.newObservation, { backgroundColor: theme.primary }]}>
-        <View style={styles.heroTopRow}>
-          <View style={[styles.heroIcon, { backgroundColor: theme.surface }]}>
+      <View style={[styles.startSection, { borderColor: theme.border }]}>
+        <View style={styles.startHeader}>
+          <View style={[styles.startIcon, { backgroundColor: theme.primarySoft }]}>
             <AppIcon name="plus" color={theme.primary} size={22} />
           </View>
-          <Text style={[styles.heroKicker, { color: theme.background }]}>FIELD WORK</Text>
+          <View style={styles.startCopy}>
+            <Text style={[styles.startTitle, { color: theme.textPrimary }]}>New observation</Text>
+            <Text style={[styles.startBody, { color: theme.textSecondary }]}>Site, visit, method, measurements, and review.</Text>
+          </View>
         </View>
-
-        <View style={styles.heroCopy}>
-          <Text style={[styles.heroTitle, { color: theme.background }]}>New observation</Text>
-          <Text style={[styles.heroBody, { color: theme.background }]}>
-            Start a stream visit with site context, GPS, method provenance, and water-quality measurements.
-          </Text>
+        <View style={styles.catalogState}>
+          <StatusChip
+            icon={catalog.source === 'server' ? 'check' : catalog.source === 'cached' ? 'cloud' : 'info'}
+            label={catalogCopy}
+            tone={catalog.source === 'error' || catalog.source === 'empty' ? 'warning' : catalog.source === 'server' ? 'success' : 'info'}
+          />
+          <SecondaryButton
+            label={catalog.refreshing ? 'Refreshing' : 'Refresh sites'}
+            loading={catalog.refreshing}
+            onPress={() => void refreshSites()}
+          />
         </View>
-
-        <View style={styles.heroActionArea}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityState={{ disabled: true }}
-            disabled
-            style={[styles.heroDisabledButton, { backgroundColor: theme.surface }]}>
-            <Text style={[styles.heroDisabledLabel, { color: theme.textMuted }]}>Start observation</Text>
-          </Pressable>
-          <Text style={[styles.heroHelper, { color: theme.background }]}>
-            Site catalog must be available before collection can begin.
-          </Text>
-        </View>
-      </View>
-
-      <View style={styles.sectionHeadingRow}>
-        <Text style={[styles.sectionHeading, { color: theme.textPrimary }]}>Recent submissions</Text>
-      </View>
-
-      <SectionCard>
-        <EmptyState
-          icon="clipboard"
-          title="No observations yet"
-          body="Drafts and submitted observations will appear here with clear sync and review status."
+        {catalog.error ? <InlineAlert tone="warning" title={catalog.error} /> : null}
+        <PrimaryButton
+          disabled={!canStart}
+          label="Start observation"
+          loading={starting}
+          loadingLabel="Creating draft"
+          onPress={() => void startObservation()}
         />
-      </SectionCard>
+        {!canStart ? (
+          <Text style={[styles.helper, { color: theme.textSecondary }]}>A valid site catalog is required before collection can begin.</Text>
+        ) : null}
+      </View>
+
+      {unreadableDraftCount > 0 ? (
+        <InlineAlert
+          tone="danger"
+          title="A saved draft could not be read"
+          body="Other drafts remain available. Do not clear app data; contact support before collecting more at the affected site."
+        />
+      ) : null}
+
+      <View style={styles.section}>
+        <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Continue field work</Text>
+        {correctionRecords.map((submission) => (
+          <ListRow
+            key={`correction-${submission.submissionId}`}
+            meta={`Revision ${submission.currentRevisionNo} · ${recentFormatter.format(submission.latestCollectedAt)}`}
+            onPress={() =>
+              router.push({
+                pathname: '/submissions/[submissionId]',
+                params: { submissionId: submission.submissionId },
+              })
+            }
+            subtitle="Reviewer or validation feedback requires a new revision"
+            title="Correction requested"
+            trailing={<SubmissionStatusChip status={submission.status} />}
+          />
+        ))}
+        {drafts.map((draft) => {
+          const transport = transportFor(draft.submissionId);
+          return (
+            <ListRow
+              key={`${draft.submissionId}-${draft.revisionId}`}
+              meta={`Revision ${draft.revisionNo} · updated ${recentFormatter.format(new Date(draft.updatedAt))}`}
+              onPress={() => openDraft(draft)}
+              subtitle={draft.siteCode ? `Site ${draft.siteCode}` : 'Site not selected'}
+              title={draft.correction ? draft.siteDisplayName ?? 'Correction draft' : draft.siteDisplayName ?? 'New observation draft'}
+              trailing={
+                <SyncStatus
+                  onRetry={transport.status === 'failed' ? () => retrySync(draft.submissionId) : undefined}
+                  status={transport.status}
+                />
+              }
+            />
+          );
+        })}
+        {!draftsLoading && drafts.length === 0 && correctionRecords.length === 0 ? (
+          <EmptyState
+            icon="clipboard"
+            title="No field work in progress"
+            body="Start an observation or open a requested correction when one appears."
+          />
+        ) : null}
+      </View>
+
+      <View style={styles.section}>
+        <View style={styles.sectionHeadingRow}>
+          <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Recent submissions</Text>
+          {recent.source === 'cached' ? <StatusChip icon="cloud" label="Offline cache" tone="info" /> : null}
+        </View>
+        {recent.error ? <InlineAlert tone="warning" title={recent.error} /> : null}
+        {recentRecords.map((submission) => (
+          <ListRow
+            key={submission.submissionId}
+            meta={`Revision ${submission.currentRevisionNo} · ${recentFormatter.format(submission.latestCollectedAt)}`}
+            onPress={() =>
+              router.push({
+                pathname: '/submissions/[submissionId]',
+                params: { submissionId: submission.submissionId },
+              })
+            }
+            subtitle={catalog.sites.find(({ siteId }) => siteId === submission.siteId)?.displayName ?? 'Sampling site'}
+            title={submission.status === 'DRAFT' ? 'Saved observation draft' : 'Submitted observation'}
+            trailing={<SubmissionStatusChip status={submission.status} />}
+          />
+        ))}
+        {recent.source !== 'loading' && recentRecords.length === 0 ? (
+          <EmptyState
+            icon="clipboard"
+            title="No recent submissions"
+            body="Server-backed drafts and submitted observations will appear here with workflow status."
+          />
+        ) : null}
+      </View>
     </AppScreen>
   );
 }
@@ -134,7 +301,7 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   content: {
     paddingTop: Spacing.xl,
-    gap: Spacing.lg,
+    gap: Spacing.xl,
   },
   header: {
     flexDirection: 'row',
@@ -176,92 +343,56 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     letterSpacing: 0.4,
   },
-  profileCard: {
-    borderWidth: 1,
-    borderRadius: Radii.lg,
-    padding: Spacing.md,
+  startSection: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    paddingVertical: Spacing.lg,
     gap: Spacing.md,
-    ...Shadows.floating,
   },
-  profileCopy: {
-    gap: Spacing.xxs,
-  },
-  profileLabel: {
-    ...Typography.eyebrow,
-    fontSize: 10,
-  },
-  profileEmail: {
-    ...Typography.bodyStrong,
-  },
-  capabilityRow: {
-    minHeight: 30,
+  startHeader: {
     flexDirection: 'row',
-    alignItems: 'center',
-    flexWrap: 'wrap',
-    gap: Spacing.xs,
-  },
-  capabilityText: {
-    ...Typography.caption,
-    flexShrink: 1,
-  },
-  newObservation: {
-    borderRadius: Radii.xl,
-    padding: Spacing.xl,
-    gap: Spacing.lg,
-    overflow: 'hidden',
-    ...Shadows.subtle,
-  },
-  heroTopRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: Spacing.sm,
   },
-  heroIcon: {
-    width: 38,
-    height: 38,
-    borderRadius: Radii.md,
+  startIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: Radii.input,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  heroKicker: {
-    ...Typography.eyebrow,
-    opacity: 0.76,
+  startCopy: {
+    flex: 1,
+    gap: Spacing.xxs,
   },
-  heroCopy: {
-    gap: Spacing.xs,
+  startTitle: {
+    ...Typography.sectionTitle,
   },
-  heroTitle: {
-    fontSize: 26,
-    lineHeight: 32,
-    fontWeight: '700',
-    letterSpacing: -0.3,
+  startBody: {
+    ...Typography.helper,
   },
-  heroBody: {
-    ...Typography.body,
-    opacity: 0.86,
-    maxWidth: 520,
-  },
-  heroActionArea: {
-    gap: Spacing.xs,
-  },
-  heroDisabledButton: {
-    minHeight: 52,
-    borderRadius: Radii.md,
+  catalogState: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    opacity: 0.74,
+    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: Spacing.sm,
   },
-  heroDisabledLabel: {
-    ...Typography.button,
+  helper: {
+    ...Typography.helper,
   },
-  heroHelper: {
-    ...Typography.caption,
-    opacity: 0.72,
+  section: {
+    gap: Spacing.sm,
   },
   sectionHeadingRow: {
-    marginTop: Spacing.xs,
+    minHeight: 32,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: Spacing.sm,
   },
-  sectionHeading: {
+  sectionTitle: {
     ...Typography.sectionTitle,
   },
 });

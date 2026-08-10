@@ -1,5 +1,6 @@
+import type { Ref } from 'react';
 import { useState } from 'react';
-import { StyleSheet, Text, TextInput, View } from 'react-native';
+import { Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { Radii, Spacing, Typography } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
@@ -17,6 +18,11 @@ type MeasurementFieldProps = {
   error?: string | null;
   derivedValue?: string;
   disabled?: boolean;
+  allowNegative?: boolean;
+  inputAccessoryViewID?: string;
+  testID?: string;
+  inputRef?: Ref<TextInput>;
+  onInputFocus?: () => void;
 };
 
 export function MeasurementField({
@@ -30,10 +36,16 @@ export function MeasurementField({
   error,
   derivedValue,
   disabled = false,
+  allowNegative = false,
+  inputAccessoryViewID,
+  testID,
+  inputRef,
+  onInputFocus,
 }: MeasurementFieldProps) {
   const theme = useTheme();
   const [focused, setFocused] = useState(false);
-  const borderColor = error ? theme.danger : focused ? theme.primary : theme.border;
+  const borderColor = error ? theme.danger : focused ? theme.focus : theme.controlBorder;
+  const isNegative = value.trimStart().startsWith('-');
 
   return (
     <View style={styles.group}>
@@ -43,33 +55,66 @@ export function MeasurementField({
           styles.shell,
           {
             borderColor,
+            borderWidth: error || focused ? 2 : 1,
             backgroundColor: disabled ? theme.surfaceSecondary : theme.input,
-            opacity: disabled ? 0.64 : 1,
           },
         ]}>
         <TextInput
+          ref={inputRef}
           accessibilityLabel={`${label}, ${unit}`}
           editable={!disabled}
-          keyboardType="decimal-pad"
+          inputAccessoryViewID={inputAccessoryViewID}
+          keyboardType={
+            allowNegative
+              ? Platform.OS === 'ios'
+                ? 'numbers-and-punctuation'
+                : 'numeric'
+              : 'decimal-pad'
+          }
           onBlur={() => setFocused(false)}
           onChangeText={onChangeText}
-          onFocus={() => setFocused(true)}
+          onFocus={() => {
+            setFocused(true);
+            onInputFocus?.();
+          }}
           placeholder={placeholder}
           placeholderTextColor={theme.textMuted}
+          selectTextOnFocus
           selectionColor={theme.primary}
-          style={[styles.value, { color: theme.textPrimary }]}
+          style={[styles.value, { color: disabled ? theme.disabledText : theme.textPrimary }]}
+          testID={testID}
           value={value}
         />
+        {allowNegative ? (
+          <Pressable
+            accessibilityLabel={isNegative ? 'Make value positive' : 'Make value negative'}
+            accessibilityRole="button"
+            disabled={disabled}
+            onPress={() => onChangeText(isNegative ? value.replace(/^\s*-/, '') : `-${value}`)}
+            testID={testID ? `${testID}-sign` : undefined}
+            style={({ pressed }) => [
+              styles.signButton,
+              {
+                backgroundColor: isNegative
+                  ? theme.primarySoft
+                  : pressed
+                    ? theme.secondaryPressed
+                    : theme.surfaceSecondary,
+              },
+            ]}>
+            <Text style={[styles.sign, { color: isNegative ? theme.primary : theme.textPrimary }]}>±</Text>
+          </Pressable>
+        ) : null}
         <View style={[styles.unitPill, { backgroundColor: theme.surfaceSecondary }]}>
           <Text style={[styles.unit, { color: theme.textSecondary }]}>{unit}</Text>
         </View>
       </View>
-      {derivedValue ? (
-        <Text style={[styles.helper, { color: theme.textSecondary }]}>{derivedValue}</Text>
-      ) : error ? (
+      {error ? (
         <Text accessibilityRole="alert" style={[styles.helper, { color: theme.danger }]}>
           {error}
         </Text>
+      ) : derivedValue ? (
+        <Text style={[styles.helper, { color: theme.textSecondary }]}>{derivedValue}</Text>
       ) : helper ? (
         <Text style={[styles.helper, { color: theme.textSecondary }]}>{helper}</Text>
       ) : null}
@@ -83,7 +128,6 @@ const styles = StyleSheet.create({
   },
   shell: {
     minHeight: 58,
-    borderWidth: 1,
     borderRadius: Radii.md,
     flexDirection: 'row',
     alignItems: 'center',
@@ -103,6 +147,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: Spacing.sm,
+  },
+  signButton: {
+    width: 44,
+    minHeight: 44,
+    borderRadius: Radii.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: Spacing.xs,
+  },
+  sign: {
+    ...Typography.bodyStrong,
+    fontSize: 22,
   },
   unit: {
     ...Typography.bodyStrong,

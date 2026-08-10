@@ -36,5 +36,13 @@ type AppIconProps = {
 };
 
 export function AppIcon({ name, color, size = IconSize.md }: AppIconProps) {
-  return <SymbolView name={iconNames[name]} size={size} tintColor={color} />;
+  return (
+    <SymbolView
+      accessibilityElementsHidden
+      importantForAccessibility="no-hide-descendants"
+      name={iconNames[name]}
+      size={size}
+      tintColor={color}
+    />
+  );
 }

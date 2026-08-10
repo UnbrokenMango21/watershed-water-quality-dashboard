@@ -24,11 +24,11 @@ export function BrandMark({ size = 'large' }: BrandMarkProps) {
           width: dimension,
           height: dimension,
           borderRadius: size === 'large' ? Radii.lg : Radii.md,
-          backgroundColor: theme.primary,
+          backgroundColor: theme.brand,
         },
       ]}>
-      <View style={[styles.ripple, { borderColor: theme.background }]} />
-      <AppIcon name="water" color={theme.background} size={iconSize} />
+      <View style={[styles.ripple, { borderColor: theme.onBrand }]} />
+      <AppIcon name="water" color={theme.onBrand} size={iconSize} />
     </View>
   );
 }

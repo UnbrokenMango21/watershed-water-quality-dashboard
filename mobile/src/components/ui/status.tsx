@@ -10,9 +10,10 @@ export type StatusTone = 'neutral' | 'info' | 'success' | 'warning' | 'danger';
 type StatusChipProps = {
   label: string;
   tone?: StatusTone;
+  icon?: AppIconName;
 };
 
-export function StatusChip({ label, tone = 'neutral' }: StatusChipProps) {
+export function StatusChip({ label, tone = 'neutral', icon }: StatusChipProps) {
   const theme = useTheme();
   const palette = {
     neutral: { background: theme.surfaceSecondary, foreground: theme.textSecondary },
@@ -23,7 +24,10 @@ export function StatusChip({ label, tone = 'neutral' }: StatusChipProps) {
   }[tone];
 
   return (
-    <View style={[styles.chip, { backgroundColor: palette.background }]}>
+    <View
+      accessibilityLabel={label}
+      style={[styles.chip, { backgroundColor: palette.background }]}>
+      {icon ? <AppIcon name={icon} color={palette.foreground} size={14} /> : null}
       <Text style={[styles.chipText, { color: palette.foreground }]}>{label}</Text>
     </View>
   );
@@ -31,32 +35,46 @@ export function StatusChip({ label, tone = 'neutral' }: StatusChipProps) {
 
 export type SubmissionStatus =
   | 'DRAFT'
-  | 'SAVED_LOCALLY'
-  | 'SYNCING'
-  | 'SYNCED'
   | 'SUBMITTED'
   | 'VALIDATING'
   | 'PENDING_REVIEW'
   | 'NEEDS_CORRECTION'
+  | 'RESUBMITTED'
   | 'APPROVED'
+  | 'REJECTED'
+  | 'PUBLISHING'
+  | 'PUBLISH_FAILED'
   | 'PUBLISHED';
 
-const submissionStatusMeta: Record<SubmissionStatus, { label: string; tone: StatusTone }> = {
-  DRAFT: { label: 'Draft', tone: 'neutral' },
-  SAVED_LOCALLY: { label: 'Saved locally', tone: 'info' },
-  SYNCING: { label: 'Syncing', tone: 'info' },
-  SYNCED: { label: 'Synced', tone: 'success' },
-  SUBMITTED: { label: 'Submitted', tone: 'info' },
-  VALIDATING: { label: 'Validating', tone: 'info' },
-  PENDING_REVIEW: { label: 'Pending review', tone: 'warning' },
-  NEEDS_CORRECTION: { label: 'Needs correction', tone: 'danger' },
-  APPROVED: { label: 'Approved', tone: 'success' },
-  PUBLISHED: { label: 'Published', tone: 'success' },
+const submissionStatusMeta: Record<
+  SubmissionStatus,
+  { label: string; tone: StatusTone; icon: AppIconName }
+> = {
+  DRAFT: { label: 'Draft', tone: 'neutral', icon: 'clipboard' },
+  SUBMITTED: { label: 'Submitted', tone: 'info', icon: 'cloud' },
+  VALIDATING: { label: 'Validating', tone: 'info', icon: 'sync' },
+  PENDING_REVIEW: { label: 'Pending review', tone: 'warning', icon: 'clock' },
+  NEEDS_CORRECTION: { label: 'Needs correction', tone: 'danger', icon: 'warning' },
+  RESUBMITTED: { label: 'Correction resubmitted', tone: 'info', icon: 'cloud' },
+  APPROVED: { label: 'Approved', tone: 'success', icon: 'check' },
+  REJECTED: { label: 'Rejected', tone: 'danger', icon: 'warning' },
+  PUBLISHING: { label: 'Publishing', tone: 'info', icon: 'sync' },
+  PUBLISH_FAILED: { label: 'Publishing failed', tone: 'danger', icon: 'warning' },
+  PUBLISHED: { label: 'Published', tone: 'success', icon: 'check' },
 };
 
-export function SubmissionStatusChip({ status }: { status: SubmissionStatus }) {
-  const meta = submissionStatusMeta[status];
-  return <StatusChip label={meta.label} tone={meta.tone} />;
+export function SubmissionStatusChip({ status }: { status: string }) {
+  const meta = submissionStatusMeta[status as SubmissionStatus] ?? {
+    label: status
+      .toLowerCase()
+      .split('_')
+      .filter(Boolean)
+      .map((part) => `${part[0]?.toUpperCase() ?? ''}${part.slice(1)}`)
+      .join(' ') || 'Status unavailable',
+    tone: 'neutral' as const,
+    icon: 'info' as const,
+  };
+  return <StatusChip icon={meta.icon} label={meta.label} tone={meta.tone} />;
 }
 
 export type SyncState = 'saved-locally' | 'syncing' | 'synced' | 'failed';
@@ -72,7 +90,7 @@ export function SyncStatus({ status, onRetry }: SyncStatusProps) {
     'saved-locally': { label: 'Saved locally', icon: 'clipboard', color: theme.info },
     syncing: { label: 'Syncing', icon: 'sync', color: theme.info },
     synced: { label: 'Synced', icon: 'check', color: theme.success },
-    failed: { label: "Couldn't sync", icon: 'warning', color: theme.danger },
+    failed: { label: 'Failed to sync', icon: 'warning', color: theme.danger },
   };
   const current = meta[status];
 
@@ -81,8 +99,15 @@ export function SyncStatus({ status, onRetry }: SyncStatusProps) {
       <AppIcon name={current.icon} color={current.color} size={16} />
       <Text style={[styles.syncText, { color: current.color }]}>{current.label}</Text>
       {status === 'failed' && onRetry ? (
-        <Pressable accessibilityRole="button" onPress={onRetry} hitSlop={8}>
-          <Text style={[styles.retryText, { color: theme.primary }]}>Retry</Text>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Retry sync"
+          onPress={onRetry}
+          style={({ pressed }) => [
+            styles.retry,
+            { backgroundColor: pressed ? theme.secondaryPressed : 'transparent' },
+          ]}>
+          <Text style={[styles.retryText, { color: theme.primary }]}>Retry sync</Text>
         </Pressable>
       ) : null}
     </View>
@@ -124,6 +149,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.sm,
     paddingVertical: 5,
     alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xxs,
     justifyContent: 'center',
   },
   chipText: {
@@ -143,6 +171,12 @@ const styles = StyleSheet.create({
   retryText: {
     ...Typography.caption,
     fontWeight: '700',
+  },
+  retry: {
+    minHeight: 48,
+    borderRadius: Radii.sm,
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.sm,
   },
   alert: {
     borderRadius: Radii.md,

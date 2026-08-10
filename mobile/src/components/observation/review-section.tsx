@@ -27,9 +27,11 @@ export function ReviewSection({ title, items, onEdit }: ReviewSectionProps) {
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={`Edit ${title}`}
-            hitSlop={4}
             onPress={onEdit}
-            style={({ pressed }) => [styles.edit, { opacity: pressed ? 0.6 : 1 }]}>
+            style={({ pressed }) => [
+              styles.edit,
+              { backgroundColor: pressed ? theme.secondaryPressed : 'transparent' },
+            ]}>
             <AppIcon name="edit" color={theme.primary} size={16} />
             <Text style={[styles.editText, { color: theme.primary }]}>Edit</Text>
           </Pressable>
@@ -39,7 +41,7 @@ export function ReviewSection({ title, items, onEdit }: ReviewSectionProps) {
       <View style={styles.items}>
         {items.map((item) => (
           <View key={`${item.label}-${item.value}`} style={styles.itemRow}>
-            <Text style={[styles.itemLabel, { color: theme.textMuted }]}>{item.label}</Text>
+            <Text style={[styles.itemLabel, { color: theme.textSecondary }]}>{item.label}</Text>
             <Text selectable style={[styles.itemValue, { color: theme.textPrimary }]}>
               {item.value}
             </Text>
@@ -81,19 +83,14 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
   },
   itemRow: {
-    flexDirection: 'row',
     alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    gap: Spacing.lg,
+    gap: Spacing.xxs,
   },
   itemLabel: {
     ...Typography.helper,
-    flex: 1,
   },
   itemValue: {
     ...Typography.bodyStrong,
-    flex: 1.35,
-    textAlign: 'right',
     fontVariant: ['tabular-nums'],
   },
 });

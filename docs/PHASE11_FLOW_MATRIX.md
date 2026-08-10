@@ -2,91 +2,100 @@
 
 Status vocabulary:
 
-- **IMPLEMENTED:** `YES`, `PARTIAL`, or `NO` based on current source behavior.
-- **TESTED iOS / Android:** `PASS`, `FAIL`, or `NOT RUN` based on actual app use.
-- A `NOT RUN` entry is a tracked gap, not an implied pass.
+- **IMPLEMENTED:** `YES`, `PARTIAL`, or `NO` from current source behavior.
+- **TESTED iOS / Android:** `PASS`, `FAIL`, or `NOT RUN` from actual app use.
+- Every non-pass entry includes the concrete remaining gate. Phase 11 cannot be
+  declared product-complete while any unexplained gap remains.
 
-This matrix must contain no unexplained `PARTIAL`, `NO`, `FAIL`, or `NOT RUN`
-entries before Phase 11 is declared product-complete.
+Current iOS evidence uses the installed EAS development build on the iPhone 17
+Pro simulator with Metro and a checksum-verified Maestro 2.7.0 binary in
+`/tmp`. Android native execution remains a later gate; JavaScript export is not
+claimed as device parity.
 
 | Area | User-visible flow/state | IMPLEMENTED | TESTED iOS | TESTED Android | Evidence / remaining work |
 | --- | --- | --- | --- | --- | --- |
-| Auth | Initial auth restoration/loading | YES | PASS | NOT RUN | iOS development client rendered after Firebase initialization; Android Gate C pending |
-| Auth | Email/password sign-in | YES | PASS | NOT RUN | User confirmed synthetic collector sign-in; password not accessed |
-| Auth | Empty required credentials | YES | NOT RUN | NOT RUN | Runtime negative test pending |
-| Auth | Invalid email | YES | NOT RUN | NOT RUN | Runtime negative test pending |
-| Auth | Invalid credentials | YES | NOT RUN | NOT RUN | Runtime negative test pending |
-| Auth | Disabled account message | YES | NOT RUN | NOT RUN | Requires safe test condition or static mapping evidence |
-| Auth | Network unavailable during sign-in | YES | NOT RUN | NOT RUN | Offline runtime test pending |
-| Auth | Persistent signed-in session after relaunch | PARTIAL | NOT RUN | NOT RUN | RNFirebase listener exists; repeated relaunch proof pending |
-| Account | Open/close collector profile | YES | NOT RUN | NOT RUN | Runtime interaction pending |
-| Account | Collector identity/email | YES | NOT RUN | NOT RUN | Runtime interaction pending; never log identity |
-| Account | Sign out | YES | NOT RUN | NOT RUN | Repeated sign-in/out test pending |
-| Sites | Initial catalog loading | NO | NOT RUN | NOT RUN | Phase 11B first implementation |
-| Sites | Available catalog | NO | NOT RUN | NOT RUN | Must use Phase 9 `siteCatalog` contract |
-| Sites | Loading state | NO | NOT RUN | NOT RUN | Implement stable progress state |
-| Sites | Permission/query error | NO | NOT RUN | NOT RUN | Implement plain-language retry state |
-| Sites | Empty catalog | NO | NOT RUN | NOT RUN | Implement without fake Start action |
-| Sites | Cached-offline catalog | NO | NOT RUN | NOT RUN | Firestore cache/source state required |
-| Sites | Refresh/retry | NO | NOT RUN | NOT RUN | Implement real query retry/refresh |
-| Sites | Site selection | NO | NOT RUN | NOT RUN | Enable only after valid catalog |
-| Home | Start observation prerequisite | PARTIAL | PASS | NOT RUN | Visible disabled placeholder must become actionable state or be removed |
-| Home | Recent drafts/submissions loading | NO | NOT RUN | NOT RUN | Contract-backed query required |
-| Home | Recent list empty | PARTIAL | PASS | NOT RUN | Current static empty state; connect to real query |
-| Home | Recent list error/offline | NO | NOT RUN | NOT RUN | Implement |
-| Observation | Create/resume draft shell | NO | NOT RUN | NOT RUN | Implement contract-backed draft model |
-| Observation | Select site | NO | NOT RUN | NOT RUN | Implement after catalog |
-| Observation | Collection date/time defaults | NO | NOT RUN | NOT RUN | Native controls required |
-| Observation | Edit collection date/time | NO | NOT RUN | NOT RUN | Native controls and review round-trip |
-| GPS | Permission request | NO | NOT RUN | NOT RUN | Expo location integration required |
-| GPS | Acquiring location | PARTIAL | NOT RUN | NOT RUN | UI component exists; real acquisition missing |
-| GPS | Coordinates + reported accuracy | PARTIAL | NOT RUN | NOT RUN | UI component exists; real acquisition missing |
-| GPS | Permission denied | PARTIAL | NOT RUN | NOT RUN | UI copy exists; permission flow/retry missing |
-| GPS | Services unavailable/error | PARTIAL | NOT RUN | NOT RUN | UI copy exists; runtime flow missing |
-| GPS | Retry acquisition | NO | NOT RUN | NOT RUN | Implement real retry |
-| Method | Select test type | NO | NOT RUN | NOT RUN | Drive from existing configuration/contract |
-| Method | Method/instrument provenance | NO | NOT RUN | NOT RUN | Drive required fields from contract |
-| Measurements | Required core fields | PARTIAL | NOT RUN | NOT RUN | Components exist; contract-backed screen/model missing |
-| Measurements | Configured optional fields | PARTIAL | NOT RUN | NOT RUN | Components exist; configuration wiring missing |
-| Measurements | Numeric keyboard/editing | PARTIAL | NOT RUN | NOT RUN | Components exist; adversarial device testing pending |
-| Measurements | Required-entry feedback | PARTIAL | NOT RUN | NOT RUN | Must not invent Phase 10 scientific semantics |
-| Temperature | Entered unit selected first | PARTIAL | NOT RUN | NOT RUN | Component exists; workflow integration missing |
-| Temperature | Preserve entered value/unit | PARTIAL | NOT RUN | NOT RUN | Component-level behavior requires integration proof |
-| Temperature | Immediate C/F derivation | PARTIAL | NOT RUN | NOT RUN | Component-level behavior requires integration proof |
-| Notes | Contract-permitted notes | NO | NOT RUN | NOT RUN | Confirm Phase 9 field before exposure |
-| Attachments | No fake v1 attachment controls | YES | PASS | NOT RUN | No attachment controls currently exposed |
-| Navigation | Forward progression | NO | NOT RUN | NOT RUN | Implement native-feeling stack flow |
-| Navigation | Back without data loss | NO | NOT RUN | NOT RUN | Interrupted workflow test required |
-| Navigation | Review edit round-trip | PARTIAL | NOT RUN | NOT RUN | Review component exists; navigation missing |
-| Review | Complete observation summary | PARTIAL | NOT RUN | NOT RUN | Review components exist; integration missing |
-| Review | Missing-entry navigation | NO | NOT RUN | NOT RUN | Implement entry-shape guidance only |
-| Draft | Save locally | NO | NOT RUN | NOT RUN | Firestore offline persistence required |
-| Draft | Resume after navigation/relaunch | NO | NOT RUN | NOT RUN | Implement and interrupt-test |
-| Draft | Saved locally state | PARTIAL | NOT RUN | NOT RUN | Status component exists; real state missing |
-| Sync | Syncing state | PARTIAL | NOT RUN | NOT RUN | Status component exists; real Firestore state missing |
-| Sync | Synced/server state | PARTIAL | NOT RUN | NOT RUN | Status component exists; acknowledgement mapping missing |
-| Sync | Failed + retry | PARTIAL | NOT RUN | NOT RUN | Status component exists; real retry missing |
-| Sync | Offline → reconnect → sync | NO | NOT RUN | NOT RUN | Required end-to-end runtime proof |
-| Submission | Submit observation | NO | NOT RUN | NOT RUN | Existing ownership/state contract required |
-| Submission | Prevent duplicate submission | NO | NOT RUN | NOT RUN | Implement idempotent UI behavior within contract |
-| Submission | Immutable submitted revision | NO | NOT RUN | NOT RUN | Must preserve Phase 9 revision model |
-| Submission | Submission detail/status | NO | NOT RUN | NOT RUN | Implement permitted server fields only |
-| Submission | Recent submissions list | NO | NOT RUN | NOT RUN | Implement query and state display |
-| Validation | Permitted validation results | NO | NOT RUN | NOT RUN | Read-only presentation from Phase 10 output |
-| Validation | Blocking ERROR presentation | NO | NOT RUN | NOT RUN | Do not reinterpret Phase 10 semantics |
-| Correction | NEEDS_CORRECTION detail/action | NO | NOT RUN | NOT RUN | Contract mapping required |
-| Correction | New correction revision | NO | NOT RUN | NOT RUN | Never mutate submitted science |
-| Correction | RESUBMITTED transition | NO | NOT RUN | NOT RUN | Existing transition contract only |
-| Correction | Prior revision remains visible/immutable | NO | NOT RUN | NOT RUN | Query/display proof required |
-| Offline | App launch with cached data | NO | NOT RUN | NOT RUN | Runtime airplane/offline proof required |
-| Offline | Empty cache explanation | NO | NOT RUN | NOT RUN | Implement explicit recovery guidance |
-| Analytics | Privacy-safe coarse events | PARTIAL | NOT RUN | NOT RUN | Audit event names/payloads; no sensitive values |
-| Accessibility | Accessible names/roles/states | PARTIAL | NOT RUN | NOT RUN | Existing components have partial semantics; full audit pending |
-| Accessibility | Dynamic Type/large text | PARTIAL | NOT RUN | NOT RUN | Device verification pending |
-| Accessibility | Screen-reader state announcements | PARTIAL | NOT RUN | NOT RUN | Auth/sync/error runtime verification pending |
-| Accessibility | Contrast and non-color cues | PARTIAL | NOT RUN | NOT RUN | DESIGN.md defines target; implementation audit pending |
-| Accessibility | 48-point minimum targets | PARTIAL | NOT RUN | NOT RUN | Shared tokens exist; every exposed control audit pending |
-| Outdoor | Direct-sunlight light theme | PARTIAL | NOT RUN | NOT RUN | Token refinement and brightness/contrast inspection pending |
-| Outdoor | High-legibility measurement entry | PARTIAL | NOT RUN | NOT RUN | Numeric token/component exists; workflow proof pending |
-| Platform | iOS complete parity | NO | NOT RUN | N/A | Full product flow pending |
-| Platform | Android complete parity | NO | N/A | NOT RUN | EAS APK/emulator proof pending |
+| Auth | Initial auth restoration/loading | YES | PASS | NOT RUN | Repeated full iOS process relaunch retained the authenticated Firebase session; Android build pending |
+| Auth | Email/password sign-in | YES | PASS | NOT RUN | User-confirmed synthetic collector sign-in; password never accessed; Android pending |
+| Auth | Empty required credentials | YES | NOT RUN | NOT RUN | Source mapping exists; safe signed-out runtime pass remains |
+| Auth | Invalid email | YES | NOT RUN | NOT RUN | Source mapping exists; safe signed-out runtime pass remains |
+| Auth | Invalid credentials | YES | NOT RUN | NOT RUN | Requires signed-out test without reading/requesting the account password |
+| Auth | Disabled account message | YES | NOT RUN | NOT RUN | Static Firebase-code mapping requires safe fixture or focused unit proof |
+| Auth | Network unavailable during sign-in | YES | NOT RUN | NOT RUN | Signed-out native offline test remains |
+| Auth | Persistent signed-in session after relaunch | YES | PASS | NOT RUN | Passed across repeated terminate/launch cycles; Android pending |
+| Account | Open/close collector profile | YES | NOT RUN | NOT RUN | Native interaction remains |
+| Account | Collector identity/email | YES | NOT RUN | NOT RUN | Native presentation remains; identity must not be logged |
+| Account | Sign out confirmation/action | YES | NOT RUN | NOT RUN | Requires deliberate signed-out test and normal persistent re-auth without password access |
+| Sites | Initial catalog loading | YES | NOT RUN | NOT RUN | Listener state implemented; deterministic loading fixture/runtime capture remains |
+| Sites | Available catalog | YES | PASS | NOT RUN | Live development project returned one valid mobile-safe synthetic site |
+| Sites | Invalid-document handling | YES | NOT RUN | NOT RUN | Parser count/copy implemented; safe malformed fixture test remains |
+| Sites | Permission/query error | YES | NOT RUN | NOT RUN | Plain-language error/retry implemented; injected denial/runtime test remains |
+| Sites | Empty catalog | YES | PASS | NOT RUN | Observed before synthetic fixture; Start remained unavailable |
+| Sites | Cached-offline catalog | YES | NOT RUN | NOT RUN | Firestore metadata path implemented; launch-offline catalog proof remains |
+| Sites | Refresh/retry | YES | NOT RUN | NOT RUN | Real server refresh implemented; explicit native tap/response proof remains |
+| Sites | Site selection | YES | PASS | NOT RUN | Selected live safe site and persisted its safe name/code snapshot |
+| Home | Start observation prerequisite | YES | PASS | NOT RUN | Enabled only for valid server/cached catalog; real draft created |
+| Home | Draft list | YES | PASS | NOT RUN | Partial and correction drafts persisted and resumed after relaunch |
+| Home | Recent submissions loading/empty | YES | PASS | NOT RUN | Empty state observed before submission; Android pending |
+| Home | Recent submitted/correction records | YES | PASS | NOT RUN | Submitted record and pinned correction request rendered from Firestore |
+| Home | Recent list error/offline | YES | NOT RUN | NOT RUN | Listener error/cache copy implemented; native runtime state remains |
+| Observation | Create local draft | YES | PASS | NOT RUN | Atomic per-UID draft created without fake science defaults |
+| Observation | Resume interrupted draft | YES | PASS | NOT RUN | Passed repeatedly for initial and correction revisions after full relaunch |
+| Observation | Select site | YES | PASS | NOT RUN | Live catalog selection persisted |
+| Observation | Collection date/time defaults | YES | PASS | NOT RUN | Native Expo UI controls rendered local date/time |
+| Observation | Edit collection date/time | YES | NOT RUN | NOT RUN | Native controls wired; explicit changed-date round-trip remains |
+| GPS | First permission request | YES | PASS | NOT RUN | Real iOS system prompt exercised |
+| GPS | Permission denied/blocked guidance | YES | PASS | NOT RUN | Denied first prompt; app exposed settings guidance and blocked continuation |
+| GPS | Recheck after system settings | YES | PASS | NOT RUN | Permission recovery code implemented; simulator permission grant plus return exercised |
+| GPS | Services/location unavailable | YES | PASS | NOT RUN | No simulated location produced unavailable state and retry action |
+| GPS | Retry acquisition | YES | PASS | NOT RUN | Added simulator location, retried, and acquired a fix |
+| GPS | Coordinates + reported accuracy | YES | PASS | NOT RUN | Device-reported coordinates/accuracy rendered and persisted; exact values excluded from log |
+| Method | Select configured test type | YES | PASS | NOT RUN | Phase 10 choice selected; empty selection error exercised first |
+| Method | Required collector provenance | YES | PASS | NOT RUN | Required feedback and persisted collector role exercised |
+| Method | Required method/instrument | YES | PASS | NOT RUN | Required feedback, focus order, and review round-trip exercised |
+| Measurements | Required core fields | YES | PASS | NOT RUN | Temperature, pH, DO, and conductivity entered and reviewed |
+| Measurements | All configured optional fields | YES | PASS | NOT RUN | Every Phase 10 optional parameter entered and reviewed |
+| Measurements | Numeric keyboard/editing | YES | PASS | NOT RUN | Decimal entry, select-all correction, drag dismiss, and repeated focus tested; Android pending |
+| Measurements | Signed numeric entry | YES | PASS | NOT RUN | Accessible ORP sign toggle produced and persisted a negative value |
+| Measurements | Required-entry feedback | YES | PASS | NOT RUN | Empty form and missing required core entry rejected without client scientific plausibility rules |
+| Temperature | Entered unit selected first | YES | PASS | NOT RUN | Disabled entry before unit and required error exercised |
+| Temperature | Preserve entered value/unit | YES | PASS | NOT RUN | Fahrenheit entered value/unit retained through draft, server, and revision history |
+| Temperature | Immediate C/F derivation | YES | PASS | NOT RUN | Fahrenheit-to-Celsius derived display verified |
+| Notes | Contract-permitted field notes | YES | PASS | NOT RUN | Privacy guidance, entry, review, server detail, and revision display exercised |
+| Attachments | No fake v1 attachment controls | YES | PASS | NOT RUN | No attachment control exposed; explicit v1 explanation shown |
+| Navigation | Five-step forward progression | YES | PASS | NOT RUN | Site → Visit → Method → Measurements → Review exercised twice |
+| Navigation | Native back without data loss | YES | PASS | NOT RUN | Review/edit stack round-trip plus interrupted relaunch recovery passed |
+| Navigation | Review edit round-trip | YES | PASS | NOT RUN | Measurements reopened, corrected, and returned to review |
+| Review | Complete observation summary | YES | PASS | NOT RUN | Site, visit, provenance, all measurements, notes, and record state verified |
+| Review | Missing-entry guidance | YES | PASS | NOT RUN | Method/measurement errors announce and focus relevant workflow entries |
+| Review | Operational failure vs completeness copy | YES | PASS | NOT RUN | Real Firestore path defect was correctly separated from contract incompleteness after fix |
+| Draft | Save locally | YES | PASS | NOT RUN | Complete draft queued while native Firestore network was disabled |
+| Draft | Resume after relaunch | YES | PASS | NOT RUN | Full process interruption passed for revisions 1 and 2 |
+| Sync | Saved locally state | YES | PASS | NOT RUN | Observed with pending offline Firestore writes |
+| Sync | Syncing state | YES | NOT RUN | NOT RUN | Metadata mapping implemented; transient literal state not yet captured |
+| Sync | Synced/server state | YES | PASS | NOT RUN | Observed after network re-enable and for submit/resubmit |
+| Sync | Failed + retry | YES | NOT RUN | NOT RUN | Safe retry implementation exists; controlled rejected/unavailable write proof remains |
+| Sync | Offline → reconnect → sync | YES | PASS | NOT RUN | Native Firestore network disabled, draft queued, network re-enabled, Synced observed |
+| Submission | Submit observation | YES | PASS | NOT RUN | Real Firestore transition reached `SUBMITTED` and Synced |
+| Submission | Prevent duplicate submission | YES | PASS | NOT RUN | Submitted revision/detail exposes no edit or submit action |
+| Submission | Immutable submitted revision | YES | PASS | NOT RUN | Read-only revision detail and revision 1 preservation verified |
+| Submission | Submission detail/status | YES | PASS | NOT RUN | Live status, sync, measurements, provenance, notes, and history rendered |
+| Submission | Recent submissions list | YES | PASS | NOT RUN | Relaunch showed submitted record from Firestore |
+| Validation | Permitted validation results | YES | PASS | NOT RUN | Server-authored warning/message/rule code rendered read-only |
+| Validation | Blocking ERROR presentation | YES | NOT RUN | NOT RUN | Severity mapping implemented; a safe server ERROR fixture remains |
+| Correction | NEEDS_CORRECTION detail/action | YES | PASS | NOT RUN | Live server decision, reviewer comment, warning, and creation action exercised |
+| Correction | New correction revision | YES | PASS | NOT RUN | Revision 2 copied prior science under existing contract and remained locally resumable |
+| Correction | RESUBMITTED transition | YES | PASS | NOT RUN | Real Firestore transition reached `RESUBMITTED` and Synced |
+| Correction | Prior revision remains immutable | YES | PASS | NOT RUN | Revision 1 retained original nitrate value; revision 2 retained corrected value |
+| Correction | Two-revision history/detail | YES | PASS | NOT RUN | Both read-only rows and distinct detail values exercised |
+| Offline | App launch with cached catalog/data | YES | NOT RUN | NOT RUN | Persistence exists; terminate/launch while network disabled remains |
+| Offline | Empty cache explanation | YES | NOT RUN | NOT RUN | Explicit site/recent recovery copy exists; clean-install offline proof remains |
+| Analytics | Fixed privacy-safe coarse events | YES | NOT RUN | NOT RUN | Source audit/final delegated privacy review remains; no science/GPS/notes/identity payloads allowed |
+| Accessibility | Accessible names/roles/states | PARTIAL | PASS | NOT RUN | Maestro hierarchy confirms core controls; exhaustive delegated audit remains |
+| Accessibility | Dynamic Type/large text | PARTIAL | NOT RUN | NOT RUN | Responsive source patterns exist; largest text-size device pass remains |
+| Accessibility | Screen-reader announcements | PARTIAL | NOT RUN | NOT RUN | Live regions/announcements implemented; VoiceOver/TalkBack pass remains |
+| Accessibility | Contrast and non-color cues | PARTIAL | PASS | NOT RUN | Light-theme visual review and semantic icons/copy passed; automated/final audit remains |
+| Accessibility | 48-point minimum targets | PARTIAL | PASS | NOT RUN | Core hierarchy bounds pass; exhaustive screen/control inventory remains |
+| Outdoor | Direct-sunlight light theme | PARTIAL | PASS | NOT RUN | Field-paper/ink/high-contrast visual inspection passed; brightness/outdoor simulation remains |
+| Outdoor | High-legibility numeric entry | YES | PASS | NOT RUN | Large tabular numeric fields and unit visibility exercised; Android pending |
+| Platform | iOS product-complete parity | PARTIAL | NOT RUN | N/A | Main lifecycle passes; auth/account negatives, state fixtures, accessibility, EAS rebuild, and final regression remain |
+| Platform | Android product-complete parity | PARTIAL | N/A | NOT RUN | Android export passes; EAS build, emulator/device flows, and accessibility remain |

@@ -19,6 +19,7 @@ import { InlineAlert } from '@/components/ui/status';
 import { MaxContentWidth, Spacing, Typography } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { auth } from '@/lib/firebase';
+import { trackProductEvent } from '@/services/analytics';
 
 function friendlyAuthError(error: unknown) {
   const code = (error as { code?: string })?.code;
@@ -33,22 +34,39 @@ function friendlyAuthError(error: unknown) {
 
 export function SignInScreen() {
   const theme = useTheme();
+  const emailRef = useRef<TextInput>(null);
   const passwordRef = useRef<TextInput>(null);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [emailError, setEmailError] = useState<string | null>(null);
+  const [passwordError, setPasswordError] = useState<string | null>(null);
 
   async function handleSignIn() {
-    if (!email.trim() || !password) {
-      setErrorMessage('Email and password are required.');
+    const trimmedEmail = email.trim();
+    const nextEmailError = !trimmedEmail
+      ? 'Enter your collector email.'
+      : !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)
+        ? 'Enter a valid email address.'
+        : null;
+    const nextPasswordError = password ? null : 'Enter your password.';
+
+    setEmailError(nextEmailError);
+    setPasswordError(nextPasswordError);
+    setErrorMessage(null);
+
+    if (nextEmailError || nextPasswordError) {
+      if (nextEmailError) emailRef.current?.focus();
+      else passwordRef.current?.focus();
       return;
     }
 
     setBusy(true);
     setErrorMessage(null);
     try {
-      await signInWithEmailAndPassword(auth, email.trim(), password);
+      await signInWithEmailAndPassword(auth, trimmedEmail, password);
+      void trackProductEvent('collector_sign_in');
     } catch (error) {
       setErrorMessage(friendlyAuthError(error));
     } finally {
@@ -86,7 +104,13 @@ export function SignInScreen() {
               editable={!busy}
               keyboardType="email-address"
               label="Email"
-              onChangeText={setEmail}
+              error={emailError}
+              inputRef={emailRef}
+              onChangeText={(value) => {
+                setEmail(value);
+                setEmailError(null);
+                setErrorMessage(null);
+              }}
               onSubmitEditing={() => passwordRef.current?.focus()}
               placeholder="collector@example.org"
               requirement="required"
@@ -101,7 +125,12 @@ export function SignInScreen() {
               editable={!busy}
               inputRef={passwordRef}
               label="Password"
-              onChangeText={setPassword}
+              error={passwordError}
+              onChangeText={(value) => {
+                setPassword(value);
+                setPasswordError(null);
+                setErrorMessage(null);
+              }}
               onSubmitEditing={handleSignIn}
               placeholder="Enter password"
               requirement="required"
@@ -117,13 +146,14 @@ export function SignInScreen() {
               accessibilityHint="Signs in to the field collection workspace"
               label="Sign in"
               loading={busy}
+              loadingLabel="Signing in"
               onPress={handleSignIn}
             />
           </View>
 
           <View style={styles.footer}>
-            <AppIcon name="lock" color={theme.textMuted} size={15} />
-            <Text style={[styles.footerText, { color: theme.textMuted }]}>
+            <AppIcon name="lock" color={theme.textSecondary} size={15} />
+            <Text style={[styles.footerText, { color: theme.textSecondary }]}>
               Collector access only · Sign-in is required to protect field records.
             </Text>
           </View>
@@ -146,7 +176,7 @@ const styles = StyleSheet.create({
     maxWidth: Math.min(MaxContentWidth, 520),
     alignSelf: 'center',
     justifyContent: 'center',
-    paddingHorizontal: Spacing.xl,
+    paddingHorizontal: Spacing.lg,
     paddingTop: Spacing.xxxl,
     paddingBottom: Spacing.xl,
     gap: Spacing.xxl,
@@ -162,8 +192,6 @@ const styles = StyleSheet.create({
   },
   title: {
     ...Typography.screenTitle,
-    fontSize: 34,
-    lineHeight: 40,
   },
   subtitle: {
     ...Typography.body,

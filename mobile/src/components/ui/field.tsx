@@ -30,7 +30,7 @@ export function FieldLabel({ label, requirement }: FieldLabelProps) {
     <View style={styles.labelRow}>
       <Text style={[styles.label, { color: theme.textPrimary }]}>{label}</Text>
       {requirement ? (
-        <Text style={[styles.requirement, { color: theme.textMuted }]}>
+        <Text style={[styles.requirement, { color: theme.textSecondary }]}>
           {requirement === 'required' ? 'Required' : 'Optional'}
         </Text>
       ) : null}
@@ -63,7 +63,7 @@ export function TextField({
 }: TextFieldProps) {
   const theme = useTheme();
   const [focused, setFocused] = useState(false);
-  const borderColor = error ? theme.danger : focused ? theme.primary : theme.border;
+  const borderColor = error ? theme.danger : focused ? theme.focus : theme.controlBorder;
 
   return (
     <View style={styles.fieldGroup}>
@@ -73,13 +73,15 @@ export function TextField({
           styles.inputShell,
           {
             borderColor,
+            borderWidth: error || focused ? 2 : 1,
             backgroundColor: editable ? theme.input : theme.surfaceSecondary,
-            opacity: editable ? 1 : 0.68,
           },
         ]}>
         <TextInput
           ref={inputRef}
           {...inputProps}
+          accessibilityLabel={inputProps.accessibilityLabel ?? label}
+          accessibilityHint={error ?? helper ?? inputProps.accessibilityHint}
           editable={editable}
           onFocus={(event) => {
             setFocused(true);
@@ -141,16 +143,19 @@ export function SelectField({
         style={({ pressed }) => [
           styles.select,
           {
-            borderColor: error ? theme.danger : theme.border,
-            backgroundColor: pressed && !disabled ? theme.surfaceSecondary : theme.input,
-            opacity: disabled ? 0.62 : 1,
+            borderColor: error ? theme.danger : disabled ? theme.disabledSurface : theme.controlBorder,
+            borderWidth: error ? 2 : 1,
+            backgroundColor: disabled
+              ? theme.disabledSurface
+              : pressed
+                ? theme.secondaryPressed
+                : theme.input,
           },
         ]}>
         <Text
-          numberOfLines={1}
           style={[
             styles.selectText,
-            { color: value ? theme.textPrimary : theme.textMuted },
+            { color: disabled ? theme.disabledText : value ? theme.textPrimary : theme.textMuted },
           ]}>
           {value ?? placeholder}
         </Text>
@@ -197,8 +202,8 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingHorizontal: Spacing.md,
     paddingVertical: 11,
-    fontSize: 16,
-    lineHeight: 22,
+    fontSize: 17,
+    lineHeight: 24,
   },
   trailing: {
     minHeight: MinTouchTarget,
@@ -220,7 +225,8 @@ const styles = StyleSheet.create({
   },
   selectText: {
     flex: 1,
-    fontSize: 16,
-    lineHeight: 22,
+    fontSize: 17,
+    lineHeight: 24,
+    paddingVertical: Spacing.sm,
   },
 });

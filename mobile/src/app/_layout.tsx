@@ -1,5 +1,6 @@
 import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import { useMemo } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View, useColorScheme } from 'react-native';
 
 import { BrandMark } from '@/components/brand-mark';
@@ -7,11 +8,28 @@ import { SignInScreen } from '@/components/sign-in-screen';
 import { Spacing, Typography } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { AuthProvider, useAuth } from '@/providers/auth-provider';
+import { CollectorDataProvider } from '@/providers/collector-data-provider';
+import { DraftProvider } from '@/providers/draft-provider';
 
 function AuthGate() {
   const colorScheme = useColorScheme();
   const theme = useTheme();
   const { user, initializing } = useAuth();
+  const navigationTheme = useMemo(() => {
+    const base = colorScheme === 'dark' ? DarkTheme : DefaultTheme;
+    return {
+      ...base,
+      colors: {
+        ...base.colors,
+        background: theme.background,
+        card: theme.background,
+        text: theme.textPrimary,
+        border: theme.border,
+        primary: theme.primary,
+        notification: theme.danger,
+      },
+    };
+  }, [colorScheme, theme]);
 
   if (initializing) {
     return (
@@ -37,14 +55,30 @@ function AuthGate() {
   }
 
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <Stack
-        screenOptions={{
-          headerShown: false,
-          contentStyle: { backgroundColor: theme.background },
-          animation: 'fade',
-        }}
-      />
+    <ThemeProvider value={navigationTheme}>
+      <CollectorDataProvider uid={user.uid}>
+        <DraftProvider>
+          <Stack
+            screenOptions={{
+              contentStyle: { backgroundColor: theme.background },
+              headerBackButtonDisplayMode: 'minimal',
+              headerShadowVisible: false,
+              headerStyle: { backgroundColor: theme.background },
+              headerTintColor: theme.primary,
+              headerTitleStyle: { color: theme.textPrimary },
+            }}>
+            <Stack.Screen name="index" options={{ headerShown: false }} />
+            <Stack.Screen
+              name="observation/[submissionId]/[revisionId]"
+              options={{ headerShown: false }}
+            />
+            <Stack.Screen
+              name="account"
+              options={{ presentation: 'modal', title: 'Collector account' }}
+            />
+          </Stack>
+        </DraftProvider>
+      </CollectorDataProvider>
       <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />
     </ThemeProvider>
   );

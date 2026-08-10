@@ -2,6 +2,7 @@ import { onAuthStateChanged, signOut as firebaseSignOut } from '@react-native-fi
 import { createContext, PropsWithChildren, useContext, useEffect, useMemo, useState } from 'react';
 
 import { auth } from '@/lib/firebase';
+import { trackProductEvent } from '@/services/analytics';
 
 type CollectorUser = {
   uid: string;
@@ -33,7 +34,10 @@ export function AuthProvider({ children }: PropsWithChildren) {
     () => ({
       user,
       initializing,
-      signOut: () => firebaseSignOut(auth),
+      signOut: async () => {
+        await firebaseSignOut(auth);
+        void trackProductEvent('collector_sign_out');
+      },
     }),
     [user, initializing],
   );

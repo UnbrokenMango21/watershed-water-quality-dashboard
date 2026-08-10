@@ -1,15 +1,17 @@
-import type { PropsWithChildren, ReactNode } from 'react';
+import type { PropsWithChildren, ReactElement, ReactNode } from 'react';
 import {
   ScrollView,
+  Platform,
   StyleSheet,
   Text,
   View,
+  type RefreshControlProps,
   type StyleProp,
   type ViewStyle,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, type Edge } from 'react-native-safe-area-context';
 
-import { MaxContentWidth, Radii, Shadows, Spacing, Typography } from '@/constants/theme';
+import { MaxContentWidth, Radii, Spacing, Typography } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
 import { AppIcon, type AppIconName } from './app-icon';
@@ -17,24 +19,34 @@ import { AppIcon, type AppIconName } from './app-icon';
 type AppScreenProps = PropsWithChildren<{
   contentStyle?: StyleProp<ViewStyle>;
   scroll?: boolean;
+  edges?: Edge[];
+  refreshControl?: ReactElement<RefreshControlProps>;
 }>;
 
-export function AppScreen({ children, contentStyle, scroll = true }: AppScreenProps) {
+export function AppScreen({
+  children,
+  contentStyle,
+  scroll = true,
+  edges = ['top', 'right', 'bottom', 'left'],
+  refreshControl,
+}: AppScreenProps) {
   const theme = useTheme();
 
   if (!scroll) {
     return (
-      <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.background }]}>
+      <SafeAreaView edges={edges} style={[styles.safeArea, { backgroundColor: theme.background }]}>
         <View style={[styles.content, contentStyle]}>{children}</View>
       </SafeAreaView>
     );
   }
 
   return (
-    <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.background }]}>
+    <SafeAreaView edges={edges} style={[styles.safeArea, { backgroundColor: theme.background }]}>
       <ScrollView
         automaticallyAdjustKeyboardInsets
+        keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
         keyboardShouldPersistTaps="handled"
+        refreshControl={refreshControl}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={[styles.content, contentStyle]}>
         {children}
@@ -128,12 +140,12 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: MaxContentWidth,
     alignSelf: 'center',
-    paddingHorizontal: Spacing.xl,
+    paddingHorizontal: Spacing.lg,
     paddingTop: Spacing.md,
     paddingBottom: Spacing.xxxl,
   },
   sectionCard: {
-    borderRadius: Radii.lg,
+    borderRadius: Radii.record,
     borderWidth: 1,
     padding: Spacing.lg,
     gap: Spacing.md,
@@ -155,7 +167,7 @@ const styles = StyleSheet.create({
     ...Typography.helper,
   },
   infoCard: {
-    borderRadius: Radii.lg,
+    borderRadius: Radii.input,
     padding: Spacing.md,
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -164,10 +176,9 @@ const styles = StyleSheet.create({
   infoIcon: {
     width: 40,
     height: 40,
-    borderRadius: Radii.md,
+    borderRadius: Radii.input,
     alignItems: 'center',
     justifyContent: 'center',
-    ...Shadows.subtle,
   },
   infoText: {
     flex: 1,
