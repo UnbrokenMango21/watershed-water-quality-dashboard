@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { MinTouchTarget, Radii, Spacing, Typography } from '@/constants/theme';
+import { MinTouchTarget, Spacing, Typography } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
 import { AppIcon } from './app-icon';
@@ -49,8 +49,9 @@ export function ListRow({
               ? theme.primarySoft
               : pressed
                 ? theme.secondaryPressed
-                : 'transparent',
-          borderColor: selected ? theme.focus : theme.border,
+                : theme.surface,
+          borderBottomColor: theme.border,
+          borderLeftColor: selected ? theme.primary : 'transparent',
         },
       ]}>
       <View style={styles.copy}>
@@ -83,7 +84,7 @@ const styles = StyleSheet.create({
   row: {
     minHeight: 64,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderRadius: Radii.input,
+    borderLeftWidth: 3,
     paddingHorizontal: Spacing.sm,
     paddingVertical: Spacing.sm,
     flexDirection: 'row',
