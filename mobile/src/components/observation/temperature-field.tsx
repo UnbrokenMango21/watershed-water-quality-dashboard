@@ -106,6 +106,8 @@ export function TemperatureField({
               ? `Water temperature in degrees ${unit === 'C' ? 'Celsius' : 'Fahrenheit'}`
               : 'Water temperature, choose an entered unit first'
           }
+          accessibilityHint={error ?? (converted ? `Also stored as ${converted}` : undefined)}
+          accessibilityState={{ disabled: inputDisabled }}
           editable={!inputDisabled}
           inputAccessoryViewID={inputAccessoryViewID}
           keyboardType={Platform.OS === 'ios' ? 'numbers-and-punctuation' : 'numeric'}
@@ -132,11 +134,14 @@ export function TemperatureField({
       </View>
 
       {error ? (
-        <Text accessibilityRole="alert" style={[styles.helper, { color: theme.danger }]}>
+        <Text
+          accessibilityLiveRegion="polite"
+          accessibilityRole="alert"
+          style={[styles.helper, { color: theme.danger }]}>
           {error}
         </Text>
       ) : converted ? (
-        <Text style={[styles.helper, { color: theme.textSecondary }]}>Also stored as {converted}</Text>
+        <Text accessibilityLiveRegion="polite" style={[styles.helper, { color: theme.textSecondary }]}>Also stored as {converted}</Text>
       ) : (
         <Text style={[styles.helper, { color: theme.textSecondary }]}>
           Choose the unit shown on the instrument before entering the reading.
