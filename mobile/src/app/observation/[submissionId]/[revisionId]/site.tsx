@@ -46,7 +46,7 @@ export default function SiteStep() {
           {catalog.source === 'loading' ? (
             <>
               <ActivityIndicator color={theme.primary} />
-              <Text style={[styles.stateText, { color: theme.textSecondary }]}>Loading sites</Text>
+              <Text accessibilityLiveRegion="polite" style={[styles.stateText, { color: theme.textSecondary }]}>Loading sites</Text>
             </>
           ) : (
             <Text style={[styles.stateText, { color: theme.textSecondary }]}>
@@ -69,7 +69,7 @@ export default function SiteStep() {
       </View>
 
       {catalog.error ? <InlineAlert tone="warning" title={catalog.error} /> : null}
-      {catalog.invalidDocumentCount > 0 ? (
+      {catalog.invalidDocumentCount > 0 && !catalog.error ? (
         <InlineAlert
           tone="warning"
           title="Some site records could not be used"
