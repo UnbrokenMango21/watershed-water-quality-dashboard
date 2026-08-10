@@ -65,12 +65,16 @@ function nextStepForDraft(draft: PartialObservationDraft) {
       .filter(({ valueText }) => numericTextIsFinite(valueText))
       .map(({ parameterCode }) => parameterCode),
   );
+  const hasInvalidMeasurement = draft.measurements.some(
+    ({ valueText }) => valueText.trim().length > 0 && !numericTextIsFinite(valueText),
+  );
   const requiredMissing = requiredMeasurementsFor(draft.testType).some(
     (code) => !validCodes.has(code),
   );
   if (
     !draft.temperatureEnteredUnit ||
     !numericTextIsFinite(draft.temperatureEnteredValueText ?? '') ||
+    hasInvalidMeasurement ||
     requiredMissing ||
     validCodes.size < minimumMeasurementCountFor(draft.testType)
   ) {
