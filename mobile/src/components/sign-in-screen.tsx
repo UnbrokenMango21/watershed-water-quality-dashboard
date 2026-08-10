@@ -103,11 +103,9 @@ export function SignInScreen() {
           <View style={styles.brandSection}>
             <BrandMark />
             <View style={styles.brandCopy}>
-              <Text style={[styles.eyebrow, { color: theme.primary }]}>CENTRAL PA WATERSHED</Text>
+              <Text style={[styles.eyebrow, { color: theme.brand }]}>CENTRAL PA WATERSHED</Text>
               <Text accessibilityRole="header" style={[styles.title, { color: theme.textPrimary }]}>Field Collection</Text>
-              <Text style={[styles.subtitle, { color: theme.textSecondary }]}>
-                Reliable water-quality observations, captured where the work happens.
-              </Text>
+              <Text style={[styles.subtitle, { color: theme.textSecondary }]}>Sign in to record and sync water-quality observations.</Text>
             </View>
           </View>
 
@@ -155,7 +153,7 @@ export function SignInScreen() {
               value={password}
             />
 
-            {errorMessage ? <InlineAlert tone="danger" title={errorMessage} /> : null}
+            {errorMessage ? <InlineAlert tone="danger" title={errorMessage} body="Check the address and try again." /> : null}
 
             <PrimaryButton
               accessibilityHint="Signs in to the field collection workspace"
@@ -168,9 +166,7 @@ export function SignInScreen() {
 
           <View style={styles.footer}>
             <AppIcon name="lock" color={theme.textSecondary} size={15} />
-            <Text style={[styles.footerText, { color: theme.textSecondary }]}>
-              Collector access only · Sign-in is required to protect field records.
-            </Text>
+            <Text style={[styles.footerText, { color: theme.textSecondary }]}>Collector access only. Sign-in protects field records and reviewer feedback.</Text>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
