@@ -20,7 +20,7 @@ export function ReviewSection({ title, items, onEdit }: ReviewSectionProps) {
   const theme = useTheme();
 
   return (
-    <View style={[styles.section, { borderBottomColor: theme.border }]}>
+    <View style={styles.section}>
       <View style={styles.header}>
         <Text style={[styles.title, { color: theme.textPrimary }]}>{title}</Text>
         {onEdit ? (
@@ -38,9 +38,24 @@ export function ReviewSection({ title, items, onEdit }: ReviewSectionProps) {
         ) : null}
       </View>
 
-      <View style={styles.items}>
-        {items.map((item) => (
-          <View key={`${item.label}-${item.value}`} style={styles.itemRow}>
+      <View
+        style={[
+          styles.items,
+          {
+            backgroundColor: theme.surface,
+            borderTopColor: theme.border,
+            borderBottomColor: theme.border,
+          },
+        ]}>
+        {items.map((item, index) => (
+          <View
+            key={`${item.label}-${item.value}`}
+            style={[
+              styles.itemRow,
+              index < items.length - 1
+                ? { borderBottomColor: theme.border, borderBottomWidth: StyleSheet.hairlineWidth }
+                : null,
+            ]}>
             <Text style={[styles.itemLabel, { color: theme.textSecondary }]}>{item.label}</Text>
             <Text selectable style={[styles.itemValue, { color: theme.textPrimary }]}>
               {item.value}
@@ -54,9 +69,7 @@ export function ReviewSection({ title, items, onEdit }: ReviewSectionProps) {
 
 const styles = StyleSheet.create({
   section: {
-    paddingVertical: Spacing.lg,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    gap: Spacing.md,
+    gap: Spacing.sm,
   },
   header: {
     minHeight: 48,
@@ -80,17 +93,27 @@ const styles = StyleSheet.create({
     ...Typography.label,
   },
   items: {
-    gap: Spacing.sm,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
   itemRow: {
+    minHeight: 48,
+    flexDirection: 'row',
     alignItems: 'flex-start',
-    gap: Spacing.xxs,
+    justifyContent: 'space-between',
+    gap: Spacing.md,
+    paddingVertical: Spacing.sm,
+    paddingHorizontal: Spacing.sm,
   },
   itemLabel: {
     ...Typography.helper,
+    flexShrink: 1,
+    maxWidth: '42%',
   },
   itemValue: {
     ...Typography.bodyStrong,
+    flex: 1,
+    textAlign: 'right',
     fontVariant: ['tabular-nums'],
   },
 });
