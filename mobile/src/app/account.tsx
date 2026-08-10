@@ -1,5 +1,5 @@
 import { Stack } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Alert, StyleSheet, Text, View } from 'react-native';
 
 import { BrandMark } from '@/components/brand-mark';
@@ -8,11 +8,16 @@ import { AppScreen } from '@/components/ui/surface';
 import { Spacing, Typography } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useAuth } from '@/providers/auth-provider';
+import { trackScreenView } from '@/services/analytics';
 
 export default function AccountScreen() {
   const theme = useTheme();
   const { user, signOut } = useAuth();
   const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    void trackScreenView('account');
+  }, []);
 
   function confirmSignOut() {
     Alert.alert(
@@ -29,7 +34,7 @@ export default function AccountScreen() {
               await signOut();
             } catch {
               setBusy(false);
-              Alert.alert('Could not sign out', 'Check your connection and try again.');
+              Alert.alert('Could not sign out', 'The session could not be ended. Try again.');
             }
           },
         },
@@ -45,7 +50,7 @@ export default function AccountScreen() {
           <BrandMark />
           <View style={styles.identityCopy}>
             <Text style={[styles.eyebrow, { color: theme.brand }]}>SIGNED-IN COLLECTOR</Text>
-            <Text selectable style={[styles.email, { color: theme.textPrimary }]}>
+            <Text accessibilityRole="header" selectable style={[styles.email, { color: theme.textPrimary }]}>
               {user?.email ?? 'Collector account'}
             </Text>
             <Text style={[styles.helper, { color: theme.textSecondary }]}>
