@@ -82,6 +82,7 @@ export function TextField({
           {...inputProps}
           accessibilityLabel={inputProps.accessibilityLabel ?? label}
           accessibilityHint={error ?? helper ?? inputProps.accessibilityHint}
+          accessibilityState={{ disabled: !editable }}
           editable={editable}
           onFocus={(event) => {
             setFocused(true);
@@ -98,7 +99,10 @@ export function TextField({
         {trailing ? <View style={styles.trailing}>{trailing}</View> : null}
       </View>
       {error ? (
-        <Text accessibilityRole="alert" style={[styles.helper, { color: theme.danger }]}>
+        <Text
+          accessibilityLiveRegion="polite"
+          accessibilityRole="alert"
+          style={[styles.helper, { color: theme.danger }]}>
           {error}
         </Text>
       ) : helper ? (
@@ -137,6 +141,7 @@ export function SelectField({
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={`${label}, ${value ?? placeholder}`}
+        accessibilityHint={error ?? helper}
         accessibilityState={{ disabled }}
         disabled={disabled}
         onPress={onPress}
@@ -159,10 +164,13 @@ export function SelectField({
           ]}>
           {value ?? placeholder}
         </Text>
-        <AppIcon name="chevronRight" color={theme.textMuted} size={18} />
+        <AppIcon name="chevronRight" color={disabled ? theme.disabledText : theme.textMuted} size={18} />
       </Pressable>
       {error ? (
-        <Text accessibilityRole="alert" style={[styles.helper, { color: theme.danger }]}>
+        <Text
+          accessibilityLiveRegion="polite"
+          accessibilityRole="alert"
+          style={[styles.helper, { color: theme.danger }]}>
           {error}
         </Text>
       ) : helper ? (
