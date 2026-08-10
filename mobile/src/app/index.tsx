@@ -1,6 +1,14 @@
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Alert, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Alert,
+  Pressable,
+  RefreshControl,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 
 import { BrandMark } from '@/components/brand-mark';
 import { AppIcon } from '@/components/ui/app-icon';
@@ -166,6 +174,7 @@ export default function HomeScreen() {
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Collector account"
+          accessibilityHint="Opens collector identity and sign-out controls"
           onPress={() => router.push('/account')}
           style={({ pressed }) => [
             styles.avatar,
@@ -223,6 +232,12 @@ export default function HomeScreen() {
 
       <View style={styles.section}>
         <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Continue field work</Text>
+        {draftsLoading ? (
+          <View accessibilityLiveRegion="polite" style={styles.loadingRow}>
+            <ActivityIndicator color={theme.primary} />
+            <Text style={[styles.loadingText, { color: theme.textSecondary }]}>Loading saved field work</Text>
+          </View>
+        ) : null}
         {correctionRecords.map((submission) => (
           <ListRow
             key={`correction-${submission.submissionId}`}
@@ -270,6 +285,12 @@ export default function HomeScreen() {
           <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Recent submissions</Text>
           {recent.source === 'cached' ? <StatusChip icon="cloud" label="Offline cache" tone="info" /> : null}
         </View>
+        {recent.source === 'loading' ? (
+          <View accessibilityLiveRegion="polite" style={styles.loadingRow}>
+            <ActivityIndicator color={theme.primary} />
+            <Text style={[styles.loadingText, { color: theme.textSecondary }]}>Loading recent submissions</Text>
+          </View>
+        ) : null}
         {recent.error ? <InlineAlert tone="warning" title={recent.error} /> : null}
         {recentRecords.map((submission) => (
           <ListRow
@@ -379,6 +400,15 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
   },
   helper: {
+    ...Typography.helper,
+  },
+  loadingRow: {
+    minHeight: 48,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  loadingText: {
     ...Typography.helper,
   },
   section: {
