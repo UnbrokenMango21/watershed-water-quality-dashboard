@@ -1,4 +1,8 @@
 {
+  "cli": {
+    "version": ">= 16.18.0",
+    "appVersionSource": "remote"
+  },
   "build": {
     "development": {
       "developmentClient": true,
@@ -16,7 +20,8 @@
       "environment": "preview"
     },
     "production": {
-      "environment": "production"
+      "environment": "production",
+      "autoIncrement": true
     }
   }
 }
