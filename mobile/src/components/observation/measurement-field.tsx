@@ -2,10 +2,10 @@ import type { Ref } from 'react';
 import { useState } from 'react';
 import { Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
-import { MinTouchTarget, Radii, Spacing, Typography } from '@/constants/theme';
+import { MinTouchTarget, Spacing, Typography } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
-import { FieldLabel, type FieldRequirement } from '../ui/field';
+import type { FieldRequirement } from '../ui/field';
 
 type MeasurementFieldProps = {
   label: string;
@@ -44,25 +44,50 @@ export function MeasurementField({
 }: MeasurementFieldProps) {
   const theme = useTheme();
   const [focused, setFocused] = useState(false);
-  const borderColor = error ? theme.danger : focused ? theme.focus : theme.controlBorder;
   const isNegative = value.trimStart().startsWith('-');
+  const isRequired = requirement === 'required';
+  const statusColor = error ? theme.danger : focused ? theme.focus : isRequired ? theme.primary : theme.border;
 
   return (
     <View style={styles.group}>
-      <FieldLabel label={label} requirement={requirement} />
       <View
         style={[
-          styles.shell,
+          styles.row,
           {
-            borderColor,
-            borderWidth: error || focused ? 2 : 1,
-            backgroundColor: disabled ? theme.surfaceSecondary : theme.input,
+            backgroundColor: disabled ? theme.surfaceSecondary : theme.surface,
+            borderBottomColor: theme.border,
           },
         ]}>
+        <View
+          accessibilityElementsHidden
+          importantForAccessibility="no-hide-descendants"
+          style={[
+            styles.requirementSpine,
+            isRequired
+              ? error
+                ? { borderColor: theme.danger, borderWidth: 1, backgroundColor: 'transparent' }
+                : { backgroundColor: statusColor }
+              : { borderColor: theme.border, borderWidth: 1, borderStyle: 'dashed', backgroundColor: 'transparent' },
+          ]}
+        />
+
+        <View style={styles.labelBlock}>
+          <Text style={[styles.label, { color: disabled ? theme.disabledText : theme.textPrimary }]}>
+            {label}
+          </Text>
+          <Text
+            style={[
+              styles.requirement,
+              { color: error ? theme.danger : disabled ? theme.disabledText : theme.textSecondary },
+            ]}>
+            {error ?? (isRequired ? 'Required' : 'Optional')}
+          </Text>
+        </View>
+
         <TextInput
           ref={inputRef}
           accessibilityLabel={`${label}, ${unit}`}
-          accessibilityHint={error ?? helper}
+          accessibilityHint={error ?? helper ?? `${isRequired ? 'Required' : 'Optional'} measurement`}
           accessibilityState={{ disabled }}
           editable={!disabled}
           inputAccessoryViewID={inputAccessoryViewID}
@@ -83,10 +108,17 @@ export function MeasurementField({
           placeholderTextColor={theme.textMuted}
           selectTextOnFocus
           selectionColor={theme.primary}
-          style={[styles.value, { color: disabled ? theme.disabledText : theme.textPrimary }]}
+          style={[
+            styles.value,
+            {
+              color: disabled ? theme.disabledText : theme.textPrimary,
+              borderBottomColor: focused ? theme.focus : 'transparent',
+            },
+          ]}
           testID={testID}
           value={value}
         />
+
         {allowNegative ? (
           <Pressable
             accessibilityLabel={isNegative ? 'Make value positive' : 'Make value negative'}
@@ -104,26 +136,26 @@ export function MeasurementField({
                     ? theme.primarySoft
                     : pressed
                       ? theme.secondaryPressed
-                      : theme.surfaceSecondary,
+                      : 'transparent',
+                borderColor: isNegative ? theme.primary : theme.border,
               },
             ]}>
-            <Text style={[styles.sign, { color: disabled ? theme.disabledText : isNegative ? theme.primary : theme.textPrimary }]}>±</Text>
+            <Text
+              style={[
+                styles.sign,
+                { color: disabled ? theme.disabledText : isNegative ? theme.primary : theme.textSecondary },
+              ]}>
+              ±
+            </Text>
           </Pressable>
         ) : null}
-        <View style={[styles.unitPill, { backgroundColor: theme.surfaceSecondary }]}>
-          <Text style={[styles.unit, { color: theme.textSecondary }]}>{unit}</Text>
-        </View>
+
+        <Text style={[styles.unit, { color: theme.textSecondary }]}>{unit}</Text>
       </View>
-      {error ? (
-        <Text
-          accessibilityLiveRegion="polite"
-          accessibilityRole="alert"
-          style={[styles.helper, { color: theme.danger }]}>
-          {error}
-        </Text>
-      ) : derivedValue ? (
+
+      {!error && derivedValue ? (
         <Text style={[styles.helper, { color: theme.textSecondary }]}>{derivedValue}</Text>
-      ) : helper ? (
+      ) : !error && helper ? (
         <Text style={[styles.helper, { color: theme.textSecondary }]}>{helper}</Text>
       ) : null}
     </View>
@@ -132,46 +164,61 @@ export function MeasurementField({
 
 const styles = StyleSheet.create({
   group: {
-    gap: Spacing.xs,
+    gap: Spacing.xxs,
   },
-  shell: {
-    minHeight: 58,
-    borderRadius: Radii.md,
+  row: {
+    minHeight: 68,
+    borderBottomWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingLeft: Spacing.md,
+    gap: Spacing.sm,
+    paddingVertical: Spacing.xs,
     paddingRight: Spacing.xs,
+  },
+  requirementSpine: {
+    width: 3,
+    alignSelf: 'stretch',
+    minHeight: 44,
+  },
+  labelBlock: {
+    flex: 1,
+    minWidth: 104,
+    gap: 2,
+  },
+  label: {
+    ...Typography.bodyStrong,
+  },
+  requirement: {
+    ...Typography.caption,
   },
   value: {
     ...Typography.numeric,
-    flex: 1,
-    minHeight: 56,
-    paddingVertical: 8,
-  },
-  unitPill: {
-    minWidth: 56,
-    minHeight: 40,
-    borderRadius: Radii.sm,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: Spacing.sm,
+    minWidth: 72,
+    maxWidth: 118,
+    minHeight: 52,
+    paddingHorizontal: Spacing.xxs,
+    paddingVertical: Spacing.xs,
+    textAlign: 'right',
+    borderBottomWidth: 2,
   },
   signButton: {
     width: MinTouchTarget,
     minHeight: MinTouchTarget,
-    borderRadius: Radii.sm,
+    borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: Spacing.xs,
   },
   sign: {
     ...Typography.bodyStrong,
     fontSize: 22,
   },
   unit: {
-    ...Typography.bodyStrong,
+    ...Typography.label,
+    minWidth: 58,
+    textAlign: 'right',
   },
   helper: {
     ...Typography.helper,
+    paddingLeft: 15,
   },
 });
