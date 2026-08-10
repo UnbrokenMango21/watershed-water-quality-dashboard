@@ -200,3 +200,72 @@ exact GPS test values, or other sensitive payloads.
 - `git diff --check`: passed.
 - Native EAS rebuilds, Android device flows, remaining auth/account negative
   tests, accessibility/outdoor audits, and final delegated reviews remain open.
+
+## 2026-08-10 — Release-candidate hardening after agent handoff
+
+### Repository and CI hardening
+
+- Preserved the completed Air/Codex work on `phase11/mobile-v1` and moved the
+  remaining work to direct GitHub changes plus small human native-runtime
+  checks.
+- Removed accidentally tracked macOS `.DS_Store` metadata and added repository
+  hygiene enforcement so generated native projects and local Firebase client
+  files cannot silently enter source control.
+- Expanded Mobile CI to run dependency compatibility, a Phase 9/10 mobile
+  contract guard, TypeScript, lint, privacy telemetry enforcement, iOS bundle
+  export, Android bundle export, and Expo Doctor on the PR.
+- Added a mobile contract guard that fails if configured measurements lose
+  Phase 10 units/profiles, collector workflow transitions drift, quality/review
+  ownership boundaries weaken, the safe-site privacy boundary disappears, or
+  entered-temperature preservation changes.
+
+### Product resilience and accessibility
+
+- Added explicit loading feedback for saved field work and recent submissions
+  on collector home instead of rendering transient blank sections.
+- Added a clean-install/offline catalog timeout that changes an otherwise
+  indefinite empty-cache loading state into an actionable reconnect/refresh
+  error while still allowing a later server listener to recover automatically.
+- Improved signed-out validation and Firebase error guidance, including
+  accessibility announcements for required fields and authentication failures.
+- Added large-text wrapping to native date/time rows and strengthened account
+  control accessibility hints while preserving the Creekline 48-point target
+  policy and native screen-reader semantics.
+
+### Privacy and validation presentation
+
+- Kept Firebase Analytics behind the single coarse-event wrapper and added CI
+  enforcement for the native privacy configuration.
+- Disabled automatic native screen reporting, retained only coarse manual
+  screen names, kept iOS Analytics without Ad ID support, and blocked the
+  Android advertising-ID permission.
+- Added read-only parsing/presentation of the server-owned overall data
+  confidence score and validation rule version. The collector explicitly says
+  the score represents data confidence, not stream/water health, and it cannot
+  write quality fields.
+
+### EAS/versioning preparation
+
+- Adopted EAS remote developer-facing version management with production
+  auto-increment and retained separate development/iOS-simulator/preview/
+  production profiles.
+- Aligned the user-facing collector version with the project development cycle
+  at `0.1.0`; the earlier `1.0.0` value was Expo-template metadata and did not
+  represent the platform's v1.0 release milestone.
+- Submitted Android development build
+  `8529b68b-f133-4e9b-8feb-380387467172` from verified commit `8dc198b` as the
+  Android native-platform proof. It predates this final hardening pass, so a
+  release-candidate rebuild from the final branch head remains required after
+  runtime proof.
+
+### Verification at this checkpoint
+
+- Mobile CI after the hardening changes passed the Phase 9/10 contract guard,
+  TypeScript, lint, privacy guard, iOS JavaScript export, Android JavaScript
+  export, and Expo Doctor. Subsequent documentation/version-only changes must
+  remain green before the release-candidate native builds.
+- No Phase 9 schema, Phase 10 validation semantics, Firestore rules, Workflow
+  Manager design, or ArcGIS contract was changed.
+- Remaining gates are native Android runtime parity, focused iOS negative/
+  offline/accessibility checks, then final Android and iOS release-candidate EAS
+  builds from the latest branch head.
