@@ -50,6 +50,10 @@ export type Submission = {
   submittedAt: Date | null;
   schemaVersion: string;
   mobileAppVersion: string;
+  validationRulesVersion: string | null;
+  qualityAlgorithmVersion: string | null;
+  overallQualityScore: number | null;
+  anomalyScore: number | null;
   reviewComment: string | null;
   errorFlagCount: number;
   warningFlagCount: number;
