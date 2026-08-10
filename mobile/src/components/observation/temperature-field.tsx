@@ -5,8 +5,6 @@ import { Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-na
 import { Radii, Spacing, Typography } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
-import { FieldLabel } from '../ui/field';
-
 export type TemperatureUnit = 'C' | 'F';
 
 type TemperatureFieldProps = {
@@ -47,7 +45,11 @@ export function TemperatureField({
 
   return (
     <View style={styles.group}>
-      <FieldLabel label="Entered temperature unit" requirement="required" />
+      <View style={styles.labelRow}>
+        <Text style={[styles.label, { color: theme.textPrimary }]}>Entered unit</Text>
+        <Text style={[styles.requirement, { color: theme.textSecondary }]}>Required</Text>
+      </View>
+
       <View
         accessibilityLabel="Entered temperature unit"
         accessibilityRole="radiogroup"
@@ -69,27 +71,46 @@ export function TemperatureField({
                   backgroundColor: disabled
                     ? theme.disabledSurface
                     : selected
-                      ? theme.primarySoft
+                      ? theme.primary
                       : pressed
                         ? theme.secondaryPressed
                         : theme.surface,
-                  borderColor: selected ? theme.focus : theme.controlBorder,
-                  borderWidth: selected ? 2 : 1,
+                  borderColor: selected ? theme.primary : theme.controlBorder,
                 },
               ]}>
+              <View
+                accessibilityElementsHidden
+                importantForAccessibility="no-hide-descendants"
+                style={[
+                  styles.radioDot,
+                  {
+                    backgroundColor: selected ? theme.onPrimary : 'transparent',
+                    borderColor: selected ? theme.onPrimary : theme.controlBorder,
+                  },
+                ]}
+              />
               <Text
                 style={[
                   styles.unitText,
-                  { color: disabled ? theme.disabledText : selected ? theme.primary : theme.textPrimary },
+                  {
+                    color: disabled
+                      ? theme.disabledText
+                      : selected
+                        ? theme.onPrimary
+                        : theme.textPrimary,
+                  },
                 ]}>
-                °{candidate} · {unitName}
+                °{candidate}
               </Text>
             </Pressable>
           );
         })}
       </View>
 
-      <FieldLabel label="Water temperature" requirement="required" />
+      <View style={styles.labelRow}>
+        <Text style={[styles.label, { color: theme.textPrimary }]}>Water temperature</Text>
+        <Text style={[styles.requirement, { color: theme.textSecondary }]}>Required</Text>
+      </View>
       <View
         style={[
           styles.shell,
@@ -106,7 +127,7 @@ export function TemperatureField({
               ? `Water temperature in degrees ${unit === 'C' ? 'Celsius' : 'Fahrenheit'}`
               : 'Water temperature, choose an entered unit first'
           }
-          accessibilityHint={error ?? (converted ? `Also stored as ${converted}` : undefined)}
+          accessibilityHint={error ?? (converted ? `Derived counterpart ${converted}` : undefined)}
           accessibilityState={{ disabled: inputDisabled }}
           editable={!inputDisabled}
           inputAccessoryViewID={inputAccessoryViewID}
@@ -117,7 +138,7 @@ export function TemperatureField({
             setFocused(true);
             onInputFocus?.();
           }}
-          placeholder={unit ? '0.00' : 'Choose °C or °F first'}
+          placeholder={unit ? '—' : 'Choose °C or °F first'}
           placeholderTextColor={inputDisabled ? theme.disabledText : theme.textMuted}
           returnKeyType="done"
           selectTextOnFocus
@@ -128,9 +149,7 @@ export function TemperatureField({
           ]}
           value={value}
         />
-        {unit ? (
-          <Text style={[styles.inputUnit, { color: theme.textSecondary }]}>°{unit}</Text>
-        ) : null}
+        {unit ? <Text style={[styles.inputUnit, { color: theme.textSecondary }]}>°{unit}</Text> : null}
       </View>
 
       {error ? (
@@ -141,7 +160,9 @@ export function TemperatureField({
           {error}
         </Text>
       ) : converted ? (
-        <Text accessibilityLiveRegion="polite" style={[styles.helper, { color: theme.textSecondary }]}>Also stored as {converted}</Text>
+        <Text accessibilityLiveRegion="polite" style={[styles.helper, { color: theme.textSecondary }]}>
+          Entered in °{unit} · {converted} derived
+        </Text>
       ) : (
         <Text style={[styles.helper, { color: theme.textSecondary }]}>
           Choose the unit shown on the instrument before entering the reading.
@@ -155,6 +176,19 @@ const styles = StyleSheet.create({
   group: {
     gap: Spacing.xs,
   },
+  labelRow: {
+    minHeight: 24,
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+    gap: Spacing.sm,
+  },
+  label: {
+    ...Typography.label,
+  },
+  requirement: {
+    ...Typography.caption,
+  },
   units: {
     flexDirection: 'row',
     gap: Spacing.xs,
@@ -163,14 +197,22 @@ const styles = StyleSheet.create({
     minHeight: 52,
     flex: 1,
     borderRadius: Radii.input,
+    borderWidth: 1,
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    gap: Spacing.xs,
     paddingHorizontal: Spacing.sm,
     paddingVertical: Spacing.xs,
   },
+  radioDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    borderWidth: 1,
+  },
   unitText: {
-    ...Typography.label,
-    textAlign: 'center',
+    ...Typography.bodyStrong,
   },
   shell: {
     minHeight: 64,
