@@ -25,7 +25,9 @@ export function StatusChip({ label, tone = 'neutral', icon }: StatusChipProps) {
 
   return (
     <View
+      accessible
       accessibilityLabel={label}
+      accessibilityRole="text"
       style={[styles.chip, { backgroundColor: palette.background }]}>
       {icon ? <AppIcon name={icon} color={palette.foreground} size={14} /> : null}
       <Text style={[styles.chipText, { color: palette.foreground }]}>{label}</Text>
@@ -131,7 +133,10 @@ export function InlineAlert({ tone, title, body }: InlineAlertProps) {
 
   return (
     <View
-      accessibilityRole={tone === 'danger' ? 'alert' : undefined}
+      accessible
+      accessibilityLabel={body ? `${title}. ${body}` : title}
+      accessibilityLiveRegion="polite"
+      accessibilityRole={tone === 'danger' ? 'alert' : 'text'}
       style={[styles.alert, { backgroundColor: palette.background }]}>
       <AppIcon name={palette.icon} color={palette.foreground} size={18} />
       <View style={styles.alertText}>
