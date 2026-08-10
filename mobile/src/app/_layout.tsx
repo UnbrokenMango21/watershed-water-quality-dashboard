@@ -33,7 +33,12 @@ function AuthGate() {
 
   if (initializing) {
     return (
-      <View style={[styles.loading, { backgroundColor: theme.background }]}>
+      <View
+        accessibilityLabel="Preparing field workspace"
+        accessibilityLiveRegion="polite"
+        accessibilityRole="progressbar"
+        accessibilityState={{ busy: true }}
+        style={[styles.loading, { backgroundColor: theme.background }]}>
         <BrandMark size="small" />
         <View style={styles.loadingCopy}>
           <Text style={[styles.loadingTitle, { color: theme.textPrimary }]}>Field Collection</Text>
