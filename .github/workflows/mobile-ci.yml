@@ -1,0 +1,51 @@
+name: Mobile CI
+
+on:
+  pull_request:
+    paths:
+      - 'mobile/**'
+      - '.github/workflows/mobile-ci.yml'
+      - 'AGENTS.md'
+      - 'docs/PHASE11A_EAS_PLATFORM_PROOF.md'
+  push:
+    branches:
+      - platform-v0.1-foundation
+    paths:
+      - 'mobile/**'
+      - '.github/workflows/mobile-ci.yml'
+      - 'AGENTS.md'
+      - 'docs/PHASE11A_EAS_PLATFORM_PROOF.md'
+
+permissions:
+  contents: read
+
+jobs:
+  mobile:
+    name: Expo / TypeScript health
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check Expo dependency compatibility
+        run: npx expo install --check
+
+      - name: TypeScript
+        run: npx tsc --noEmit
+
+      - name: Expo Doctor
+        run: npx expo-doctor
