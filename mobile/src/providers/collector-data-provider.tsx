@@ -56,6 +56,12 @@ const initialRecent: RecentState = {
 
 const CollectorDataContext = createContext<CollectorDataContextValue | undefined>(undefined);
 
+function invalidRecordMessage(kind: 'site' | 'submission', count: number): string | null {
+  if (count <= 0) return null;
+  const noun = kind === 'site' ? 'site record' : 'submission record';
+  return `${count} ${noun}${count === 1 ? '' : 's'} could not be read and ${count === 1 ? 'was' : 'were'} excluded.`;
+}
+
 export function CollectorDataProvider({ uid, children }: PropsWithChildren<{ uid: string }>) {
   const [catalog, setCatalog] = useState<CatalogState>(initialCatalog);
   const [recent, setRecent] = useState<RecentState>(initialRecent);
@@ -71,7 +77,7 @@ export function CollectorDataProvider({ uid, children }: PropsWithChildren<{ uid
           source: 'cached',
           refreshing: false,
           invalidDocumentCount: snapshot.invalidDocumentCount,
-          error: null,
+          error: invalidRecordMessage('site', snapshot.invalidDocumentCount),
         });
       })
       .catch(() => {
@@ -83,7 +89,13 @@ export function CollectorDataProvider({ uid, children }: PropsWithChildren<{ uid
         if (!active) return;
         setCatalog((current) => {
           if (snapshot.metadata.fromCache && snapshot.data.length === 0 && current.sites.length > 0) {
-            return { ...current, source: 'cached', refreshing: false };
+            return {
+              ...current,
+              source: 'cached',
+              refreshing: false,
+              invalidDocumentCount: snapshot.invalidDocumentCount,
+              error: invalidRecordMessage('site', snapshot.invalidDocumentCount),
+            };
           }
           return {
             sites: snapshot.data,
@@ -96,7 +108,7 @@ export function CollectorDataProvider({ uid, children }: PropsWithChildren<{ uid
                 : 'empty',
             refreshing: false,
             invalidDocumentCount: snapshot.invalidDocumentCount,
-            error: null,
+            error: invalidRecordMessage('site', snapshot.invalidDocumentCount),
           };
         });
       },
@@ -123,7 +135,7 @@ export function CollectorDataProvider({ uid, children }: PropsWithChildren<{ uid
               ? 'server'
               : 'empty',
           invalidDocumentCount: snapshot.invalidDocumentCount,
-          error: null,
+          error: invalidRecordMessage('submission', snapshot.invalidDocumentCount),
         });
       },
       () => {
@@ -152,7 +164,7 @@ export function CollectorDataProvider({ uid, children }: PropsWithChildren<{ uid
         source: snapshot.data.length > 0 ? 'server' : 'empty',
         refreshing: false,
         invalidDocumentCount: snapshot.invalidDocumentCount,
-        error: null,
+        error: invalidRecordMessage('site', snapshot.invalidDocumentCount),
       });
     } catch {
       setCatalog((current) => ({
