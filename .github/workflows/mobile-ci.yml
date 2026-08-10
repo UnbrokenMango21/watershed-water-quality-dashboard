@@ -7,6 +7,8 @@ on:
       - '.github/workflows/mobile-ci.yml'
       - 'AGENTS.md'
       - 'docs/PHASE11A_EAS_PLATFORM_PROOF.md'
+      - 'docs/PHASE11_EXECUTION_LOG.md'
+      - 'docs/PHASE11_FLOW_MATRIX.md'
   push:
     branches:
       - platform-v0.1-foundation
@@ -15,6 +17,8 @@ on:
       - '.github/workflows/mobile-ci.yml'
       - 'AGENTS.md'
       - 'docs/PHASE11A_EAS_PLATFORM_PROOF.md'
+      - 'docs/PHASE11_EXECUTION_LOG.md'
+      - 'docs/PHASE11_FLOW_MATRIX.md'
 
 permissions:
   contents: read
@@ -31,6 +35,17 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Repository hygiene
+        working-directory: .
+        shell: bash
+        run: |
+          tracked="$(git ls-files | grep -E '(^|/)\.DS_Store$|^mobile/(GoogleService-Info\.plist|google-services\.json|ios/|android/)' || true)"
+          if [ -n "$tracked" ]; then
+            echo "Unexpected generated/private files are tracked:"
+            echo "$tracked"
+            exit 1
+          fi
+
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
@@ -46,6 +61,12 @@ jobs:
 
       - name: TypeScript
         run: npx tsc --noEmit
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Privacy telemetry guard
+        run: npm run verify:privacy
 
       - name: Expo Doctor
         run: npx expo-doctor
