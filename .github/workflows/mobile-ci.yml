@@ -68,5 +68,11 @@ jobs:
       - name: Privacy telemetry guard
         run: npm run verify:privacy
 
+      - name: Bundle iOS JavaScript
+        run: npx expo export --platform ios --output-dir /tmp/phase11-export-ios
+
+      - name: Bundle Android JavaScript
+        run: npx expo export --platform android --output-dir /tmp/phase11-export-android
+
       - name: Expo Doctor
         run: npx expo-doctor
