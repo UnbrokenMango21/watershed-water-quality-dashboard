@@ -8,7 +8,7 @@ Status vocabulary:
   declared product-complete while any unexplained gap remains.
 
 Current iOS runtime evidence uses the installed EAS development build on the
- iPhone 17 Pro simulator with Metro and a checksum-verified Maestro 2.7.0 binary
+iPhone 17 Pro simulator with Metro and a checksum-verified Maestro 2.7.0 binary
 in `/tmp`. Source has since received release-candidate hardening, so those new
 changes require a final native regression. Android JavaScript export passes and
 an Android EAS development build has been submitted; device/emulator execution
@@ -42,7 +42,7 @@ remains a gate.
 | Home | Recent submitted/correction records | YES | PASS | NOT RUN | Submitted record and pinned correction request rendered from Firestore |
 | Home | Recent list error/offline | YES | NOT RUN | NOT RUN | Listener error/cache copy implemented; native runtime state remains |
 | Observation | Create local draft | YES | PASS | NOT RUN | Atomic per-UID draft created without fake science defaults |
-| Observation | Resume interrupted draft | YES | PASS | NOT RUN | Passed repeatedly for initial and correction revisions after full relaunch |
+| Observation | Resume interrupted draft | YES | PASS | NOT RUN | Passed repeatedly; release-candidate logic also returns drafts with invalid non-empty numeric text to Measurements instead of Review |
 | Observation | Select site | YES | PASS | NOT RUN | Live catalog selection persisted |
 | Observation | Collection date/time defaults | YES | PASS | NOT RUN | Native Expo UI controls rendered local date/time |
 | Observation | Edit collection date/time | YES | NOT RUN | NOT RUN | Native controls wired; release-candidate source also wraps iOS rows for large text; changed-date runtime proof remains |
@@ -57,7 +57,7 @@ remains a gate.
 | Method | Required method/instrument | YES | PASS | NOT RUN | Required feedback, focus order, and review round-trip exercised |
 | Measurements | Required core fields | YES | PASS | NOT RUN | Temperature, pH, DO, and conductivity entered and reviewed |
 | Measurements | All configured optional fields | YES | PASS | NOT RUN | Every Phase 10 optional parameter entered and reviewed |
-| Measurements | Numeric keyboard/editing | YES | PASS | NOT RUN | Decimal entry, select-all correction, drag dismiss, and repeated focus tested; Android pending |
+| Measurements | Numeric keyboard/editing | YES | PASS | NOT RUN | Decimal entry/select-all/drag dismiss exercised; release-candidate serializer now rejects permissive JavaScript-only forms such as hexadecimal pasted text |
 | Measurements | Signed numeric entry | YES | PASS | NOT RUN | Accessible ORP sign toggle produced and persisted a negative value |
 | Measurements | Required-entry feedback | YES | PASS | NOT RUN | Empty form and missing required core entry rejected without client scientific plausibility rules |
 | Temperature | Entered unit selected first | YES | PASS | NOT RUN | Disabled entry before unit and required error exercised |
