@@ -48,6 +48,7 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "lint": "expo lint",
+    "verify:contracts": "node ./scripts/verify-contracts.mjs",
     "verify:privacy": "node ./scripts/verify-privacy.mjs"
   },
   "private": true
