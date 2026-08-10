@@ -2,7 +2,7 @@ import type { Ref } from 'react';
 import { useState } from 'react';
 import { Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
-import { MinTouchTarget, Spacing, Typography } from '@/constants/theme';
+import { MinTouchTarget, Radii, Spacing, Typography } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
 import type { FieldRequirement } from '../ui/field';
@@ -67,7 +67,12 @@ export function MeasurementField({
               ? error
                 ? { borderColor: theme.danger, borderWidth: 1, backgroundColor: 'transparent' }
                 : { backgroundColor: statusColor }
-              : { borderColor: theme.border, borderWidth: 1, borderStyle: 'dashed', backgroundColor: 'transparent' },
+              : {
+                  borderColor: theme.border,
+                  borderWidth: 1,
+                  borderStyle: 'dashed',
+                  backgroundColor: 'transparent',
+                },
           ]}
         />
 
@@ -80,7 +85,7 @@ export function MeasurementField({
               styles.requirement,
               { color: error ? theme.danger : disabled ? theme.disabledText : theme.textSecondary },
             ]}>
-            {error ?? (isRequired ? 'Required' : 'Optional')}
+            {isRequired ? 'Required' : 'Optional'}
           </Text>
         </View>
 
@@ -153,9 +158,16 @@ export function MeasurementField({
         <Text style={[styles.unit, { color: theme.textSecondary }]}>{unit}</Text>
       </View>
 
-      {!error && derivedValue ? (
+      {error ? (
+        <Text
+          accessibilityLiveRegion="polite"
+          accessibilityRole="alert"
+          style={[styles.helper, { color: theme.danger }]}>
+          {error}
+        </Text>
+      ) : derivedValue ? (
         <Text style={[styles.helper, { color: theme.textSecondary }]}>{derivedValue}</Text>
-      ) : !error && helper ? (
+      ) : helper ? (
         <Text style={[styles.helper, { color: theme.textSecondary }]}>{helper}</Text>
       ) : null}
     </View>
@@ -179,6 +191,7 @@ const styles = StyleSheet.create({
     width: 3,
     alignSelf: 'stretch',
     minHeight: 44,
+    borderRadius: Radii.pill,
   },
   labelBlock: {
     flex: 1,
@@ -205,6 +218,7 @@ const styles = StyleSheet.create({
     width: MinTouchTarget,
     minHeight: MinTouchTarget,
     borderWidth: 1,
+    borderRadius: Radii.sm,
     alignItems: 'center',
     justifyContent: 'center',
   },
