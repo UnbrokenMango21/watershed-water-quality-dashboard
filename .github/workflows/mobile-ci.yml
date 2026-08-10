@@ -9,6 +9,10 @@ on:
       - 'docs/PHASE11A_EAS_PLATFORM_PROOF.md'
       - 'docs/PHASE11_EXECUTION_LOG.md'
       - 'docs/PHASE11_FLOW_MATRIX.md'
+      - 'config/collection_protocol.json'
+      - 'config/firebase_schema.json'
+      - 'config/validation_rules.json'
+      - 'config/workflow_states.json'
   push:
     branches:
       - platform-v0.1-foundation
@@ -19,6 +23,10 @@ on:
       - 'docs/PHASE11A_EAS_PLATFORM_PROOF.md'
       - 'docs/PHASE11_EXECUTION_LOG.md'
       - 'docs/PHASE11_FLOW_MATRIX.md'
+      - 'config/collection_protocol.json'
+      - 'config/firebase_schema.json'
+      - 'config/validation_rules.json'
+      - 'config/workflow_states.json'
 
 permissions:
   contents: read
@@ -58,6 +66,9 @@ jobs:
 
       - name: Check Expo dependency compatibility
         run: npx expo install --check
+
+      - name: Phase 9/10 mobile contract guard
+        run: npm run verify:contracts
 
       - name: TypeScript
         run: npx tsc --noEmit
