@@ -1,16 +1,15 @@
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { ReviewSection } from '@/components/observation/review-section';
 import { PrimaryButton, SecondaryButton } from '@/components/ui/button';
-import { ListRow } from '@/components/ui/list-row';
 import { ScreenIntro } from '@/components/ui/screen-intro';
 import { InlineAlert, SubmissionStatusChip, SyncStatus } from '@/components/ui/status';
 import { AppScreen, EmptyState } from '@/components/ui/surface';
 import type { SubmissionDetail, ValidationFlag } from '@/domain/types';
 import { displayUnitForParameter } from '@/features/observations/measurement-presentation';
-import { Spacing, Typography } from '@/constants/theme';
+import { Radii, Spacing, Typography } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useAuth } from '@/providers/auth-provider';
 import { useCollectorData } from '@/providers/collector-data-provider';
@@ -275,21 +274,72 @@ export default function SubmissionDetailScreen() {
 
       <View style={styles.section}>
         <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Revision history</Text>
-        {detail.revisionHistory.map((item) => (
-          <ListRow
-            key={item.revisionId}
-            meta={dateTimeFormatter.format(item.createdAt)}
-            onPress={() =>
-              router.push({
-                pathname: '/submissions/[submissionId]/revisions/[revisionId]',
-                params: { submissionId, revisionId: item.revisionId },
-              })
-            }
-            subtitle={item.status === 'SUBMITTED' ? 'Read-only scientific revision' : 'Editable draft revision'}
-            title={`Revision ${item.revisionNo}`}
-            trailing={<StatusChipForRevision status={item.status} />}
-          />
-        ))}
+        <View style={styles.timeline}>
+          {detail.revisionHistory.map((item, index) => (
+            <Pressable
+              key={item.revisionId}
+              accessibilityRole="button"
+              accessibilityLabel={`Revision ${item.revisionNo}, ${item.status === 'SUBMITTED' ? 'read-only scientific revision' : 'editable draft revision'}, ${dateTimeFormatter.format(item.createdAt)}`}
+              accessibilityHint="Opens this revision"
+              onPress={() =>
+                router.push({
+                  pathname: '/submissions/[submissionId]/revisions/[revisionId]',
+                  params: { submissionId, revisionId: item.revisionId },
+                })
+              }
+              style={({ pressed }) => [
+                styles.timelineRow,
+                { backgroundColor: pressed ? theme.secondaryPressed : 'transparent' },
+              ]}>
+              <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={styles.timelineRail}>
+                <View
+                  style={[
+                    styles.timelineNode,
+                    {
+                      backgroundColor: item.status === 'SUBMITTED' ? theme.primary : theme.surface,
+                      borderColor: item.status === 'SUBMITTED' ? theme.primary : theme.controlBorder,
+                    },
+                  ]}
+                />
+                {index < detail.revisionHistory.length - 1 || submission.status === 'NEEDS_CORRECTION' ? (
+                  <View style={[styles.timelineLine, { backgroundColor: theme.border }]} />
+                ) : null}
+              </View>
+              <View style={styles.timelineCopy}>
+                <View style={styles.timelineHeading}>
+                  <Text style={[styles.timelineTitle, { color: theme.textPrimary }]}>Revision {item.revisionNo}</Text>
+                  <SubmissionStatusChip status={item.status} />
+                </View>
+                <Text style={[styles.timelineBody, { color: theme.textSecondary }]}>
+                  {item.status === 'SUBMITTED' ? 'Read-only scientific revision' : 'Editable draft revision'}
+                </Text>
+                <Text style={[styles.timelineMeta, { color: theme.textMuted }]}>{dateTimeFormatter.format(item.createdAt)}</Text>
+              </View>
+            </Pressable>
+          ))}
+
+          {submission.status === 'NEEDS_CORRECTION' ? (
+            <View accessibilityLabel="Next correction revision" style={styles.timelineRow}>
+              <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={styles.timelineRail}>
+                <View
+                  style={[
+                    styles.timelineNode,
+                    styles.timelineNodeHollow,
+                    { borderColor: theme.danger, backgroundColor: 'transparent' },
+                  ]}
+                />
+              </View>
+              <View style={styles.timelineCopy}>
+                <Text style={[styles.timelineTitle, { color: localDraft?.correction ? theme.primary : theme.textSecondary }]}>
+                  Revision {localDraft?.correction ? localDraft.revisionNo : submission.currentRevisionNo + 1}
+                </Text>
+                <Text style={[styles.timelineBody, { color: theme.textSecondary }]}>
+                  {localDraft?.correction ? 'Correction draft on this device' : 'Correction revision not started'}
+                </Text>
+              </View>
+            </View>
+          ) : null}
+        </View>
       </View>
 
       {submission.status === 'NEEDS_CORRECTION' ? (
@@ -306,12 +356,6 @@ export default function SubmissionDetailScreen() {
 
       <Text style={[styles.readOnly, { color: theme.textSecondary }]}>Submitted revisions are read-only. Attachments are intentionally not exposed in collector v1.</Text>
     </AppScreen>
-  );
-}
-
-function StatusChipForRevision({ status }: { status: 'DRAFT' | 'SUBMITTED' }) {
-  return (
-    <SubmissionStatusChip status={status} />
   );
 }
 
@@ -340,6 +384,57 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     ...Typography.sectionTitle,
+  },
+  timeline: {
+    gap: 0,
+  },
+  timelineRow: {
+    minHeight: 76,
+    flexDirection: 'row',
+    gap: Spacing.sm,
+    paddingHorizontal: Spacing.xs,
+  },
+  timelineRail: {
+    width: 18,
+    alignItems: 'center',
+    paddingTop: 8,
+  },
+  timelineNode: {
+    width: 12,
+    height: 12,
+    borderRadius: Radii.pill,
+    borderWidth: 2,
+  },
+  timelineNodeHollow: {
+    borderWidth: 2,
+  },
+  timelineLine: {
+    width: 2,
+    flex: 1,
+    minHeight: 48,
+  },
+  timelineCopy: {
+    flex: 1,
+    paddingBottom: Spacing.md,
+    gap: Spacing.xxs,
+  },
+  timelineHeading: {
+    minHeight: 28,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: Spacing.sm,
+    flexWrap: 'wrap',
+  },
+  timelineTitle: {
+    ...Typography.bodyStrong,
+  },
+  timelineBody: {
+    ...Typography.helper,
+  },
+  timelineMeta: {
+    ...Typography.caption,
+    fontVariant: ['tabular-nums'],
   },
   readOnly: {
     ...Typography.caption,
