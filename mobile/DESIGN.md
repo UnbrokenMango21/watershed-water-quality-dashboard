@@ -27,6 +27,9 @@ app. It does not reproduce any one third-party brand.
    Hemlock carries identity and structural emphasis, not every action.
 6. **No silent work.** Any operation that can take time or fail explains what
    is happening and gives the collector a recovery path.
+7. **One instrument, not a set of pages.** Screen composition, status grammar,
+   numeric hierarchy, spacing, and interaction patterns stay consistent across
+   the whole collector workflow.
 
 ## Color roles
 
@@ -190,7 +193,10 @@ Never stack rounded cards inside rounded cards.
 
 ### Inputs and selection rows
 
-- Labels stay above fields; required/optional context is explicit.
+- Conventional form labels stay above fields; required/optional context is explicit.
+- Measurement rows are the deliberate exception: parameter identity, requiredness,
+  numeric entry, and unit share one instrument row so a collector can scan the
+  whole record without card-like field stacks.
 - Rest: working surface + `controlBorder`. Focus: creek 2-point border plus a
   visible focus treatment that does not rely on color alone.
 - Error: danger structural cue plus readable message and recovery instruction.
@@ -200,10 +206,18 @@ Never stack rounded cards inside rounded cards.
 
 ### Measurement entry
 
-- Large tabular numeric value with persistent unit.
+- Treat the measurement screen as an instrument face, not a generic form.
+- Use a stable list with parameter identity on the left, a large right-aligned
+  tabular reading, and a persistent fixed unit column.
+- Requiredness has a structural cue: solid creek spine for required, dashed
+  neutral spine for optional, and a hollow danger spine plus error text for a
+  required row that is incomplete/invalid.
 - Decimal keypad where available; preserve transient strings such as `-`, `.`,
   and `1.` until commit. Signed entry is offered only for contract parameters
   that permit it. iOS numeric entry includes a reachable Next/Done accessory.
+- Keep the native/platform input path for the Phase 11 release candidate. A
+  bespoke in-app numeric keypad sheet is deferred until it can be tested for
+  accessibility, localization, and Android parity without weakening stability.
 - Temperature asks for entered unit first, preserves that entered value/unit,
   and derives the counterpart immediately. A new draft begins with neither unit
   selected; a resumed draft restores its explicit unit.
@@ -213,8 +227,8 @@ Never stack rounded cards inside rounded cards.
 
 ### Lists and records
 
-- Site, draft, and submission rows are flat working rows separated by space or
-  hairlines.
+- Site, draft, and submission rows are flat working rows separated by hairlines,
+  not individually rounded cards.
 - Primary line: site/record identity. Secondary line: location/time/context.
 - Trailing content: concise status or navigation affordance, never both if it
   creates clutter.
@@ -224,6 +238,8 @@ Never stack rounded cards inside rounded cards.
 ### Status and alerts
 
 - Status chips are compact pills; ordinary buttons are not pills.
+- Workflow state uses a chip. Transport state uses inline icon + text. Validation
+  uses an inline rule/alert. Revision history alone uses a timeline.
 - Each state combines icon, text, and semantic color.
 - Offline/cached state stays visible near the affected content.
 - Sync status is persistent on drafts/submissions: Saved locally, Syncing,
@@ -235,19 +251,23 @@ Never stack rounded cards inside rounded cards.
 ### Authentication
 
 Calm identity, two direct fields, one primary sign-in action, visible invalid
-authentication/network feedback, and no extra marketing chrome.
+authentication/network feedback, and no extra marketing chrome. Copy is
+operational, not promotional.
 
 ### Collector home
 
 Identity and account access first, then one working action for a new
-observation, followed by recent drafts/submissions. Site availability and
-offline/cached state must be actionable rather than a disabled placeholder.
+observation, followed by active correction/draft work, then recent submissions.
+Corrections lead the work list because they are unfinished field work, not
+history. Site availability and offline/cached state must be actionable rather
+than a disabled placeholder.
 
 ### Site catalog
 
 Search/refresh only if implemented. Support loading, error with retry, empty,
 fresh, and cached-offline states. Site rows optimize for name and field
-disambiguation, not decorative imagery.
+disambiguation, not decorative imagery. Selection uses a real selected state,
+not a navigation chevron.
 
 ### Observation workflow
 
@@ -275,16 +295,22 @@ preserves the prior revision, and ends in `RESUBMITTED` when the existing
 contract permits it. Known and unknown server states render safely rather than
 crashing or being presented as transport state.
 
+Revision history is the one place where a timeline is encouraged: it makes the
+immutable prior revision and the new correction revision visually distinct.
+
 Attachments are absent from the exposed v1 UI unless a real contract-backed
 implementation is added. Notes appear only where the existing schema permits.
 
-## Watershed motif
+## Decorative restraint
 
-Use one or two thin creek/topographic contour lines as low-contrast background
-detail in otherwise empty header or empty-state space. In light theme use
-`creek` at 4% alpha; in dark theme use `creekBright` at 3.5% alpha. Motifs are
-hidden from the accessibility tree, never sit behind data, never animate during
-entry, and never become a repeated decorative border.
+Do not use repeated creek/topographic contour stripes, wave bands, or wallpaper
+behind workflow headers. The field-paper / night-creek canvas stays quiet.
+Identity comes from the project mark, typography, spacing, field-record
+structure, and semantic color.
+
+A future dedicated illustration may use a watershed contour only in a truly
+empty state or onboarding context after explicit review. It must be isolated,
+non-repeating, hidden from the accessibility tree, and never sit behind data.
 
 ## Accessibility and outdoor verification
 
@@ -333,7 +359,8 @@ entry, and never become a repeated decorative border.
 ### Do not
 
 - Do not turn every section into a floating rounded card.
-- Do not use universal pills, decorative gradients, glass, or heavy shadows.
+- Do not use universal pills, decorative gradients, glass, heavy shadows, or
+  repeated background motifs.
 - Do not use saturated green as decoration or color alone as status.
 - Do not hide units, GPS accuracy, provenance, revision, or sync state.
 - Do not invent validation, ownership, quality, or publication semantics.
