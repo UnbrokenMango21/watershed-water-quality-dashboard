@@ -6,6 +6,8 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const mobileRoot = path.resolve(here, '..');
 const srcRoot = path.join(mobileRoot, 'src');
 const analyticsPath = path.join(srcRoot, 'services', 'analytics.ts');
+const appConfigPath = path.join(mobileRoot, 'app.json');
+const firebaseConfigPath = path.join(mobileRoot, 'firebase.json');
 
 function walk(directory) {
   const files = [];
@@ -67,6 +69,29 @@ if (/setUser(Id|Property|Properties)\s*\(/.test(analyticsSource)) {
 
 if (!analyticsSource.includes("'screen_viewed', { screen_name: screen }")) {
   failures.push('Screen telemetry must remain limited to the coarse screen_name field.');
+}
+
+const appConfig = JSON.parse(fs.readFileSync(appConfigPath, 'utf8'));
+const expoConfig = appConfig.expo ?? appConfig;
+const blockedPermissions = expoConfig.android?.blockedPermissions ?? [];
+if (!blockedPermissions.includes('com.google.android.gms.permission.AD_ID')) {
+  failures.push('Android advertising ID permission must remain blocked.');
+}
+
+const analyticsPlugin = (expoConfig.plugins ?? []).find(
+  (plugin) => Array.isArray(plugin) && plugin[0] === '@react-native-firebase/analytics',
+);
+if (!analyticsPlugin || analyticsPlugin[1]?.ios?.withoutAdIdSupport !== true) {
+  failures.push('iOS Firebase Analytics must remain configured without Ad ID support.');
+}
+
+const firebaseConfig = JSON.parse(fs.readFileSync(firebaseConfigPath, 'utf8'));
+const reactNativeFirebaseConfig = firebaseConfig['react-native'] ?? {};
+if (reactNativeFirebaseConfig.analytics_auto_collection_enabled !== true) {
+  failures.push('Analytics collection intent must remain explicit for the collector app.');
+}
+if (reactNativeFirebaseConfig.google_analytics_automatic_screen_reporting_enabled !== false) {
+  failures.push('Automatic native screen reporting must remain disabled; use coarse app screen names only.');
 }
 
 if (failures.length > 0) {
