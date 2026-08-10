@@ -2,7 +2,7 @@ import type { Ref } from 'react';
 import { useState } from 'react';
 import { Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
-import { Radii, Spacing, Typography } from '@/constants/theme';
+import { MinTouchTarget, Radii, Spacing, Typography } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
 import { FieldLabel, type FieldRequirement } from '../ui/field';
@@ -62,6 +62,8 @@ export function MeasurementField({
         <TextInput
           ref={inputRef}
           accessibilityLabel={`${label}, ${unit}`}
+          accessibilityHint={error ?? helper}
+          accessibilityState={{ disabled }}
           editable={!disabled}
           inputAccessoryViewID={inputAccessoryViewID}
           keyboardType={
@@ -89,20 +91,23 @@ export function MeasurementField({
           <Pressable
             accessibilityLabel={isNegative ? 'Make value positive' : 'Make value negative'}
             accessibilityRole="button"
+            accessibilityState={{ disabled }}
             disabled={disabled}
             onPress={() => onChangeText(isNegative ? value.replace(/^\s*-/, '') : `-${value}`)}
             testID={testID ? `${testID}-sign` : undefined}
             style={({ pressed }) => [
               styles.signButton,
               {
-                backgroundColor: isNegative
-                  ? theme.primarySoft
-                  : pressed
-                    ? theme.secondaryPressed
-                    : theme.surfaceSecondary,
+                backgroundColor: disabled
+                  ? theme.disabledSurface
+                  : isNegative
+                    ? theme.primarySoft
+                    : pressed
+                      ? theme.secondaryPressed
+                      : theme.surfaceSecondary,
               },
             ]}>
-            <Text style={[styles.sign, { color: isNegative ? theme.primary : theme.textPrimary }]}>±</Text>
+            <Text style={[styles.sign, { color: disabled ? theme.disabledText : isNegative ? theme.primary : theme.textPrimary }]}>±</Text>
           </Pressable>
         ) : null}
         <View style={[styles.unitPill, { backgroundColor: theme.surfaceSecondary }]}>
@@ -110,7 +115,10 @@ export function MeasurementField({
         </View>
       </View>
       {error ? (
-        <Text accessibilityRole="alert" style={[styles.helper, { color: theme.danger }]}>
+        <Text
+          accessibilityLiveRegion="polite"
+          accessibilityRole="alert"
+          style={[styles.helper, { color: theme.danger }]}>
           {error}
         </Text>
       ) : derivedValue ? (
@@ -149,8 +157,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.sm,
   },
   signButton: {
-    width: 44,
-    minHeight: 44,
+    width: MinTouchTarget,
+    minHeight: MinTouchTarget,
     borderRadius: Radii.sm,
     alignItems: 'center',
     justifyContent: 'center',
