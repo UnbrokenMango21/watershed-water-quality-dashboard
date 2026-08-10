@@ -3,8 +3,6 @@ import { StyleSheet, View } from 'react-native';
 import { Radii, Shadows } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
-import { AppIcon } from './ui/app-icon';
-
 type BrandMarkProps = {
   size?: 'small' | 'large';
 };
@@ -12,7 +10,7 @@ type BrandMarkProps = {
 export function BrandMark({ size = 'large' }: BrandMarkProps) {
   const theme = useTheme();
   const dimension = size === 'large' ? 54 : 42;
-  const iconSize = size === 'large' ? 25 : 20;
+  const scale = size === 'large' ? 1 : 0.8;
 
   return (
     <View
@@ -27,8 +25,12 @@ export function BrandMark({ size = 'large' }: BrandMarkProps) {
           backgroundColor: theme.brand,
         },
       ]}>
-      <View style={[styles.ripple, { borderColor: theme.onBrand }]} />
-      <AppIcon name="water" color={theme.onBrand} size={iconSize} />
+      <View style={[styles.glyph, { transform: [{ scale }] }]}>
+        <View style={[styles.mainStem, { backgroundColor: theme.onBrand }]} />
+        <View style={[styles.leftBranch, { backgroundColor: theme.onBrand }]} />
+        <View style={[styles.rightBranch, { backgroundColor: theme.onBrand }]} />
+        <View style={[styles.outflow, { borderColor: theme.onBrand }]} />
+      </View>
     </View>
   );
 }
@@ -40,13 +42,45 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     ...Shadows.subtle,
   },
-  ripple: {
+  glyph: {
+    width: 30,
+    height: 30,
+    position: 'relative',
+    alignItems: 'center',
+  },
+  mainStem: {
     position: 'absolute',
-    width: 42,
-    height: 42,
+    width: 3,
+    height: 22,
+    top: 4,
+    left: 14,
+    borderRadius: 2,
+  },
+  leftBranch: {
+    position: 'absolute',
+    width: 3,
+    height: 14,
+    top: 5,
+    left: 9,
+    borderRadius: 2,
+    transform: [{ rotate: '-42deg' }],
+  },
+  rightBranch: {
+    position: 'absolute',
+    width: 3,
+    height: 14,
+    top: 5,
+    right: 8,
+    borderRadius: 2,
+    transform: [{ rotate: '42deg' }],
+  },
+  outflow: {
+    position: 'absolute',
+    width: 12,
+    height: 5,
+    left: 9,
+    bottom: 1,
+    borderBottomWidth: 2,
     borderRadius: 999,
-    borderWidth: 1,
-    opacity: 0.2,
-    transform: [{ translateX: 16 }, { translateY: 16 }],
   },
 });
