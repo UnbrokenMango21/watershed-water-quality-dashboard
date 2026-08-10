@@ -30,6 +30,10 @@ function friendlyAuthError(error: unknown) {
     return 'Email or password is incorrect.';
   }
   if (code === 'auth/network-request-failed') return 'Network unavailable. Check your connection and try again.';
+  if (code === 'auth/too-many-requests') return 'Too many sign-in attempts. Wait a moment and try again.';
+  if (code === 'auth/operation-not-allowed') {
+    return 'Email/password sign-in is unavailable for this project. Contact the data administrator.';
+  }
   return 'Sign in failed. Please try again.';
 }
 
