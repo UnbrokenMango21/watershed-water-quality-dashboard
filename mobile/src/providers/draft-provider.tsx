@@ -73,11 +73,20 @@ type DraftContextValue = {
 const DraftContext = createContext<DraftContextValue | undefined>(undefined);
 
 const defaultTransport: TransportRecord = { status: 'saved-locally', error: null };
+const decimalNumberPattern = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/;
+
+function parseNumericText(value: string, field: string) {
+  const normalized = value.trim();
+  const parsed = Number(normalized);
+  if (!decimalNumberPattern.test(normalized) || !Number.isFinite(parsed)) {
+    throw new DraftContractError(field);
+  }
+  return parsed;
+}
 
 function completeDraft(uid: string, draft: PartialObservationDraft): CompleteRevisionDraft {
   const temperatureText = draft.temperatureEnteredValueText ?? '';
-  if (!temperatureText.trim()) throw new DraftContractError('temperatureEnteredValue');
-  const temperatureEnteredValue = Number(temperatureText);
+  const temperatureEnteredValue = parseNumericText(temperatureText, 'temperatureEnteredValue');
   const temperatureEnteredUnit = draft.temperatureEnteredUnit;
   if (!temperatureEnteredUnit) throw new DraftContractError('temperatureEnteredUnit');
   const temperatureC = temperatureEnteredUnit === 'F'
@@ -116,14 +125,14 @@ function completeDraft(uid: string, draft: PartialObservationDraft): CompleteRev
     weatherCondition: draft.weatherCondition,
     fieldNotes: draft.fieldNotes,
     schemaVersion: firebaseSchema.version,
-    mobileAppVersion: Constants.expoConfig?.version ?? '1.0.0',
+    mobileAppVersion: Constants.expoConfig?.version ?? '0.1.0',
     measurements: draft.measurements
       .filter(({ valueText }) => valueText.trim().length > 0)
       .map((measurement) => ({
         measurementId: measurement.measurementId,
         parameterCode: measurement.parameterCode,
         displayName: measurement.displayName,
-        value: Number(measurement.valueText),
+        value: parseNumericText(measurement.valueText, `measurement:${measurement.parameterCode}`),
         unitCode: measurement.unitCode,
         methodName: draft.methodName ?? '',
         instrumentName: draft.instrumentName ?? '',
