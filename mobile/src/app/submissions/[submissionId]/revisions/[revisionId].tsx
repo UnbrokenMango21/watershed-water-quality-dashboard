@@ -11,6 +11,7 @@ import { displayUnitForParameter } from '@/features/observations/measurement-pre
 import { Spacing, Typography } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useAuth } from '@/providers/auth-provider';
+import { trackScreenView } from '@/services/analytics';
 import { listenRevisionDetail } from '@/services/firestore';
 
 const dateTimeFormatter = new Intl.DateTimeFormat(undefined, {
@@ -46,6 +47,10 @@ export default function RevisionDetailScreen() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    void trackScreenView('revision_detail');
+  }, []);
+
+  useEffect(() => {
     if (!user || !submissionId || !revisionId) return undefined;
     return listenRevisionDetail(
       user.uid,
@@ -67,7 +72,7 @@ export default function RevisionDetailScreen() {
     return (
       <AppScreen edges={['right', 'bottom', 'left']} contentStyle={styles.centered}>
         <ActivityIndicator color={theme.primary} />
-        <Text style={[styles.body, { color: theme.textSecondary }]}>Loading revision</Text>
+        <Text accessibilityLiveRegion="polite" style={[styles.body, { color: theme.textSecondary }]}>Loading revision</Text>
       </AppScreen>
     );
   }
@@ -78,80 +83,73 @@ export default function RevisionDetailScreen() {
         <EmptyState
           icon="warning"
           title={error ?? 'Revision unavailable'}
-          body="This revision may not exist or may not be readable by this collector account."
+          body="Return to the submission and try again when the record is available."
         />
       </AppScreen>
     );
   }
 
-  const { revision } = detail;
+  const revision = detail.revision;
+  const flags = [...detail.validationFlags].sort((left, right) => left.createdAt.getTime() - right.createdAt.getTime());
+  const transportFromCache =
+    detail.metadata.revision.fromCache ||
+    detail.metadata.measurements.fromCache ||
+    detail.metadata.validationFlags.fromCache;
 
   return (
     <AppScreen edges={['right', 'bottom', 'left']} contentStyle={styles.content}>
       <Stack.Screen options={{ title: `Revision ${revision.revisionNo}` }} />
       <ScreenIntro
-        eyebrow="IMMUTABLE HISTORY"
+        eyebrow="IMMUTABLE RECORD"
         title={`Revision ${revision.revisionNo}`}
-        body="This view presents the recorded scientific revision and its server-provided validation results."
+        body="This submitted science is read-only. Corrections create a new revision instead of replacing this record."
       />
-      <SubmissionStatusChip status={revision.status} />
-      {detail.metadata.revision.fromCache ? (
-        <InlineAlert tone="info" title="Showing saved offline revision data" />
+
+      <View style={styles.statusRow}>
+        <SubmissionStatusChip status={revision.status} />
+        {transportFromCache ? <InlineAlert tone="info" title="Showing cached record" /> : null}
+      </View>
+
+      <ReviewSection title="Visit">
+        <Text style={[styles.body, { color: theme.textPrimary }]}>{dateTimeFormatter.format(revision.collectedAt)}</Text>
+        <Text style={[styles.body, { color: theme.textSecondary }]}>Site ID {revision.siteId}</Text>
+      </ReviewSection>
+
+      <ReviewSection title="Method & provenance">
+        <Text style={[styles.body, { color: theme.textPrimary }]}>{revision.testType}</Text>
+        <Text style={[styles.body, { color: theme.textSecondary }]}>{revision.methodName}</Text>
+        <Text style={[styles.body, { color: theme.textSecondary }]}>{revision.instrumentName}</Text>
+      </ReviewSection>
+
+      <ReviewSection title="Measurements">
+        {detail.measurements.map((measurement) => (
+          <View key={measurement.measurementId} style={styles.measurementRow}>
+            <Text style={[styles.measurementLabel, { color: theme.textPrimary }]}>{measurement.displayName}</Text>
+            <Text style={[styles.measurementValue, { color: theme.textPrimary }]}>
+              {measurement.value} {displayUnitForParameter(measurement.parameterCode, measurement.unitCode)}
+            </Text>
+          </View>
+        ))}
+      </ReviewSection>
+
+      {revision.fieldNotes ? (
+        <ReviewSection title="Field notes">
+          <Text style={[styles.body, { color: theme.textPrimary }]}>{revision.fieldNotes}</Text>
+        </ReviewSection>
       ) : null}
 
-      {detail.validationFlags.length > 0 ? (
-        <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Validation results</Text>
-          {[...detail.validationFlags]
-            .sort((left, right) => (left.severity === 'ERROR' ? -1 : right.severity === 'ERROR' ? 1 : 0))
-            .map((flag) => (
-              <InlineAlert
-                key={flag.flagId}
-                tone={flagTone(flag)}
-                title={flag.message}
-                body={`${flag.severity.replaceAll('_', ' ')} · ${flag.ruleCode}`}
-              />
-            ))}
-        </View>
+      {flags.length > 0 ? (
+        <ReviewSection title="Validation messages">
+          {flags.map((flag) => (
+            <InlineAlert
+              key={flag.flagId}
+              tone={flagTone(flag)}
+              title={flag.message}
+              body={flag.ruleCode ? `Rule ${flag.ruleCode}` : undefined}
+            />
+          ))}
+        </ReviewSection>
       ) : null}
-
-      <ReviewSection
-        items={[
-          { label: 'Revision status', value: revision.status === 'SUBMITTED' ? 'Submitted · read-only' : 'Draft' },
-          { label: 'Collected', value: dateTimeFormatter.format(revision.collectedAt) },
-          { label: 'Coordinates', value: `${revision.latitude.toFixed(5)}, ${revision.longitude.toFixed(5)}` },
-          { label: 'Reported accuracy', value: `±${Math.round(revision.gpsAccuracyM)} m` },
-        ]}
-        title="Visit"
-      />
-      <ReviewSection
-        items={[
-          { label: 'Test type', value: revision.testType === 'Other' ? revision.testTypeOther ?? 'Other' : revision.testType },
-          { label: 'Data collected by', value: revision.dataCollectedBy },
-          { label: 'Method', value: revision.methodName },
-          { label: 'Instrument / lab', value: revision.instrumentName },
-        ]}
-        title="Method & provenance"
-      />
-      <ReviewSection
-        items={[
-          {
-            label: 'Water temperature',
-            value: `${revision.temperatureEnteredValue} °${revision.temperatureEnteredUnit} · ${revision.temperatureEnteredUnit === 'C' ? `${revision.temperatureF.toFixed(2)} °F` : `${revision.temperatureC.toFixed(2)} °C`}`,
-          },
-          ...detail.measurements.map((measurement) => ({
-            label: measurement.displayName,
-            value: `${measurement.value} ${displayUnitForParameter(measurement.parameterCode)}`,
-          })),
-          { label: 'Field notes', value: revision.fieldNotes?.trim() || 'None' },
-        ]}
-        title="Measurements & notes"
-      />
-      <InlineAlert
-        tone="info"
-        title={revision.status === 'SUBMITTED' ? 'This revision is read-only' : 'This is a draft revision'}
-        body="Submitted science is never silently overwritten; corrections appear as a newer revision."
-      />
     </AppScreen>
   );
 }
@@ -169,10 +167,21 @@ const styles = StyleSheet.create({
   body: {
     ...Typography.body,
   },
-  section: {
+  statusRow: {
     gap: Spacing.sm,
   },
-  sectionTitle: {
-    ...Typography.sectionTitle,
+  measurementRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'baseline',
+    gap: Spacing.md,
+  },
+  measurementLabel: {
+    ...Typography.body,
+    flex: 1,
+  },
+  measurementValue: {
+    ...Typography.bodyStrong,
+    fontVariant: ['tabular-nums'],
   },
 });
