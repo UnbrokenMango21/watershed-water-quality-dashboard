@@ -1,6 +1,7 @@
 import { signInWithEmailAndPassword } from '@react-native-firebase/auth';
 import { useEffect, useRef, useState } from 'react';
 import {
+  AccessibilityInfo,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -61,6 +62,9 @@ export function SignInScreen() {
     setErrorMessage(null);
 
     if (nextEmailError || nextPasswordError) {
+      void AccessibilityInfo.announceForAccessibility(
+        nextEmailError ?? nextPasswordError ?? 'Complete the required sign-in fields.',
+      );
       if (nextEmailError) emailRef.current?.focus();
       else passwordRef.current?.focus();
       return;
@@ -72,7 +76,9 @@ export function SignInScreen() {
       await signInWithEmailAndPassword(auth, trimmedEmail, password);
       void trackProductEvent('collector_sign_in');
     } catch (error) {
-      setErrorMessage(friendlyAuthError(error));
+      const message = friendlyAuthError(error);
+      setErrorMessage(message);
+      void AccessibilityInfo.announceForAccessibility(message);
     } finally {
       setBusy(false);
     }
