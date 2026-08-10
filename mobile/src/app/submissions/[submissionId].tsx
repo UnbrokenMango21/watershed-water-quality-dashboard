@@ -191,6 +191,36 @@ export default function SubmissionDetailScreen() {
         />
       ) : null}
 
+      {submission.status === 'VALIDATING' && submission.overallQualityScore == null ? (
+        <InlineAlert
+          tone="info"
+          title="Automated validation is in progress"
+          body="Confidence scoring and validation flags will appear when server validation completes."
+        />
+      ) : null}
+
+      {submission.overallQualityScore != null ? (
+        <View style={styles.section}>
+          <ReviewSection
+            items={[
+              { label: 'Overall data confidence', value: `${submission.overallQualityScore.toFixed(0)} / 100` },
+              { label: 'Blocking errors', value: String(submission.errorFlagCount) },
+              { label: 'Warnings', value: String(submission.warningFlagCount) },
+              { label: 'Information flags', value: String(submission.infoFlagCount) },
+              ...(submission.validationRulesVersion
+                ? [{ label: 'Validation rules', value: submission.validationRulesVersion }]
+                : []),
+            ]}
+            title="Data confidence"
+          />
+          <InlineAlert
+            tone="info"
+            title="Confidence is not water health"
+            body="This server-generated score describes confidence in the submitted data. It does not grade stream health or suppress scientifically possible environmental anomalies."
+          />
+        </View>
+      ) : null}
+
       {sortedFlags.length > 0 ? (
         <View style={styles.section}>
           <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Validation results</Text>
