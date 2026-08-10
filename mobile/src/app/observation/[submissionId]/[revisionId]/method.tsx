@@ -94,7 +94,14 @@ export default function MethodStep() {
             title={choice}
           />
         ))}
-        {errors.testType ? <Text style={[styles.error, { color: theme.danger }]}>{errors.testType}</Text> : null}
+        {errors.testType ? (
+          <Text
+            accessibilityLiveRegion="polite"
+            accessibilityRole="alert"
+            style={[styles.error, { color: theme.danger }]}>
+            {errors.testType}
+          </Text>
+        ) : null}
         {draft.testType === 'Other' ? (
           <TextField
             error={errors.testTypeOther}
