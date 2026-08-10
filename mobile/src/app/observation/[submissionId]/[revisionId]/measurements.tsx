@@ -169,7 +169,7 @@ export default function MeasurementsStep() {
         <ScreenIntro
           eyebrow="FIELD READINGS"
           title="Enter measurements"
-          body="Keep the instrument's units visible. Scientific plausibility remains a Phase 10 server decision."
+          body="Keep instrument units visible. Scientific plausibility remains a Phase 10 server decision."
         />
 
         {!draft.testType ? (
@@ -197,15 +197,23 @@ export default function MeasurementsStep() {
         </View>
 
         <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Core measurements</Text>
-          <Text style={[styles.sectionBody, { color: theme.textSecondary }]}>Requiredness follows the selected test type.</Text>
-          {coreParameterCodes.map((code) => renderMeasurement(code, requiredCodes.has(code)))}
+          <View style={styles.sectionHeader}>
+            <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Core measurements</Text>
+            <Text style={[styles.sectionBody, { color: theme.textSecondary }]}>Requiredness follows the selected test type.</Text>
+          </View>
+          <View style={[styles.instrumentList, { borderTopColor: theme.border }]}>
+            {coreParameterCodes.map((code) => renderMeasurement(code, requiredCodes.has(code)))}
+          </View>
         </View>
 
         <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Additional measurements</Text>
-          <Text style={[styles.sectionBody, { color: theme.textSecondary }]}>Optional · leave a field empty when it was not measured.</Text>
-          {collectionProtocol.optionalParameters.map((code) => renderMeasurement(code, requiredCodes.has(code)))}
+          <View style={styles.sectionHeader}>
+            <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Additional measurements</Text>
+            <Text style={[styles.sectionBody, { color: theme.textSecondary }]}>Optional · leave a field empty when it was not measured.</Text>
+          </View>
+          <View style={[styles.instrumentList, { borderTopColor: theme.border }]}>
+            {collectionProtocol.optionalParameters.map((code) => renderMeasurement(code, requiredCodes.has(code)))}
+          </View>
         </View>
 
         {errors.minimum ? <InlineAlert tone="danger" title={errors.minimum} /> : null}
@@ -240,6 +248,12 @@ const styles = StyleSheet.create({
   },
   section: {
     gap: Spacing.sm,
+  },
+  sectionHeader: {
+    gap: Spacing.xxs,
+  },
+  instrumentList: {
+    borderTopWidth: StyleSheet.hairlineWidth,
   },
   sectionTitle: {
     ...Typography.sectionTitle,
