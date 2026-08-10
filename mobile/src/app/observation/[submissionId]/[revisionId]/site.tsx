@@ -36,9 +36,9 @@ export default function SiteStep() {
     <AppScreen edges={['right', 'bottom', 'left']} contentStyle={styles.content}>
       <ProgressHeader current="Site" />
       <ScreenIntro
-        eyebrow="FIELD OBSERVATION"
-        title="Choose the sampling site"
-        body="Only active, mobile-safe site names and codes are shown."
+        eyebrow="SAMPLING LOCATION"
+        title="Choose the site"
+        body="Select an active mobile-safe site from the field catalog."
       />
 
       <View style={styles.stateRow}>
@@ -124,7 +124,7 @@ export default function SiteStep() {
         ) : null}
         <PrimaryButton
           disabled={!canContinue}
-          label="Next: Visit details"
+          label="Next: Visit"
           onPress={() =>
             router.push({
               pathname: '/observation/[submissionId]/[revisionId]/visit',
@@ -161,7 +161,7 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
   },
   list: {
-    gap: Spacing.xxs,
+    gap: 0,
   },
   actions: {
     gap: Spacing.xs,
