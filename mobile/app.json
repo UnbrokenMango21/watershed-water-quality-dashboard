@@ -18,6 +18,9 @@
         "foregroundImage": "./assets/images/android-icon-foreground.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
+      "blockedPermissions": [
+        "com.google.android.gms.permission.AD_ID"
+      ],
       "predictiveBackGestureEnabled": true,
       "package": "org.centralpawatershed.mobile",
       "googleServicesFile": "./google-services.json"
