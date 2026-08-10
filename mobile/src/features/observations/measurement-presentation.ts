@@ -14,6 +14,8 @@ const labels: Record<string, string> = {
   DISCHARGE_M3_S: 'Discharge',
 };
 
+const decimalNumberPattern = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/;
+
 export function labelForParameter(parameterCode: string) {
   return labels[parameterCode] ?? parameterCode.toLowerCase().replaceAll('_', ' ');
 }
@@ -30,5 +32,6 @@ export function displayUnitForParameter(parameterCode: string) {
 }
 
 export function numericTextIsFinite(value: string) {
-  return value.trim().length > 0 && Number.isFinite(Number(value));
+  const normalized = value.trim();
+  return decimalNumberPattern.test(normalized) && Number.isFinite(Number(normalized));
 }
