@@ -231,6 +231,10 @@ exact GPS test values, or other sensitive payloads.
 - Added large-text wrapping to native date/time rows and strengthened account
   control accessibility hints while preserving the Creekline 48-point target
   policy and native screen-reader semantics.
+- Hardened numeric entry so resumed drafts containing non-decimal pasted text
+  return to Measurements instead of appearing review-ready, and Firestore
+  serialization now rejects non-decimal numeric text rather than relying on
+  JavaScript's permissive `Number(...)` conversions.
 
 ### Privacy and validation presentation
 
@@ -252,6 +256,8 @@ exact GPS test values, or other sensitive payloads.
 - Aligned the user-facing collector version with the project development cycle
   at `0.1.0`; the earlier `1.0.0` value was Expo-template metadata and did not
   represent the platform's v1.0 release milestone.
+- Replaced the generic template deep-link scheme with the project-specific
+  `centralpawatershed` scheme before release-candidate native builds.
 - Submitted Android development build
   `8529b68b-f133-4e9b-8feb-380387467172` from verified commit `8dc198b` as the
   Android native-platform proof. It predates this final hardening pass, so a
@@ -262,8 +268,8 @@ exact GPS test values, or other sensitive payloads.
 
 - Mobile CI after the hardening changes passed the Phase 9/10 contract guard,
   TypeScript, lint, privacy guard, iOS JavaScript export, Android JavaScript
-  export, and Expo Doctor. Subsequent documentation/version-only changes must
-  remain green before the release-candidate native builds.
+  export, and Expo Doctor. Subsequent changes must remain green before the
+  release-candidate native builds.
 - No Phase 9 schema, Phase 10 validation semantics, Firestore rules, Workflow
   Manager design, or ArcGIS contract was changed.
 - Remaining gates are native Android runtime parity, focused iOS negative/
