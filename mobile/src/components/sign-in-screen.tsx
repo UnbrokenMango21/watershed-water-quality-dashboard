@@ -1,5 +1,5 @@
 import { signInWithEmailAndPassword } from '@react-native-firebase/auth';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   KeyboardAvoidingView,
   Platform,
@@ -19,7 +19,7 @@ import { InlineAlert } from '@/components/ui/status';
 import { MaxContentWidth, Spacing, Typography } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { auth } from '@/lib/firebase';
-import { trackProductEvent } from '@/services/analytics';
+import { trackProductEvent, trackScreenView } from '@/services/analytics';
 
 function friendlyAuthError(error: unknown) {
   const code = (error as { code?: string })?.code;
@@ -42,6 +42,10 @@ export function SignInScreen() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [emailError, setEmailError] = useState<string | null>(null);
   const [passwordError, setPasswordError] = useState<string | null>(null);
+
+  useEffect(() => {
+    void trackScreenView('sign_in');
+  }, []);
 
   async function handleSignIn() {
     const trimmedEmail = email.trim();
@@ -83,13 +87,14 @@ export function SignInScreen() {
         <ScrollView
           automaticallyAdjustKeyboardInsets
           contentContainerStyle={styles.content}
+          keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}>
           <View style={styles.brandSection}>
             <BrandMark />
             <View style={styles.brandCopy}>
               <Text style={[styles.eyebrow, { color: theme.primary }]}>CENTRAL PA WATERSHED</Text>
-              <Text style={[styles.title, { color: theme.textPrimary }]}>Field Collection</Text>
+              <Text accessibilityRole="header" style={[styles.title, { color: theme.textPrimary }]}>Field Collection</Text>
               <Text style={[styles.subtitle, { color: theme.textSecondary }]}>
                 Reliable water-quality observations, captured where the work happens.
               </Text>
