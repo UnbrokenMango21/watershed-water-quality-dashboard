@@ -39,6 +39,8 @@ type CollectorDataContextValue = {
   refreshSites: () => Promise<void>;
 };
 
+const INITIAL_CATALOG_WAIT_MS = 6_000;
+
 const initialCatalog: CatalogState = {
   sites: [],
   source: 'loading',
@@ -68,6 +70,19 @@ export function CollectorDataProvider({ uid, children }: PropsWithChildren<{ uid
 
   useEffect(() => {
     let active = true;
+
+    const catalogWaitTimer = setTimeout(() => {
+      if (!active) return;
+      setCatalog((current) => {
+        if (current.source !== 'loading' || current.sites.length > 0) return current;
+        return {
+          ...current,
+          source: 'error',
+          refreshing: false,
+          error: 'No saved site catalog is available. Connect to the internet and refresh sites.',
+        };
+      });
+    }, INITIAL_CATALOG_WAIT_MS);
 
     void loadCachedSiteCatalog()
       .then((snapshot) => {
@@ -102,13 +117,18 @@ export function CollectorDataProvider({ uid, children }: PropsWithChildren<{ uid
             source: snapshot.metadata.fromCache
               ? snapshot.data.length > 0
                 ? 'cached'
-                : 'loading'
+                : current.source === 'error'
+                  ? 'error'
+                  : 'loading'
               : snapshot.data.length > 0
                 ? 'server'
                 : 'empty',
             refreshing: false,
             invalidDocumentCount: snapshot.invalidDocumentCount,
-            error: invalidRecordMessage('site', snapshot.invalidDocumentCount),
+            error:
+              snapshot.metadata.fromCache && snapshot.data.length === 0 && current.source === 'error'
+                ? current.error
+                : invalidRecordMessage('site', snapshot.invalidDocumentCount),
           };
         });
       },
@@ -150,6 +170,7 @@ export function CollectorDataProvider({ uid, children }: PropsWithChildren<{ uid
 
     return () => {
       active = false;
+      clearTimeout(catalogWaitTimer);
       stopSites();
       stopRecent();
     };
