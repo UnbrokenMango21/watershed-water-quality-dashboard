@@ -1,0 +1,48 @@
+# EAS build archive rules for the mobile app.
+# Keep this aligned with mobile/.gitignore, but explicitly include
+# Firebase client configuration files materialized by CI before the build.
+
+# dependencies
+node_modules/
+
+# Expo
+.expo/
+dist/
+web-build/
+expo-env.d.ts
+
+# Native/generated
+.kotlin/
+*.orig.*
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+/ios
+/android
+
+# Metro
+.metro-health-check*
+
+# debug
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+
+# macOS
+.DS_Store
+*.pem
+
+# local env files
+.env*.local
+
+# TypeScript
+*.tsbuildinfo
+
+example
+
+# CI materializes these after checkout. They must be present in the EAS
+# local-build archive even though the repository root .gitignore excludes them.
+!GoogleService-Info.plist
+!google-services.json
