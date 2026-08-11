@@ -8,12 +8,17 @@ on:
         required: true
         default: 'phase11/mobile-v1'
         type: string
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/testflight-kick'
 
 permissions:
   contents: read
 
 concurrency:
-  group: ios-testflight-${{ inputs.source_ref }}
+  group: ios-testflight-${{ github.event.inputs.source_ref || 'phase11/mobile-v1' }}
   cancel-in-progress: false
 
 jobs:
@@ -23,6 +28,7 @@ jobs:
     timeout-minutes: 90
 
     env:
+      SOURCE_REF: ${{ github.event.inputs.source_ref || 'phase11/mobile-v1' }}
       EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
       GOOGLE_SERVICE_INFO_PLIST_BASE64: ${{ secrets.GOOGLE_SERVICE_INFO_PLIST_BASE64 }}
       ASC_API_KEY_ID: IPDY81DL8P2Z
@@ -38,7 +44,7 @@ jobs:
       - name: Checkout requested source
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.source_ref }}
+          ref: ${{ env.SOURCE_REF }}
 
       - name: Verify required secrets
         shell: bash
@@ -210,7 +216,7 @@ jobs:
           {
             echo '## Central PA Watershed TestFlight upload complete'
             echo
-            echo "- Source: \`${{ inputs.source_ref }}\`"
+            echo "- Source: \`$SOURCE_REF\`"
             echo "- Commit: \`${GITHUB_SHA}\`"
             echo "- Version: \`${APP_VERSION}\`"
             echo "- Build: \`${APP_BUILD}\`"
