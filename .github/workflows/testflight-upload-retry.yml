@@ -1,0 +1,159 @@
+name: TestFlight Upload Retry
+
+on:
+  workflow_dispatch:
+  issues:
+    types: [opened]
+
+permissions:
+  actions: read
+  contents: read
+  issues: write
+
+jobs:
+  upload-existing-ipa:
+    name: Upload existing signed IPA to TestFlight
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.issue.title == '[CI] TestFlight upload retry 31449949593'
+    runs-on: macos-26
+    timeout-minutes: 30
+
+    env:
+      SOURCE_RUN_ID: '31449949593'
+      SOURCE_ARTIFACT: 'CentralPAWatershed-440073ef23797d93d27c3849f6d1a3a1b98ffd61'
+      ASC_API_KEY_ID: IPDY81DL8P2Z
+      ASC_API_KEY_P8_BASE64: ${{ secrets.ASC_API_KEY_P8_BASE64 }}
+      FASTLANE_SKIP_UPDATE_CHECK: '1'
+      FASTLANE_OPT_OUT_USAGE: '1'
+      TRIGGER_ISSUE: ${{ github.event.issue.number }}
+
+    steps:
+      - name: Record retry run
+        if: github.event_name == 'issues'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          gh issue comment "$TRIGGER_ISSUE" \
+            --repo "$GITHUB_REPOSITORY" \
+            --body "Upload-only TestFlight retry started: https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+
+      - name: Download previously built IPA
+        uses: actions/download-artifact@v5
+        with:
+          name: ${{ env.SOURCE_ARTIFACT }}
+          path: ${{ runner.temp }}/source-ipa
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ env.SOURCE_RUN_ID }}
+
+      - name: Locate and verify IPA
+        id: ipa
+        shell: bash
+        run: |
+          ipa="$(find "$RUNNER_TEMP/source-ipa" -type f -name '*.ipa' -print -quit)"
+          if [ -z "$ipa" ] || [ ! -s "$ipa" ]; then
+            echo '::error::No non-empty IPA was found in the source artifact.'
+            exit 1
+          fi
+
+          check_dir="$RUNNER_TEMP/ipa-check"
+          rm -rf "$check_dir"
+          mkdir -p "$check_dir"
+          unzip -q "$ipa" -d "$check_dir"
+          app="$(find "$check_dir/Payload" -maxdepth 1 -type d -name '*.app' -print -quit)"
+          test -n "$app"
+
+          bundle_id="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Info.plist")"
+          version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Info.plist")"
+          build="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$app/Info.plist")"
+          test "$bundle_id" = 'org.centralpawatershed.mobile'
+
+          echo "path=$ipa" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "build=$build" >> "$GITHUB_OUTPUT"
+          echo "Verified signed IPA: $bundle_id version $version build $build"
+
+      - name: Prepare individual App Store Connect API key
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/asc"
+          python3 - <<'PY'
+          import base64
+          import binascii
+          import json
+          import os
+          import pathlib
+
+          value = os.environ['ASC_API_KEY_P8_BASE64'].strip()
+          if not value:
+              raise RuntimeError('ASC_API_KEY_P8_BASE64 is empty.')
+
+          if '-----BEGIN PRIVATE KEY-----' in value:
+              key = value.replace('\\n', '\n')
+          else:
+              compact = ''.join(value.split())
+              try:
+                  key = base64.b64decode(compact, validate=True).decode('utf-8')
+              except (binascii.Error, UnicodeDecodeError) as exc:
+                  raise RuntimeError(
+                      'ASC_API_KEY_P8_BASE64 is neither a raw PEM private key nor valid base64-encoded PEM.'
+                  ) from exc
+
+          if (
+              '-----BEGIN PRIVATE KEY-----' not in key
+              or '-----END PRIVATE KEY-----' not in key
+          ):
+              raise RuntimeError('App Store Connect key material is not a PKCS#8 PEM private key.')
+
+          api_json = pathlib.Path(os.environ['RUNNER_TEMP']) / 'asc' / 'api-key.json'
+          api_json.write_text(json.dumps({
+              'key_id': os.environ['ASC_API_KEY_ID'],
+              'issuer_id': None,
+              'key': key,
+              'duration': 1200,
+              'in_house': False,
+          }))
+          api_json.chmod(0o600)
+          print('App Store Connect individual key validated and prepared.')
+          PY
+
+      - name: Upload existing IPA to TestFlight
+        env:
+          IPA_PATH: ${{ steps.ipa.outputs.path }}
+        shell: bash
+        run: |
+          fastlane pilot upload \
+            --ipa "$IPA_PATH" \
+            --api_key_path "$RUNNER_TEMP/asc/api-key.json" \
+            --app_identifier org.centralpawatershed.mobile \
+            --apple_id 6800149959 \
+            --groups 'Team (Expo)' \
+            --changelog "Phase 11 mobile-v1 artifact retry" \
+            --uses_non_exempt_encryption false
+
+      - name: Report success
+        if: success() && github.event_name == 'issues'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.ipa.outputs.version }}
+          BUILD: ${{ steps.ipa.outputs.build }}
+        shell: bash
+        run: |
+          gh issue comment "$TRIGGER_ISSUE" \
+            --repo "$GITHUB_REPOSITORY" \
+            --body "TestFlight upload completed for Central PA Watershed ${VERSION} (${BUILD})."
+          gh issue close "$TRIGGER_ISSUE" \
+            --repo "$GITHUB_REPOSITORY" \
+            --reason completed
+
+      - name: Report failure
+        if: failure() && github.event_name == 'issues'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          gh issue comment "$TRIGGER_ISSUE" \
+            --repo "$GITHUB_REPOSITORY" \
+            --body "Upload-only retry failed. Run: https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
