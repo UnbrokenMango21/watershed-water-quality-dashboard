@@ -8,49 +8,76 @@ on:
         required: true
         default: 'phase11/mobile-v1'
         type: string
-  push:
-    branches:
-      - main
-    paths:
-      - '.github/testflight-kick'
+  issues:
+    types: [reopened]
 
 permissions:
+  actions: read
   contents: write
+  issues: write
 
 concurrency:
   group: ios-testflight-${{ github.event.inputs.source_ref || 'phase11/mobile-v1' }}
   cancel-in-progress: true
 
+env:
+  SOURCE_REF: ${{ github.event.inputs.source_ref || 'phase11/mobile-v1' }}
+  ASC_API_KEY_ID: IPDY81DL8P2Z
+  ASC_APP_ID: '6800149959'
+  INTERNAL_TESTFLIGHT_GROUP: 'Team (Expo)'
+  FASTLANE_SKIP_UPDATE_CHECK: '1'
+  FASTLANE_OPT_OUT_USAGE: '1'
+
 jobs:
-  build-and-upload:
-    name: Build on Xcode 26.6 and upload to TestFlight
+  build-ipa:
+    name: Build signed IPA on Xcode 26.6
+    if: >-
+      github.event_name != 'issues' ||
+      github.event.issue.title == '[CI] TestFlight build trigger'
     runs-on: macos-26
-    timeout-minutes: 90
+    timeout-minutes: 75
+
+    outputs:
+      app_version: ${{ steps.ipa.outputs.version }}
+      app_build: ${{ steps.ipa.outputs.build }}
+      source_sha: ${{ steps.source.outputs.sha }}
+      artifact_name: ${{ steps.artifact.outputs.name }}
 
     env:
-      SOURCE_REF: ${{ github.event.inputs.source_ref || 'phase11/mobile-v1' }}
       EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
       GOOGLE_SERVICE_INFO_PLIST_BASE64: ${{ secrets.GOOGLE_SERVICE_INFO_PLIST_BASE64 }}
-      ASC_API_KEY_ID: IPDY81DL8P2Z
-      ASC_API_KEY_P8_BASE64: ${{ secrets.ASC_API_KEY_P8_BASE64 }}
       IPA_PATH: ${{ github.workspace }}/CentralPAWatershed.ipa
       EAS_LOCAL_BUILD_WORKINGDIR: ${{ github.workspace }}/.eas-local-build
       EAS_LOCAL_BUILD_ARTIFACTS_DIR: ${{ github.workspace }}/.eas-local-artifacts
       EAS_LOCAL_BUILD_SKIP_CLEANUP: '1'
-      FASTLANE_SKIP_UPDATE_CHECK: '1'
-      FASTLANE_OPT_OUT_USAGE: '1'
 
     steps:
+      - name: Record trigger
+        if: github.event_name == 'issues'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        shell: bash
+        run: |
+          gh issue comment "$ISSUE_NUMBER" \
+            --repo "$GITHUB_REPOSITORY" \
+            --body "TestFlight build started: https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+
       - name: Checkout requested source
         uses: actions/checkout@v4
         with:
           ref: ${{ env.SOURCE_REF }}
 
-      - name: Verify required secrets
+      - name: Capture source commit
+        id: source
+        shell: bash
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Verify build secrets
         shell: bash
         run: |
           missing=0
-          for name in EXPO_TOKEN GOOGLE_SERVICE_INFO_PLIST_BASE64 ASC_API_KEY_P8_BASE64; do
+          for name in EXPO_TOKEN GOOGLE_SERVICE_INFO_PLIST_BASE64; do
             if [ -z "${!name:-}" ]; then
               echo "::error::$name is not configured as a repository Actions secret."
               missing=1
@@ -81,10 +108,14 @@ jobs:
         shell: bash
         run: |
           python3 - <<'PY'
-          import base64, os, pathlib
-          pathlib.Path('GoogleService-Info.plist').write_bytes(
-              base64.b64decode(os.environ['GOOGLE_SERVICE_INFO_PLIST_BASE64'].strip())
-          )
+          import base64
+          import os
+          import pathlib
+
+          value = os.environ['GOOGLE_SERVICE_INFO_PLIST_BASE64'].strip()
+          if not value:
+              raise RuntimeError('GOOGLE_SERVICE_INFO_PLIST_BASE64 is empty.')
+          pathlib.Path('GoogleService-Info.plist').write_bytes(base64.b64decode(value))
           PY
           test -s GoogleService-Info.plist
           bundle_id="$(/usr/libexec/PlistBuddy -c 'Print :BUNDLE_ID' GoogleService-Info.plist)"
@@ -148,12 +179,13 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: eas-local-build-logs-${{ github.sha }}
+          name: eas-local-build-logs-${{ github.run_id }}
           path: ${{ env.EAS_LOCAL_BUILD_WORKINGDIR }}/logs
           if-no-files-found: ignore
           retention-days: 7
 
       - name: Verify IPA identity
+        id: ipa
         shell: bash
         run: |
           check_dir="${RUNNER_TEMP}/ipa-check"
@@ -162,21 +194,141 @@ jobs:
           unzip -q "$IPA_PATH" -d "$check_dir"
           app="$(find "$check_dir/Payload" -maxdepth 1 -type d -name '*.app' -print -quit)"
           test -n "$app"
+
           bundle_id="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Info.plist")"
           version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Info.plist")"
           build="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$app/Info.plist")"
           test "$bundle_id" = 'org.centralpawatershed.mobile'
-          echo "Verified IPA: $bundle_id version $version build $build"
-          echo "APP_VERSION=$version" >> "$GITHUB_ENV"
-          echo "APP_BUILD=$build" >> "$GITHUB_ENV"
 
-      - name: Prepare individual App Store Connect API key
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "build=$build" >> "$GITHUB_OUTPUT"
+          echo "Verified IPA: $bundle_id version $version build $build"
+
+      - name: Define IPA artifact
+        id: artifact
+        shell: bash
+        run: echo "name=CentralPAWatershed-${GITHUB_RUN_ID}" >> "$GITHUB_OUTPUT"
+
+      - name: Preserve signed IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.artifact.outputs.name }}
+          path: ${{ env.IPA_PATH }}
+          if-no-files-found: error
+          retention-days: 7
+
+  upload-testflight:
+    name: Upload and verify internal TestFlight availability
+    needs: build-ipa
+    if: needs.build-ipa.result == 'success'
+    runs-on: macos-26
+    timeout-minutes: 30
+
+    env:
+      ASC_API_KEY_P8_BASE64: ${{ secrets.ASC_API_KEY_P8_BASE64 }}
+      APP_VERSION: ${{ needs.build-ipa.outputs.app_version }}
+      APP_BUILD: ${{ needs.build-ipa.outputs.app_build }}
+      SOURCE_SHA: ${{ needs.build-ipa.outputs.source_sha }}
+
+    steps:
+      - name: Verify App Store Connect secret
         shell: bash
         run: |
-          mkdir -p "${RUNNER_TEMP}/asc"
+          if [ -z "${ASC_API_KEY_P8_BASE64:-}" ]; then
+            echo '::error::ASC_API_KEY_P8_BASE64 is not configured as a repository Actions secret.'
+            exit 1
+          fi
+
+      - name: Download signed IPA from build job
+        uses: actions/download-artifact@v5
+        with:
+          name: ${{ needs.build-ipa.outputs.artifact_name }}
+          path: ${{ runner.temp }}/source-ipa
+
+      - name: Locate and verify IPA
+        id: ipa
+        shell: bash
+        run: |
+          ipa="$(find "$RUNNER_TEMP/source-ipa" -type f -name '*.ipa' -print -quit)"
+          if [ -z "$ipa" ] || [ ! -s "$ipa" ]; then
+            echo '::error::No non-empty IPA was found in the build artifact.'
+            exit 1
+          fi
+
+          check_dir="$RUNNER_TEMP/ipa-check"
+          rm -rf "$check_dir"
+          mkdir -p "$check_dir"
+          unzip -q "$ipa" -d "$check_dir"
+          app="$(find "$check_dir/Payload" -maxdepth 1 -type d -name '*.app' -print -quit)"
+          test -n "$app"
+
+          bundle_id="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Info.plist")"
+          version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Info.plist")"
+          build="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$app/Info.plist")"
+          test "$bundle_id" = 'org.centralpawatershed.mobile'
+          test "$version" = "$APP_VERSION"
+          test "$build" = "$APP_BUILD"
+
+          echo "path=$ipa" >> "$GITHUB_OUTPUT"
+          echo "Verified upload artifact: $bundle_id version $version build $build"
+
+      - name: Normalize and validate individual App Store Connect key
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/asc"
           python3 - <<'PY'
-          import base64, json, os, pathlib
-          key = base64.b64decode(os.environ['ASC_API_KEY_P8_BASE64'].strip()).decode('utf-8')
+          import base64
+          import binascii
+          import json
+          import os
+          import pathlib
+          import subprocess
+          import textwrap
+
+          value = os.environ['ASC_API_KEY_P8_BASE64'].strip()
+          if not value:
+              raise RuntimeError('ASC_API_KEY_P8_BASE64 is empty.')
+
+          if '-----BEGIN PRIVATE KEY-----' in value:
+              key = value.replace('\\n', '\n')
+              representation = 'raw PEM'
+          else:
+              compact = ''.join(value.split())
+              try:
+                  decoded = base64.b64decode(compact, validate=True)
+              except binascii.Error as exc:
+                  raise RuntimeError('App Store Connect key is not valid PEM/base64 material.') from exc
+
+              try:
+                  decoded_text = decoded.decode('utf-8')
+              except UnicodeDecodeError:
+                  decoded_text = None
+
+              if decoded_text and '-----BEGIN PRIVATE KEY-----' in decoded_text:
+                  key = decoded_text.replace('\\n', '\n')
+                  representation = 'base64-encoded PEM'
+              elif decoded and decoded[0] == 0x30:
+                  key = (
+                      '-----BEGIN PRIVATE KEY-----\n'
+                      + '\n'.join(textwrap.wrap(compact, 64))
+                      + '\n-----END PRIVATE KEY-----\n'
+                  )
+                  representation = 'base64 DER'
+              else:
+                  raise RuntimeError('App Store Connect key is not a recognized private-key representation.')
+
+          key_path = pathlib.Path(os.environ['RUNNER_TEMP']) / 'asc' / 'AuthKey.p8'
+          key_path.write_text(key)
+          key_path.chmod(0o600)
+
+          result = subprocess.run(
+              ['/usr/bin/openssl', 'pkey', '-in', str(key_path), '-noout'],
+              stdout=subprocess.DEVNULL,
+              stderr=subprocess.DEVNULL,
+          )
+          if result.returncode != 0:
+              raise RuntimeError('App Store Connect private key failed OpenSSL validation.')
+
           api_json = pathlib.Path(os.environ['RUNNER_TEMP']) / 'asc' / 'api-key.json'
           api_json.write_text(json.dumps({
               'key_id': os.environ['ASC_API_KEY_ID'],
@@ -186,111 +338,223 @@ jobs:
               'in_house': False,
           }))
           api_json.chmod(0o600)
+          print(f'App Store Connect individual key validated ({representation}).')
           PY
 
-      - name: Upload and distribute to internal TestFlight group
+      - name: Upload binary to App Store Connect
+        env:
+          IPA_PATH: ${{ steps.ipa.outputs.path }}
         shell: bash
         run: |
           fastlane pilot upload \
             --ipa "$IPA_PATH" \
-            --api_key_path "${RUNNER_TEMP}/asc/api-key.json" \
+            --api_key_path "$RUNNER_TEMP/asc/api-key.json" \
             --app_identifier org.centralpawatershed.mobile \
-            --apple_id 6800149959 \
-            --groups 'Team (Expo)' \
-            --changelog "Phase 11 mobile-v1 ${GITHUB_SHA::7}" \
+            --apple_id "$ASC_APP_ID" \
+            --skip_submission \
+            --skip_waiting_for_build_processing \
             --uses_non_exempt_encryption false
 
-      - name: Keep IPA as short-lived workflow artifact
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: CentralPAWatershed-${{ github.sha }}
-          path: ${{ env.IPA_PATH }}
-          if-no-files-found: ignore
-          retention-days: 7
-
-      - name: Summary
-        if: success()
+      - name: Wait for processing and verify internal availability
+        id: apple
         shell: bash
         run: |
+          ruby <<'RUBY'
+          require 'base64'
+          require 'json'
+          require 'net/http'
+          require 'openssl'
+          require 'time'
+          require 'uri'
+
+          def b64url(data)
+            Base64.urlsafe_encode64(data, padding: false)
+          end
+
+          key = OpenSSL::PKey.read(File.read(File.join(ENV.fetch('RUNNER_TEMP'), 'asc', 'AuthKey.p8')))
+          now = Time.now.to_i
+          header = { alg: 'ES256', kid: ENV.fetch('ASC_API_KEY_ID'), typ: 'JWT' }
+          payload = { sub: 'user', iat: now, exp: now + 1200, aud: 'appstoreconnect-v1' }
+          signing_input = "#{b64url(JSON.generate(header))}.#{b64url(JSON.generate(payload))}"
+          der_signature = key.sign(OpenSSL::Digest::SHA256.new, signing_input)
+          sequence = OpenSSL::ASN1.decode(der_signature)
+          r = sequence.value[0].value.to_i.to_s(16).rjust(64, '0')
+          s = sequence.value[1].value.to_i.to_s(16).rjust(64, '0')
+          signature = [r + s].pack('H*')
+          token = "#{signing_input}.#{b64url(signature)}"
+
+          def api_request(method, path, token, body = nil)
+            uri = URI("https://api.appstoreconnect.apple.com#{path}")
+            klass = case method
+                    when :get then Net::HTTP::Get
+                    when :post then Net::HTTP::Post
+                    else raise "Unsupported HTTP method: #{method}"
+                    end
+            req = klass.new(uri)
+            req['Authorization'] = "Bearer #{token}"
+            req['Accept'] = 'application/json'
+            if body
+              req['Content-Type'] = 'application/json'
+              req.body = JSON.generate(body)
+            end
+            response = Net::HTTP.start(uri.hostname, uri.port, use_ssl: true) { |http| http.request(req) }
+            unless response.code.to_i.between?(200, 299)
+              raise "App Store Connect API #{method.upcase} #{path} failed with HTTP #{response.code}: #{response.body.to_s[0, 4000]}"
+            end
+            return nil if response.body.to_s.empty?
+            JSON.parse(response.body)
+          end
+
+          app_id = ENV.fetch('ASC_APP_ID')
+          target_build = ENV.fetch('APP_BUILD')
+          target_version = ENV.fetch('APP_VERSION')
+          build = nil
+
+          45.times do |attempt|
+            query = URI.encode_www_form(
+              'fields[builds]' => 'version,uploadedDate,processingState,buildAudienceType',
+              'limit' => '200'
+            )
+            response = api_request(:get, "/v1/apps/#{app_id}/builds?#{query}", token)
+            matches = response.fetch('data', []).select do |item|
+              item.fetch('attributes', {})['version'].to_s == target_build
+            end
+            candidate = matches.max_by { |item| item.fetch('attributes', {})['uploadedDate'].to_s }
+
+            if candidate
+              state = candidate.fetch('attributes', {})['processingState'].to_s
+              case state
+              when 'VALID'
+                build = candidate
+                puts "Apple processing complete: #{target_version} (#{target_build}) is VALID."
+                break
+              when 'FAILED', 'INVALID'
+                raise "Apple processing ended in #{state} for build #{target_build}."
+              else
+                puts "Waiting for App Store Connect processing (#{state.empty? ? 'not listed yet' : state}), attempt #{attempt + 1}/45..."
+              end
+            else
+              puts "Waiting for build #{target_build} to appear in App Store Connect, attempt #{attempt + 1}/45..."
+            end
+            sleep 20
+          end
+
+          raise "Timed out waiting for processed build #{target_build}." unless build
+          build_id = build.fetch('id')
+
+          group_query = URI.encode_www_form(
+            'fields[betaGroups]' => 'name,isInternalGroup,hasAccessToAllBuilds',
+            'limit' => '200'
+          )
+          groups_response = api_request(:get, "/v1/apps/#{app_id}/betaGroups?#{group_query}", token)
+          target_name = ENV.fetch('INTERNAL_TESTFLIGHT_GROUP')
+          target = groups_response.fetch('data', []).find do |group|
+            attrs = group.fetch('attributes', {})
+            attrs['isInternalGroup'] == true && attrs['name'].to_s == target_name
+          end
+          raise "Internal TestFlight group '#{target_name}' was not found." unless target
+
+          attrs = target.fetch('attributes', {})
+          unless attrs['hasAccessToAllBuilds'] == true
+            group_id = target.fetch('id')
+            api_request(
+              :post,
+              "/v1/betaGroups/#{group_id}/relationships/builds",
+              token,
+              { data: [{ type: 'builds', id: build_id }] }
+            )
+            linkage = api_request(:get, "/v1/betaGroups/#{group_id}/relationships/builds?limit=200", token)
+            linked_ids = linkage.fetch('data', []).map { |item| item['id'] }
+            raise 'Internal TestFlight build linkage verification failed.' unless linked_ids.include?(build_id)
+          end
+
+          File.open(ENV.fetch('GITHUB_OUTPUT'), 'a') do |f|
+            f.puts "group=#{target_name}"
+            f.puts "build_id=#{build_id}"
+          end
+          puts "READY: #{target_version} (#{target_build}) is available to internal TestFlight group #{target_name}."
+          RUBY
+
+  finalize:
+    name: Publish deployment result
+    needs: [build-ipa, upload-testflight]
+    if: >-
+      always() &&
+      (github.event_name != 'issues' || github.event.issue.title == '[CI] TestFlight build trigger')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    env:
+      BUILD_RESULT: ${{ needs.build-ipa.result }}
+      UPLOAD_RESULT: ${{ needs.upload-testflight.result }}
+      APP_VERSION: ${{ needs.build-ipa.outputs.app_version }}
+      APP_BUILD: ${{ needs.build-ipa.outputs.app_build }}
+      SOURCE_SHA: ${{ needs.build-ipa.outputs.source_sha }}
+      STATUS_BRANCH: ci/testflight-status
+      STATUS_PATH: .github/testflight-status.json
+      STATUS_TOKEN: ${{ github.token }}
+      TRIGGER_ISSUE: ${{ github.event.issue.number }}
+
+    steps:
+      - name: Compute and publish result
+        id: result
+        shell: bash
+        run: |
+          if [ "$BUILD_RESULT" = 'success' ] && [ "$UPLOAD_RESULT" = 'success' ]; then
+            overall='success'
+          else
+            overall='failure'
+          fi
+          echo "overall=$overall" >> "$GITHUB_OUTPUT"
+
           {
-            echo '## Central PA Watershed TestFlight upload complete'
+            echo '## Central PA Watershed TestFlight pipeline'
             echo
+            echo "- Overall: **$overall**"
+            echo "- Build job: \`$BUILD_RESULT\`"
+            echo "- Upload job: \`$UPLOAD_RESULT\`"
             echo "- Source: \`$SOURCE_REF\`"
-            echo "- Commit: \`${GITHUB_SHA}\`"
-            echo "- Version: \`${APP_VERSION}\`"
-            echo "- Build: \`${APP_BUILD}\`"
+            [ -n "$SOURCE_SHA" ] && echo "- Source commit: \`$SOURCE_SHA\`"
+            [ -n "$APP_VERSION" ] && echo "- Version: \`$APP_VERSION\`"
+            [ -n "$APP_BUILD" ] && echo "- Build: \`$APP_BUILD\`"
             echo '- Bundle ID: `org.centralpawatershed.mobile`'
-            echo '- Destination: TestFlight / Team (Expo)'
-            echo '- Native toolchain: GitHub macOS 26 runner / Xcode 26.6'
+            echo '- Internal TestFlight group: `Team (Expo)`'
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Publish machine-readable run status
-        if: always()
-        env:
-          JOB_STATUS: ${{ job.status }}
-          STATUS_TOKEN: ${{ github.token }}
-          STATUS_BRANCH: ci/testflight-status
-          STATUS_PATH: .github/testflight-status.json
-        shell: bash
-        run: |
           python3 - <<'PY'
           import base64
           import datetime as dt
           import json
           import os
-          import pathlib
-          import subprocess
           import urllib.error
           import urllib.parse
           import urllib.request
 
-          workspace = pathlib.Path(os.environ['GITHUB_WORKSPACE'])
-          logs_dir = pathlib.Path(os.environ['EAS_LOCAL_BUILD_WORKINGDIR']) / 'logs'
+          overall = 'success' if (
+              os.environ['BUILD_RESULT'] == 'success'
+              and os.environ['UPLOAD_RESULT'] == 'success'
+          ) else 'failure'
 
-          try:
-              source_sha = subprocess.check_output(
-                  ['git', 'rev-parse', 'HEAD'], cwd=workspace, text=True
-              ).strip()
-          except Exception:
-              source_sha = None
+          status = {
+              'run_id': int(os.environ['GITHUB_RUN_ID']),
+              'run_number': int(os.environ['GITHUB_RUN_NUMBER']),
+              'run_attempt': int(os.environ.get('GITHUB_RUN_ATTEMPT', '1')),
+              'status': overall,
+              'build_result': os.environ['BUILD_RESULT'],
+              'upload_result': os.environ['UPLOAD_RESULT'],
+              'source_ref': os.environ['SOURCE_REF'],
+              'source_sha': os.environ.get('SOURCE_SHA') or None,
+              'app_version': os.environ.get('APP_VERSION') or None,
+              'app_build': os.environ.get('APP_BUILD') or None,
+              'bundle_id': 'org.centralpawatershed.mobile',
+              'testflight_group': os.environ['INTERNAL_TESTFLIGHT_GROUP'],
+              'updated_at': dt.datetime.now(dt.timezone.utc).isoformat(),
+              'run_url': f"https://github.com/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{os.environ['GITHUB_RUN_ID']}",
+          }
 
-          chunks = []
-          if logs_dir.is_dir():
-              for path in sorted(p for p in logs_dir.rglob('*') if p.is_file()):
-                  try:
-                      lines = path.read_text(errors='replace').splitlines()
-                  except Exception:
-                      continue
-                  chunks.append(f'===== {path.name} =====')
-                  chunks.extend(lines[-120:])
-
-          diagnostics = '\n'.join(chunks)
-          if len(diagnostics) > 30000:
-              diagnostics = diagnostics[-30000:]
-
-          ipa_path = pathlib.Path(os.environ['IPA_PATH'])
           repo = os.environ['GITHUB_REPOSITORY']
           branch = os.environ['STATUS_BRANCH']
           path = os.environ['STATUS_PATH']
-          run_id = os.environ['GITHUB_RUN_ID']
-
-          status = {
-              'run_id': int(run_id),
-              'run_number': int(os.environ['GITHUB_RUN_NUMBER']),
-              'run_attempt': int(os.environ.get('GITHUB_RUN_ATTEMPT', '1')),
-              'status': os.environ['JOB_STATUS'],
-              'source_ref': os.environ['SOURCE_REF'],
-              'source_sha': source_sha,
-              'trigger_sha': os.environ['GITHUB_SHA'],
-              'app_version': os.environ.get('APP_VERSION') or None,
-              'app_build': os.environ.get('APP_BUILD') or None,
-              'ipa_created': ipa_path.is_file() and ipa_path.stat().st_size > 0,
-              'diagnostics': diagnostics,
-              'updated_at': dt.datetime.now(dt.timezone.utc).isoformat(),
-              'run_url': f'https://github.com/{repo}/actions/runs/{run_id}',
-          }
-
           api = f'https://api.github.com/repos/{repo}/contents/{path}'
           headers = {
               'Accept': 'application/vnd.github+json',
@@ -300,8 +564,10 @@ jobs:
           }
 
           sha = None
-          query = urllib.parse.urlencode({'ref': branch})
-          req = urllib.request.Request(f'{api}?{query}', headers=headers)
+          req = urllib.request.Request(
+              f"{api}?{urllib.parse.urlencode({'ref': branch})}",
+              headers=headers,
+          )
           try:
               with urllib.request.urlopen(req) as response:
                   sha = json.load(response).get('sha')
@@ -310,10 +576,8 @@ jobs:
                   raise
 
           body = {
-              'message': f"ci: TestFlight run #{status['run_number']} {status['status']}",
-              'content': base64.b64encode(
-                  (json.dumps(status, indent=2) + '\n').encode()
-              ).decode(),
+              'message': f"ci: TestFlight run #{status['run_number']} {overall}",
+              'content': base64.b64encode((json.dumps(status, indent=2) + '\n').encode()).decode(),
               'branch': branch,
           }
           if sha:
@@ -325,8 +589,27 @@ jobs:
               headers={**headers, 'Content-Type': 'application/json'},
               method='PUT',
           )
-          with urllib.request.urlopen(req) as response:
-              result = json.load(response)
-
-          print('Published TestFlight status:', result['content']['html_url'])
+          with urllib.request.urlopen(req):
+              pass
+          print('Published machine-readable TestFlight status.')
           PY
+
+      - name: Close reusable trigger issue
+        if: github.event_name == 'issues'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OVERALL: ${{ steps.result.outputs.overall }}
+        shell: bash
+        run: |
+          if [ "$OVERALL" = 'success' ]; then
+            body="TestFlight deployment succeeded: Central PA Watershed ${APP_VERSION:-unknown} (${APP_BUILD:-unknown}) is ready for internal testing. Run: https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          else
+            body="TestFlight deployment failed. Build job: ${BUILD_RESULT}; upload job: ${UPLOAD_RESULT}. Run: https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          fi
+          gh issue comment "$TRIGGER_ISSUE" --repo "$GITHUB_REPOSITORY" --body "$body"
+          gh issue close "$TRIGGER_ISSUE" --repo "$GITHUB_REPOSITORY" --reason completed
+
+      - name: Fail workflow when deployment failed
+        if: steps.result.outputs.overall != 'success'
+        shell: bash
+        run: exit 1
