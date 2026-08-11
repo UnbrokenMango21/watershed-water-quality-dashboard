@@ -33,5 +33,12 @@
         "image": "sdk-57"
       }
     }
+  },
+  "submit": {
+    "production": {
+      "ios": {
+        "ascAppId": "6800149959"
+      }
+    }
   }
 }
