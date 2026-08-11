@@ -28,6 +28,9 @@ jobs:
       ASC_API_KEY_ID: IPDY81DL8P2Z
       ASC_API_KEY_P8_BASE64: ${{ secrets.ASC_API_KEY_P8_BASE64 }}
       IPA_PATH: ${{ github.workspace }}/CentralPAWatershed.ipa
+      EAS_LOCAL_BUILD_WORKINGDIR: ${{ github.workspace }}/.eas-local-build
+      EAS_LOCAL_BUILD_ARTIFACTS_DIR: ${{ github.workspace }}/.eas-local-artifacts
+      EAS_LOCAL_BUILD_SKIP_CLEANUP: '1'
       FASTLANE_SKIP_UPDATE_CHECK: '1'
       FASTLANE_OPT_OUT_USAGE: '1'
 
@@ -103,8 +106,46 @@ jobs:
             --local \
             --non-interactive \
             --freeze-credentials \
+            --verbose-logs \
+            --build-logger-level debug \
             --output "$IPA_PATH"
           test -s "$IPA_PATH"
+
+      - name: Surface EAS local-build diagnostics
+        if: failure()
+        shell: bash
+        run: |
+          {
+            echo '## EAS local-build diagnostics'
+            echo
+            echo "Working directory: \`$EAS_LOCAL_BUILD_WORKINGDIR\`"
+            echo
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          logs_dir="$EAS_LOCAL_BUILD_WORKINGDIR/logs"
+          if [ ! -d "$logs_dir" ]; then
+            echo 'No EAS local-build logs directory was produced.' >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          while IFS= read -r log; do
+            {
+              echo "### $(basename "$log")"
+              echo '```text'
+              tail -n 160 "$log"
+              echo '```'
+              echo
+            } >> "$GITHUB_STEP_SUMMARY"
+          done < <(find "$logs_dir" -type f -maxdepth 2 -print | sort)
+
+      - name: Keep failed native-build logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eas-local-build-logs-${{ github.sha }}
+          path: ${{ env.EAS_LOCAL_BUILD_WORKINGDIR }}/logs
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Verify IPA identity
         shell: bash
