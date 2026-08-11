@@ -1,0 +1,170 @@
+name: iOS TestFlight
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-testflight-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-and-upload:
+    name: Build on Xcode 26.6 and upload to TestFlight
+    runs-on: macos-26
+    timeout-minutes: 90
+
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+      GOOGLE_SERVICE_INFO_PLIST_BASE64: ${{ secrets.GOOGLE_SERVICE_INFO_PLIST_BASE64 }}
+      ASC_API_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
+      ASC_API_KEY_P8_BASE64: ${{ secrets.ASC_API_KEY_P8_BASE64 }}
+      IPA_PATH: ${{ runner.temp }}/CentralPAWatershed.ipa
+      FASTLANE_SKIP_UPDATE_CHECK: '1'
+      FASTLANE_OPT_OUT_USAGE: '1'
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Verify required secrets
+        shell: bash
+        run: |
+          missing=0
+          for name in EXPO_TOKEN GOOGLE_SERVICE_INFO_PLIST_BASE64 ASC_API_KEY_ID ASC_API_KEY_P8_BASE64; do
+            if [ -z "${!name:-}" ]; then
+              echo "::error::$name is not configured as a repository Actions secret."
+              missing=1
+            fi
+          done
+          exit "$missing"
+
+      - name: Select supported Xcode
+        shell: bash
+        run: |
+          sudo xcode-select -s /Applications/Xcode_26.6.app/Contents/Developer
+          xcodebuild -version
+          xcode-select -p
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+
+      - name: Install mobile dependencies
+        working-directory: mobile
+        run: npm ci
+
+      - name: Materialize Firebase iOS client configuration
+        working-directory: mobile
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import base64, os, pathlib
+          pathlib.Path('GoogleService-Info.plist').write_bytes(
+              base64.b64decode(os.environ['GOOGLE_SERVICE_INFO_PLIST_BASE64'].strip())
+          )
+          PY
+          test -s GoogleService-Info.plist
+          bundle_id="$(/usr/libexec/PlistBuddy -c 'Print :BUNDLE_ID' GoogleService-Info.plist)"
+          test "$bundle_id" = 'org.centralpawatershed.mobile'
+          echo 'Firebase iOS config matches org.centralpawatershed.mobile.'
+
+      - name: Release gates
+        working-directory: mobile
+        shell: bash
+        run: |
+          npx expo install --check
+          npm run verify:contracts
+          npx tsc --noEmit
+          npm run lint
+          npm run verify:privacy
+          npx expo-doctor
+
+      - name: Build signed IPA without EAS cloud queue
+        working-directory: mobile
+        shell: bash
+        run: |
+          npx --yes eas-cli@latest build \
+            --platform ios \
+            --profile production \
+            --local \
+            --non-interactive \
+            --freeze-credentials \
+            --output "$IPA_PATH"
+          test -s "$IPA_PATH"
+
+      - name: Verify IPA identity
+        shell: bash
+        run: |
+          check_dir="${RUNNER_TEMP}/ipa-check"
+          rm -rf "$check_dir"
+          mkdir -p "$check_dir"
+          unzip -q "$IPA_PATH" -d "$check_dir"
+          app="$(find "$check_dir/Payload" -maxdepth 1 -type d -name '*.app' -print -quit)"
+          test -n "$app"
+          bundle_id="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Info.plist")"
+          version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Info.plist")"
+          build="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$app/Info.plist")"
+          test "$bundle_id" = 'org.centralpawatershed.mobile'
+          echo "Verified IPA: $bundle_id version $version build $build"
+          echo "APP_VERSION=$version" >> "$GITHUB_ENV"
+          echo "APP_BUILD=$build" >> "$GITHUB_ENV"
+
+      - name: Prepare individual App Store Connect API key
+        shell: bash
+        run: |
+          mkdir -p "${RUNNER_TEMP}/asc"
+          python3 - <<'PY'
+          import base64, json, os, pathlib
+          key = base64.b64decode(os.environ['ASC_API_KEY_P8_BASE64'].strip()).decode('utf-8')
+          api_json = pathlib.Path(os.environ['RUNNER_TEMP']) / 'asc' / 'api-key.json'
+          api_json.write_text(json.dumps({
+              'key_id': os.environ['ASC_API_KEY_ID'],
+              'issuer_id': None,
+              'key': key,
+              'duration': 1200,
+              'in_house': False,
+          }))
+          api_json.chmod(0o600)
+          PY
+
+      - name: Upload and distribute to internal TestFlight group
+        shell: bash
+        run: |
+          fastlane pilot upload \
+            --ipa "$IPA_PATH" \
+            --api_key_path "${RUNNER_TEMP}/asc/api-key.json" \
+            --app_identifier org.centralpawatershed.mobile \
+            --apple_id 6800149959 \
+            --groups 'Team (Expo)' \
+            --changelog "Phase 11 mobile-v1 ${GITHUB_SHA::7}" \
+            --uses_non_exempt_encryption false
+
+      - name: Keep IPA as short-lived workflow artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: CentralPAWatershed-${{ github.sha }}
+          path: ${{ runner.temp }}/CentralPAWatershed.ipa
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Summary
+        if: success()
+        shell: bash
+        run: |
+          {
+            echo '## Central PA Watershed TestFlight upload complete'
+            echo
+            echo "- Commit: \`${GITHUB_SHA}\`"
+            echo "- Version: \`${APP_VERSION}\`"
+            echo "- Build: \`${APP_BUILD}\`"
+            echo '- Bundle ID: `org.centralpawatershed.mobile`'
+            echo '- Destination: TestFlight / Team (Expo)'
+            echo '- Native toolchain: GitHub macOS 26 runner / Xcode 26.6'
+          } >> "$GITHUB_STEP_SUMMARY"
