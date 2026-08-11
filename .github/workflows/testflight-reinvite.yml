@@ -1,0 +1,133 @@
+name: TestFlight Reinvite
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  reinvite:
+    if: github.event.issue.title == '[CI] TestFlight reinvite tester'
+    runs-on: macos-26
+    timeout-minutes: 10
+    env:
+      ASC_API_KEY_ID: IPDY81DL8P2Z
+      ASC_API_KEY_P8_BASE64: ${{ secrets.ASC_API_KEY_P8_BASE64 }}
+      ASC_APP_ID: '6800149959'
+      TARGET_GROUP: 'Team (Expo)'
+      ISSUE_NUMBER: ${{ github.event.issue.number }}
+    steps:
+      - name: Normalize App Store Connect key
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/asc"
+          python3 - <<'PY'
+          import base64, os, pathlib, subprocess, textwrap
+          value = os.environ['ASC_API_KEY_P8_BASE64'].strip()
+          if '-----BEGIN PRIVATE KEY-----' in value:
+              key = value.replace('\\n', '\n')
+          else:
+              compact = ''.join(value.split())
+              decoded = base64.b64decode(compact, validate=True)
+              try:
+                  text = decoded.decode('utf-8')
+              except UnicodeDecodeError:
+                  text = None
+              if text and '-----BEGIN PRIVATE KEY-----' in text:
+                  key = text.replace('\\n', '\n')
+              elif decoded and decoded[0] == 0x30:
+                  key = '-----BEGIN PRIVATE KEY-----\n' + '\n'.join(textwrap.wrap(compact, 64)) + '\n-----END PRIVATE KEY-----\n'
+              else:
+                  raise RuntimeError('Unrecognized App Store Connect key representation')
+          path = pathlib.Path(os.environ['RUNNER_TEMP']) / 'asc' / 'AuthKey.p8'
+          path.write_text(key)
+          path.chmod(0o600)
+          r = subprocess.run(['/usr/bin/openssl','pkey','-in',str(path),'-noout'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+          if r.returncode != 0:
+              raise RuntimeError('App Store Connect key failed validation')
+          PY
+
+      - name: Resend tester invitation
+        shell: bash
+        run: |
+          ruby <<'RUBY'
+          require 'base64'
+          require 'json'
+          require 'net/http'
+          require 'openssl'
+          require 'uri'
+
+          def b64url(data)
+            Base64.urlsafe_encode64(data, padding: false)
+          end
+          key = OpenSSL::PKey.read(File.read(File.join(ENV.fetch('RUNNER_TEMP'),'asc','AuthKey.p8')))
+          now = Time.now.to_i
+          header = {alg:'ES256', kid:ENV.fetch('ASC_API_KEY_ID'), typ:'JWT'}
+          payload = {sub:'user', iat:now, exp:now+1200, aud:'appstoreconnect-v1'}
+          input = "#{b64url(JSON.generate(header))}.#{b64url(JSON.generate(payload))}"
+          seq = OpenSSL::ASN1.decode(key.sign(OpenSSL::Digest::SHA256.new,input))
+          r = seq.value[0].value.to_i.to_s(16).rjust(64,'0')
+          s = seq.value[1].value.to_i.to_s(16).rjust(64,'0')
+          token = "#{input}.#{b64url([r+s].pack('H*'))}"
+
+          def request(method,path,token,body=nil)
+            uri = URI("https://api.appstoreconnect.apple.com#{path}")
+            req = method == :get ? Net::HTTP::Get.new(uri) : Net::HTTP::Post.new(uri)
+            req['Authorization'] = "Bearer #{token}"
+            req['Accept'] = 'application/json'
+            if body
+              req['Content-Type'] = 'application/json'
+              req.body = JSON.generate(body)
+            end
+            res = Net::HTTP.start(uri.hostname, uri.port, use_ssl:true){|h| h.request(req)}
+            raise "ASC #{method.upcase} #{path} failed HTTP #{res.code}: #{res.body.to_s[0,2000]}" unless res.code.to_i.between?(200,299)
+            res.body.to_s.empty? ? nil : JSON.parse(res.body)
+          end
+
+          app_id = ENV.fetch('ASC_APP_ID')
+          gq = URI.encode_www_form('fields[betaGroups]'=>'name,isInternalGroup','limit'=>'200')
+          groups = request(:get,"/v1/apps/#{app_id}/betaGroups?#{gq}",token).fetch('data',[])
+          group = groups.find{|g| g.dig('attributes','name').to_s == ENV.fetch('TARGET_GROUP')}
+          raise 'Target TestFlight group not found' unless group
+
+          tq = URI.encode_www_form('fields[betaTesters]'=>'firstName,lastName,email,state,inviteType','limit'=>'200')
+          testers = request(:get,"/v1/betaGroups/#{group.fetch('id')}/betaTesters?#{tq}",token).fetch('data',[])
+          raise "Expected exactly one tester in #{ENV.fetch('TARGET_GROUP')}; found #{testers.length}" unless testers.length == 1
+          tester = testers.first
+          tester_id = tester.fetch('id')
+          before_state = tester.dig('attributes','state')
+
+          body = {
+            data: {
+              type: 'betaTesterInvitations',
+              relationships: {
+                app: { data: { type: 'apps', id: app_id } },
+                betaTester: { data: { type: 'betaTesters', id: tester_id } }
+              }
+            }
+          }
+          response = request(:post,'/v1/betaTesterInvitations',token,body)
+          raise 'App Store Connect did not return an invitation resource' unless response && response.dig('data','type') == 'betaTesterInvitations'
+
+          File.write(File.join(ENV.fetch('RUNNER_TEMP'),'result.txt'), "Fresh TestFlight email invitation sent successfully. Tester state before resend: #{before_state}.\n")
+          RUBY
+
+      - name: Report result
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          gh issue comment "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" --body-file "$RUNNER_TEMP/result.txt"
+          gh issue close "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" --reason completed
+
+      - name: Report failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          gh issue comment "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" --body "Reinvite automation failed. Run: https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
