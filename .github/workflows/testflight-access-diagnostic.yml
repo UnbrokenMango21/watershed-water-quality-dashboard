@@ -1,0 +1,131 @@
+name: TestFlight Access Diagnostic
+
+on:
+  issues:
+    types: [reopened]
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  diagnose:
+    if: github.event.issue.title == '[CI] TestFlight access diagnostic'
+    runs-on: macos-26
+    timeout-minutes: 10
+    env:
+      ASC_API_KEY_ID: IPDY81DL8P2Z
+      ASC_API_KEY_P8_BASE64: ${{ secrets.ASC_API_KEY_P8_BASE64 }}
+      ASC_APP_ID: '6800149959'
+      TARGET_GROUP: 'Team (Expo)'
+      ISSUE_NUMBER: ${{ github.event.issue.number }}
+    steps:
+      - name: Normalize App Store Connect key
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/asc"
+          python3 - <<'PY'
+          import base64, binascii, os, pathlib, subprocess, textwrap
+          value = os.environ['ASC_API_KEY_P8_BASE64'].strip()
+          if not value:
+              raise RuntimeError('ASC_API_KEY_P8_BASE64 is empty')
+          if '-----BEGIN PRIVATE KEY-----' in value:
+              key = value.replace('\\n', '\n')
+          else:
+              compact = ''.join(value.split())
+              decoded = base64.b64decode(compact, validate=True)
+              try:
+                  text = decoded.decode('utf-8')
+              except UnicodeDecodeError:
+                  text = None
+              if text and '-----BEGIN PRIVATE KEY-----' in text:
+                  key = text.replace('\\n', '\n')
+              elif decoded and decoded[0] == 0x30:
+                  key = '-----BEGIN PRIVATE KEY-----\n' + '\n'.join(textwrap.wrap(compact, 64)) + '\n-----END PRIVATE KEY-----\n'
+              else:
+                  raise RuntimeError('Unrecognized App Store Connect key representation')
+          path = pathlib.Path(os.environ['RUNNER_TEMP']) / 'asc' / 'AuthKey.p8'
+          path.write_text(key)
+          path.chmod(0o600)
+          r = subprocess.run(['/usr/bin/openssl','pkey','-in',str(path),'-noout'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+          if r.returncode != 0:
+              raise RuntimeError('App Store Connect key failed OpenSSL validation')
+          PY
+
+      - name: Query TestFlight group and tester states
+        shell: bash
+        run: |
+          ruby <<'RUBY'
+          require 'base64'
+          require 'json'
+          require 'net/http'
+          require 'openssl'
+          require 'uri'
+
+          def b64url(data)
+            Base64.urlsafe_encode64(data, padding: false)
+          end
+
+          key = OpenSSL::PKey.read(File.read(File.join(ENV.fetch('RUNNER_TEMP'), 'asc', 'AuthKey.p8')))
+          now = Time.now.to_i
+          header = { alg: 'ES256', kid: ENV.fetch('ASC_API_KEY_ID'), typ: 'JWT' }
+          payload = { sub: 'user', iat: now, exp: now + 1200, aud: 'appstoreconnect-v1' }
+          signing_input = "#{b64url(JSON.generate(header))}.#{b64url(JSON.generate(payload))}"
+          seq = OpenSSL::ASN1.decode(key.sign(OpenSSL::Digest::SHA256.new, signing_input))
+          r = seq.value[0].value.to_i.to_s(16).rjust(64, '0')
+          s = seq.value[1].value.to_i.to_s(16).rjust(64, '0')
+          token = "#{signing_input}.#{b64url([r+s].pack('H*'))}"
+
+          def get_json(path, token)
+            uri = URI("https://api.appstoreconnect.apple.com#{path}")
+            req = Net::HTTP::Get.new(uri)
+            req['Authorization'] = "Bearer #{token}"
+            req['Accept'] = 'application/json'
+            res = Net::HTTP.start(uri.hostname, uri.port, use_ssl: true) { |http| http.request(req) }
+            raise "ASC GET #{path} failed HTTP #{res.code}: #{res.body.to_s[0,1000]}" unless res.code.to_i.between?(200,299)
+            JSON.parse(res.body)
+          end
+
+          app_id = ENV.fetch('ASC_APP_ID')
+          group_query = URI.encode_www_form('fields[betaGroups]' => 'name,isInternalGroup,hasAccessToAllBuilds', 'limit' => '200')
+          groups = get_json("/v1/apps/#{app_id}/betaGroups?#{group_query}", token).fetch('data', [])
+          target = groups.find { |g| g.dig('attributes','name').to_s == ENV.fetch('TARGET_GROUP') }
+          raise "Target group #{ENV.fetch('TARGET_GROUP')} not found" unless target
+
+          attrs = target.fetch('attributes', {})
+          tester_query = URI.encode_www_form('fields[betaTesters]' => 'firstName,lastName,email,inviteType,state', 'limit' => '200')
+          testers = get_json("/v1/betaGroups/#{target.fetch('id')}/betaTesters?#{tester_query}", token).fetch('data', [])
+
+          def mask(email)
+            return '(no email)' if email.to_s.empty?
+            local, domain = email.split('@', 2)
+            return email unless domain
+            visible = local.length <= 2 ? local[0,1] : local[0,2]
+            "#{visible}***@#{domain}"
+          end
+
+          lines = []
+          lines << "TestFlight access diagnostic for #{ENV.fetch('TARGET_GROUP')}"
+          lines << "- Internal group: #{attrs['isInternalGroup']}"
+          lines << "- Access to all builds: #{attrs['hasAccessToAllBuilds']}"
+          lines << "- Tester count: #{testers.length}"
+          if testers.empty?
+            lines << '- Testers: NONE'
+          else
+            testers.each_with_index do |t, i|
+              a = t.fetch('attributes', {})
+              name = [a['firstName'], a['lastName']].compact.join(' ').strip
+              name = '(unnamed)' if name.empty?
+              lines << "- Tester #{i+1}: #{name}; #{mask(a['email'])}; state=#{a['state']}; inviteType=#{a['inviteType']}"
+            end
+          end
+          File.write(File.join(ENV.fetch('RUNNER_TEMP'),'diagnostic.txt'), lines.join("\n") + "\n")
+          RUBY
+
+      - name: Report diagnostic
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          gh issue comment "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" --body-file "$RUNNER_TEMP/diagnostic.txt"
+          gh issue close "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" --reason completed
