@@ -85,6 +85,8 @@ jobs:
           import json
           import os
           import pathlib
+          import subprocess
+          import textwrap
 
           value = os.environ['ASC_API_KEY_P8_BASE64'].strip()
           if not value:
@@ -92,20 +94,53 @@ jobs:
 
           if '-----BEGIN PRIVATE KEY-----' in value:
               key = value.replace('\\n', '\n')
+              representation = 'raw PEM'
           else:
               compact = ''.join(value.split())
               try:
-                  key = base64.b64decode(compact, validate=True).decode('utf-8')
-              except (binascii.Error, UnicodeDecodeError) as exc:
+                  decoded = base64.b64decode(compact, validate=True)
+              except binascii.Error as exc:
                   raise RuntimeError(
-                      'ASC_API_KEY_P8_BASE64 is neither a raw PEM private key nor valid base64-encoded PEM.'
+                      'App Store Connect key secret is not valid PEM or base64 key material.'
                   ) from exc
+
+              try:
+                  decoded_text = decoded.decode('utf-8')
+              except UnicodeDecodeError:
+                  decoded_text = None
+
+              if decoded_text and '-----BEGIN PRIVATE KEY-----' in decoded_text:
+                  key = decoded_text.replace('\\n', '\n')
+                  representation = 'base64-encoded PEM'
+              elif decoded and decoded[0] == 0x30:
+                  key = (
+                      '-----BEGIN PRIVATE KEY-----\n'
+                      + '\n'.join(textwrap.wrap(compact, 64))
+                      + '\n-----END PRIVATE KEY-----\n'
+                  )
+                  representation = 'base64 DER'
+              else:
+                  raise RuntimeError(
+                      'App Store Connect key secret decoded successfully but is not a recognized private-key representation.'
+                  )
 
           if (
               '-----BEGIN PRIVATE KEY-----' not in key
               or '-----END PRIVATE KEY-----' not in key
           ):
               raise RuntimeError('App Store Connect key material is not a PKCS#8 PEM private key.')
+
+          key_path = pathlib.Path(os.environ['RUNNER_TEMP']) / 'asc' / 'AuthKey.p8'
+          key_path.write_text(key)
+          key_path.chmod(0o600)
+
+          result = subprocess.run(
+              ['/usr/bin/openssl', 'pkey', '-in', str(key_path), '-noout'],
+              stdout=subprocess.DEVNULL,
+              stderr=subprocess.DEVNULL,
+          )
+          if result.returncode != 0:
+              raise RuntimeError('App Store Connect private key failed OpenSSL validation.')
 
           api_json = pathlib.Path(os.environ['RUNNER_TEMP']) / 'asc' / 'api-key.json'
           api_json.write_text(json.dumps({
@@ -116,7 +151,7 @@ jobs:
               'in_house': False,
           }))
           api_json.chmod(0o600)
-          print('App Store Connect individual key validated and prepared.')
+          print(f'App Store Connect individual key validated ({representation}).')
           PY
 
       - name: Upload existing IPA to TestFlight
