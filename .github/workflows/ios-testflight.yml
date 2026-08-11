@@ -136,7 +136,7 @@ jobs:
               echo '```'
               echo
             } >> "$GITHUB_STEP_SUMMARY"
-          done < <(find "$logs_dir" -type f -maxdepth 2 -print | sort)
+          done < <(find "$logs_dir" -type f -print | sort)
 
       - name: Keep failed native-build logs
         if: failure()
