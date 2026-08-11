@@ -72,6 +72,8 @@ The preferred development path is cloud-native compilation rather than using the
 
 Do not reintroduce local CocoaPods/Xcode/Gradle troubleshooting as the default workflow when EAS can perform the native build.
 
+Local Xcode 27 / iOS 27 SDK builds are currently not a supported Phase 11 iOS path for Expo SDK 57. A physical-device crash report confirmed UIKit terminating the process at launch because the generated native app does not yet adopt the required UIScene lifecycle. Do not patch generated native files, Pods, Expo framework sources, or `node_modules` to force scene adoption. Use the pinned EAS `sdk-57` iOS image and follow `docs/PHASE11_IOS27_TOOLCHAIN_NOTE.md` until the upstream Expo / React Native scene-lifecycle implementation is available and verified.
+
 Do not pin or change the user's machine-wide Node default as part of project setup. If a reproducible Node version is required for CI/EAS, scope it to the CI/EAS configuration or document the compatibility requirement rather than changing unrelated projects on the machine.
 
 ## Dependency rules
