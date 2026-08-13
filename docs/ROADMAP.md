@@ -1,53 +1,40 @@
 # Development Roadmap
 
-This sequence is the working implementation order for the Watershed Monitoring Platform.
+> This file is retained as a stable entry point. The authoritative current roadmap is [`PROJECT_ROADMAP.md`](PROJECT_ROADMAP.md).
 
-- [x] 1. Architecture + mind map
-- [x] 2. GitHub repository
-- [x] 3. GitHub documentation / CHANGELOG / Issues foundation
-- [x] 4. Formal data dictionary
-- [x] 5. ArcGIS Pro geodatabase prototype
-- [x] 6. ArcGIS domains + relationships + IDs
-- [ ] 7. Publish clean ArcGIS Online staging environment
-- [ ] 8. Design Workflow Manager
-- [ ] 9. Create Firebase project and production schema
-- [ ] 10. Build validation engine
-- [ ] 11. Build mobile app
-- [ ] 12. Connect Firebase → Workflow Manager
-- [ ] 13. Connect approval → ArcGIS publication
-- [ ] 14. Build dashboard
-- [ ] 15. End-to-end testing
-- [ ] 16. v1.0 release
+## Project progress
 
-## Current active phase
+| Phase | Milestone | Status |
+| --- | --- | --- |
+| 1 | Architecture + mind map | ✅ Complete |
+| 2 | GitHub repository foundation | ✅ Complete |
+| 3 | Documentation / changelog / project foundation | ✅ Complete |
+| 4 | Formal data dictionary | ✅ Complete |
+| 5 | ArcGIS Pro geodatabase prototype | ✅ Complete |
+| 6 | ArcGIS domains + relationships + IDs | ✅ Complete |
+| 7 | Clean ArcGIS Online staging environment | ✅ Complete |
+| 8 | Human-review workflow design | ✅ Design complete; Workflow Manager Online now optional |
+| 9 | Firebase schema + security foundation | ✅ Complete |
+| 10 | Automated validation engine | ✅ Complete |
+| 11 | Native iOS + Android collector | 🚧 Production integration in progress |
+| 12 | Minimal reviewer/QC workflow | 🧭 Next after mobile integration |
+| 13 | Verified ArcGIS publishing service | 🧭 Next after reviewer path |
+| 14 | Research/public dashboard | 🧭 Planned |
+| 15 | End-to-end pilot and failure testing | 🧭 Planned |
+| 16 | v1.0 production release | 🧭 Planned |
 
-**Phase 7 — Publish clean ArcGIS Online staging environment**
+## Current implementation sequence
 
-Phase 6 is complete and verified in ArcGIS Pro 3.7.1. The hardened `CentralPA_Watershed.gdb` passed 51 read-only verification checks with 0 failures, including GlobalIDs, GUID foreign keys, five relationship classes, coded-value domain assignments, SamplingEvents attachments, and UTC editor tracking. A full save/reopen test also passed.
+```mermaid
+flowchart LR
+    A[Native mobile integration] --> B[Independent audit]
+    B --> C[Reliability + provenance hardening]
+    C --> D[Minimal QC review]
+    D --> E[Publishing service]
+    E --> F[ArcGIS verification]
+    F --> G[Dashboard]
+    G --> H[Field pilot]
+    H --> I[v1.0]
+```
 
-Phase 7 will publish the empty, hardened schema to ArcGIS Online as a private staging service. The staging service must preserve relationships, GlobalIDs, attachments, domains, editor tracking, and internal/private fields while remaining restricted to the project owner/review team. Public-safe hosted views will be designed later; no production or historical records are loaded in Phase 7.
-
-## Phase gates
-
-Each major stage should be considered complete only when its schema/configuration is documented, versioned, tested, and recoverable.
-
-### v0.1 — Foundation
-Architecture, repository structure, roadmap, audit/provenance rules, and formal data model.
-
-### v0.2 — GIS data model
-ArcGIS Pro geodatabase, domains, IDs, relationships, and publication-ready schema.
-
-### v0.3 — Review workflow
-ArcGIS Online staging and Workflow Manager supervisor/QC process.
-
-### v0.4 — Collection and validation
-Firebase staging, validation engine, quality flags/scoring, and mobile data collection.
-
-### v0.5 — Integration
-Firebase → review workflow → verified ArcGIS publication.
-
-### v0.6 — Analytics
-Dashboard and research-facing analysis.
-
-### v1.0 — Production
-End-to-end tested, documented, versioned production release.
+The detailed requirements, merge gates, future improvements, and intentionally deferred features live in [`PROJECT_ROADMAP.md`](PROJECT_ROADMAP.md).
