@@ -4,5 +4,24 @@
     "location": "nam5",
     "rules": "firebase/firestore.rules",
     "indexes": "firebase/firestore.indexes.json"
+  },
+  "storage": {
+    "rules": "firebase/storage.rules"
+  },
+  "functions": {
+    "source": ".",
+    "codebase": "validation",
+    "runtime": "nodejs22",
+    "ignore": [
+      ".git/**",
+      ".firebase/**",
+      "node_modules/**",
+      "Phone App/**",
+      "mobile/**",
+      "tests/**",
+      "docs/**",
+      "*.zip",
+      "*.log"
+    ]
   }
 }

@@ -1,0 +1,73 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function privilegedReader() {
+      return signedIn()
+        && "role" in request.auth.token
+        && request.auth.token.role in ["ADMIN", "QC_REVIEWER"];
+    }
+
+    function submission(submissionId) {
+      return firestore.get(/databases/(default)/documents/submissions/$(submissionId));
+    }
+
+    function revision(submissionId, revisionId) {
+      return firestore.get(/databases/(default)/documents/submissions/$(submissionId)/revisions/$(revisionId));
+    }
+
+    function ownsDraft(userId, submissionId, revisionId) {
+      return signedIn()
+        && request.auth.uid == userId
+        && submission(submissionId).data.collector_user_id == userId
+        && revision(submissionId, revisionId).data.collector_user_id == userId
+        && revision(submissionId, revisionId).data.revision_status == "DRAFT";
+    }
+
+    function validContent() {
+      return request.resource.size > 0
+        && request.resource.size <= 50 * 1024 * 1024
+        && request.resource.contentType in [
+          "image/jpeg",
+          "image/png",
+          "image/heic",
+          "audio/mp4",
+          "audio/m4a",
+          "application/pdf"
+        ];
+    }
+
+    function validMetadata(userId, submissionId, revisionId, fileName) {
+      return request.resource.metadata.keys().hasOnly([
+          "ownerUid", "submissionId", "revisionId", "attachmentId"
+        ])
+        && request.resource.metadata.ownerUid == userId
+        && request.resource.metadata.submissionId == submissionId
+        && request.resource.metadata.revisionId == revisionId
+        && fileName.matches(request.resource.metadata.attachmentId + "\\.(jpg|jpeg|png|heic|m4a|mp4|pdf)");
+    }
+
+    match /users/{userId}/submissions/{submissionId}/revisions/{revisionId}/{fileName} {
+      allow read: if signedIn()
+        && (request.auth.uid == userId || privilegedReader())
+        && submission(submissionId).data.collector_user_id == userId;
+
+      allow create: if resource == null
+        && ownsDraft(userId, submissionId, revisionId)
+        && validContent()
+        && validMetadata(userId, submissionId, revisionId, fileName);
+
+      allow update: if false;
+
+      allow delete: if ownsDraft(userId, submissionId, revisionId);
+    }
+
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

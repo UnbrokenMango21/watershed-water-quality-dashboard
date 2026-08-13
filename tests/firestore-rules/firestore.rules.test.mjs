@@ -13,7 +13,8 @@ import {
   getDoc,
   setDoc,
   updateDoc,
-  deleteDoc
+  deleteDoc,
+  Timestamp
 } from 'firebase/firestore';
 
 const PROJECT_ID = 'central-pa-watershed-dev';
@@ -28,7 +29,7 @@ const revisionId = '33333333-3333-4333-8333-333333333333';
 const siteId = 'SITE-TEST-001';
 
 function nowString() {
-  return '2026-08-08T16:00:00-04:00';
+  return Timestamp.fromDate(new Date('2026-08-08T20:00:00Z'));
 }
 
 function draftSubmission(overrides = {}) {
@@ -70,7 +71,7 @@ function draftRevision(overrides = {}) {
     site_distance_m: 3.1,
     weather_condition: 'Clear',
     data_collected_by: 'Student/researcher',
-    test_type: 'In-situ/Penn State Lab',
+    test_type: 'In-situ / Field Instrument',
     test_type_other: null,
     method_name: 'Field meter',
     instrument_name: 'Test instrument',
@@ -102,6 +103,19 @@ function measurement(id = 'm-1', overrides = {}) {
   };
 }
 
+function attachment(id = 'a-1', overrides = {}) {
+  return {
+    attachment_id: id,
+    storage_path: `users/collector-a/submissions/${submissionId}/revisions/${revisionId}/${id}.jpg`,
+    content_type: 'image/jpeg',
+    size_bytes: 1024,
+    kind: 'SITE_PHOTO',
+    caption: null,
+    created_at: nowString(),
+    ...overrides
+  };
+}
+
 async function seed(pathString, data) {
   await env.withSecurityRulesDisabled(async (ctx) => {
     await setDoc(doc(ctx.firestore(), pathString), data);
@@ -119,6 +133,7 @@ before(async () => {
 
 beforeEach(async () => {
   await env.clearFirestore();
+  await seed(`siteCatalog/${siteId}`, { site_id: siteId, site_name_display: 'Spring Creek at Houserville Road Bridge', active: true });
 });
 
 after(async () => {
@@ -166,6 +181,7 @@ test('QC reviewer can read collector submission', async () => {
 
 test('collector can transition own submission DRAFT to SUBMITTED', async () => {
   await seed(`submissions/${submissionId}`, draftSubmission());
+  await seed(`submissions/${submissionId}/revisions/${revisionId}`, draftRevision({ revision_status: 'SUBMITTED', submitted_at: nowString() }));
   const db = env.authenticatedContext('collector-a').firestore();
   await assertSucceeds(updateDoc(doc(db, `submissions/${submissionId}`), {
     status: 'SUBMITTED',
@@ -217,6 +233,16 @@ test('collector revision must match parent site_id', async () => {
   await assertFails(setDoc(doc(db, `submissions/${submissionId}/revisions/${revisionId}`), draftRevision({ site_id: 'OTHER-SITE' })));
 });
 
+test('collector revision rejects malformed GPS, test type and timestamp fields', async () => {
+  await seed(`submissions/${submissionId}`, draftSubmission());
+  const db = env.authenticatedContext('collector-a').firestore();
+  await assertFails(setDoc(doc(db, `submissions/${submissionId}/revisions/${revisionId}`), draftRevision({ latitude: '40.7' })));
+  await assertFails(setDoc(doc(db, `submissions/${submissionId}/revisions/${revisionId}`), draftRevision({ latitude: 0, longitude: 0 })));
+  await assertFails(setDoc(doc(db, `submissions/${submissionId}/revisions/${revisionId}`), draftRevision({ test_type: 'Unknown Method' })));
+  await assertFails(setDoc(doc(db, `submissions/${submissionId}/revisions/${revisionId}`), draftRevision({ test_type: 'Other', test_type_other: null })));
+  await assertFails(setDoc(doc(db, `submissions/${submissionId}/revisions/${revisionId}`), draftRevision({ collected_at: 'not-a-timestamp' })));
+});
+
 test('collector can submit a DRAFT revision', async () => {
   await seed(`submissions/${submissionId}`, draftSubmission());
   await seed(`submissions/${submissionId}/revisions/${revisionId}`, draftRevision());
@@ -254,6 +280,29 @@ test('collector cannot inject unknown fields into a measurement', async () => {
     doc(db, `submissions/${submissionId}/revisions/${revisionId}/measurements/m-1`),
     measurement('m-1', { overall_quality_score: 100 })
   ));
+});
+
+test('measurement rejects invalid parameter codes, units, values and forged ids', async () => {
+  await seed(`submissions/${submissionId}`, draftSubmission());
+  await seed(`submissions/${submissionId}/revisions/${revisionId}`, draftRevision());
+  const db = env.authenticatedContext('collector-a').firestore();
+  const path = `submissions/${submissionId}/revisions/${revisionId}/measurements/m-1`;
+  await assertFails(setDoc(doc(db, path), measurement('m-1', { parameter_code: 'DO_PPM', unit_code: 'mg/L' })));
+  await assertFails(setDoc(doc(db, path), measurement('m-1', { parameter_code: 'PH', unit_code: 'mg/L' })));
+  await assertFails(setDoc(doc(db, path), measurement('m-1', { value: '7.2' })));
+  await assertFails(setDoc(doc(db, path), measurement('forged-id')));
+});
+
+test('attachment metadata requires exact owner-scoped storage path, MIME and size', async () => {
+  await seed(`submissions/${submissionId}`, draftSubmission());
+  await seed(`submissions/${submissionId}/revisions/${revisionId}`, draftRevision());
+  const db = env.authenticatedContext('collector-a').firestore();
+  const path = `submissions/${submissionId}/revisions/${revisionId}/attachments/a-1`;
+  await assertSucceeds(setDoc(doc(db, path), attachment()));
+  await assertFails(setDoc(doc(db, path), attachment('a-1', { storage_path: 'users/collector-b/forged.jpg' })));
+  await assertFails(setDoc(doc(db, path), attachment('a-1', { content_type: 'text/plain' })));
+  await assertFails(setDoc(doc(db, path), attachment('a-1', { size_bytes: 0 })));
+  await assertFails(setDoc(doc(db, path), attachment('different-id')));
 });
 
 test('collector cannot edit measurements after revision submission', async () => {

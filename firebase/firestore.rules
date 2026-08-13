@@ -33,6 +33,26 @@ service cloud.firestore {
       return /databases/$(database)/documents/submissions/$(submissionId)/revisions/$(revisionId);
     }
 
+    function sitePath(siteId) {
+      return /databases/$(database)/documents/siteCatalog/$(siteId);
+    }
+
+    function nonEmptyString(value) {
+      return value is string && value.size() > 0;
+    }
+
+    function validTestType(value) {
+      return value in [
+        "In-situ / Field Instrument",
+        "Penn State Lab",
+        "External Lab",
+        "Field Kit / Colorimetric",
+        "Continuous Sensor / Sonde",
+        "Mixed In-situ + Lab",
+        "Other"
+      ];
+    }
+
     function ownsSubmission(submissionId) {
       return signedIn()
         && get(submissionPath(submissionId)).data.collector_user_id == uid();
@@ -44,7 +64,6 @@ service cloud.firestore {
 
     function collectorSubmissionUpdateKeysOnly() {
       return request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-        "site_id",
         "status",
         "current_revision_id",
         "current_revision_no",
@@ -63,6 +82,15 @@ service cloud.firestore {
         resource.data.status == "NEEDS_CORRECTION"
         && request.resource.data.status in ["NEEDS_CORRECTION", "RESUBMITTED"]
       );
+    }
+
+    function validFinalRevisionLink(submissionId) {
+      let revision = get(revisionPath(submissionId, request.resource.data.current_revision_id));
+      return revision.data.submission_id == submissionId
+        && revision.data.event_id == request.resource.data.event_id
+        && revision.data.collector_user_id == uid()
+        && revision.data.revision_no == request.resource.data.current_revision_no
+        && revision.data.revision_status == "SUBMITTED";
     }
 
     function revisionIsDraft(submissionId, revisionId) {
@@ -142,13 +170,37 @@ service cloud.firestore {
         && request.resource.data.site_id == get(submissionPath(submissionId)).data.site_id
         && request.resource.data.revision_status == "DRAFT"
         && request.resource.data.revision_no is int
+        && request.resource.data.revision_no >= 1
+        && request.resource.data.created_at is timestamp
+        && request.resource.data.collected_at is timestamp
+        && request.resource.data.submitted_at == null
+        && request.resource.data.time_known is bool
+        && request.resource.data.time_imputed is bool
         && request.resource.data.latitude is number
+        && request.resource.data.latitude >= -90
+        && request.resource.data.latitude <= 90
         && request.resource.data.longitude is number
+        && request.resource.data.longitude >= -180
+        && request.resource.data.longitude <= 180
+        && !(request.resource.data.latitude == 0 && request.resource.data.longitude == 0)
         && request.resource.data.gps_accuracy_m is number
+        && request.resource.data.gps_accuracy_m >= 0
+        && nonEmptyString(request.resource.data.data_collected_by)
+        && validTestType(request.resource.data.test_type)
+        && (request.resource.data.test_type != "Other" || nonEmptyString(request.resource.data.test_type_other))
+        && nonEmptyString(request.resource.data.method_name)
+        && nonEmptyString(request.resource.data.instrument_name)
         && request.resource.data.temp_entered_value is number
         && request.resource.data.temp_c is number
         && request.resource.data.temp_f is number
-        && request.resource.data.temp_entered_unit in ["C", "F"];
+        && request.resource.data.temp_entered_unit in ["C", "F"]
+        && request.resource.data.schema_version == "0.1.0"
+        && nonEmptyString(request.resource.data.mobile_app_version)
+        && (
+          (get(submissionPath(submissionId)).data.status == "DRAFT" && request.resource.data.revision_no == 1)
+          || (get(submissionPath(submissionId)).data.status == "NEEDS_CORRECTION"
+            && request.resource.data.revision_no == get(submissionPath(submissionId)).data.current_revision_no + 1)
+        );
     }
 
     function validCollectorRevisionUpdate() {
@@ -163,7 +215,14 @@ service cloud.firestore {
         && request.resource.data.site_id == resource.data.site_id
         && request.resource.data.created_at == resource.data.created_at
         && request.resource.data.revision_status in ["DRAFT", "SUBMITTED"]
-        && request.resource.data.temp_entered_unit in ["C", "F"];
+        && request.resource.data.submitted_at is timestamp
+        && request.resource.data.temp_entered_unit in ["C", "F"]
+        && request.resource.data.latitude is number
+        && request.resource.data.longitude is number
+        && request.resource.data.gps_accuracy_m is number
+        && request.resource.data.temp_entered_value is number
+        && request.resource.data.temp_c is number
+        && request.resource.data.temp_f is number;
     }
 
     function measurementAllowedKeys() {
@@ -181,6 +240,19 @@ service cloud.firestore {
       ];
     }
 
+    function validParameterUnit(parameterCode, unitCode) {
+      return (parameterCode == "PH" && unitCode == "pH")
+        || (parameterCode == "DO_MG_L" && unitCode == "mg/L")
+        || (parameterCode == "DO_PERCENT" && unitCode == "percent")
+        || (parameterCode == "CONDUCTIVITY_US_CM" && unitCode == "uS/cm")
+        || (parameterCode == "TDS_MG_L" && unitCode == "mg/L")
+        || (parameterCode == "ORP_MV" && unitCode == "mV")
+        || (parameterCode in ["CHLORIDE_MG_L", "SULFATE_MG_L"] && unitCode == "mg/L")
+        || (parameterCode == "NITRATE_MG_L" && unitCode == "mg/L as N")
+        || (parameterCode == "PHOSPHATE_MG_L" && unitCode == "mg/L as P")
+        || (parameterCode == "DISCHARGE_M3_S" && unitCode == "m3/s");
+    }
+
     function validMeasurement(measurementId) {
       return request.resource.data.keys().hasOnly(measurementAllowedKeys())
         && request.resource.data.keys().hasAll([
@@ -194,7 +266,12 @@ service cloud.firestore {
           "entered_at"
         ])
         && request.resource.data.measurement_id == measurementId
-        && request.resource.data.value is number;
+        && nonEmptyString(request.resource.data.display_name)
+        && request.resource.data.value is number
+        && validParameterUnit(request.resource.data.parameter_code, request.resource.data.unit_code)
+        && nonEmptyString(request.resource.data.method_name)
+        && nonEmptyString(request.resource.data.instrument_name)
+        && request.resource.data.entered_at is timestamp;
     }
 
     function attachmentAllowedKeys() {
@@ -202,22 +279,38 @@ service cloud.firestore {
         "attachment_id",
         "storage_path",
         "content_type",
+        "size_bytes",
         "kind",
         "caption",
         "created_at"
       ];
     }
 
-    function validAttachment(attachmentId) {
+    function validAttachmentPath(submissionId, revisionId, attachmentId) {
+      let base = "users/" + uid() + "/submissions/" + submissionId + "/revisions/" + revisionId + "/" + attachmentId;
+      return (request.resource.data.content_type == "image/jpeg" && request.resource.data.storage_path == base + ".jpg")
+        || (request.resource.data.content_type == "image/png" && request.resource.data.storage_path == base + ".png")
+        || (request.resource.data.content_type == "image/heic" && request.resource.data.storage_path == base + ".heic")
+        || (request.resource.data.content_type in ["audio/mp4", "audio/m4a"] && request.resource.data.storage_path == base + ".m4a")
+        || (request.resource.data.content_type == "application/pdf" && request.resource.data.storage_path == base + ".pdf");
+    }
+
+    function validAttachment(submissionId, revisionId, attachmentId) {
       return request.resource.data.keys().hasOnly(attachmentAllowedKeys())
         && request.resource.data.keys().hasAll([
           "attachment_id",
           "storage_path",
           "content_type",
+          "size_bytes",
           "kind",
           "created_at"
         ])
         && request.resource.data.attachment_id == attachmentId
+        && request.resource.data.size_bytes is int
+        && request.resource.data.size_bytes > 0
+        && request.resource.data.size_bytes <= 50 * 1024 * 1024
+        && request.resource.data.created_at is timestamp
+        && validAttachmentPath(submissionId, revisionId, attachmentId)
         && request.resource.data.kind in ["SITE_PHOTO", "INSTRUMENT_PHOTO", "TEST_RESULT", "OTHER"];
     }
 
@@ -236,6 +329,18 @@ service cloud.firestore {
         && request.resource.data.collector_user_id == uid()
         && request.resource.data.submission_id == submissionId
         && request.resource.data.status == "DRAFT"
+        && nonEmptyString(request.resource.data.event_id)
+        && nonEmptyString(request.resource.data.site_id)
+        && exists(sitePath(request.resource.data.site_id))
+        && get(sitePath(request.resource.data.site_id)).data.active == true
+        && request.resource.data.current_revision_no == 1
+        && nonEmptyString(request.resource.data.current_revision_id)
+        && request.resource.data.latest_collected_at is timestamp
+        && request.resource.data.created_at is timestamp
+        && request.resource.data.updated_at is timestamp
+        && request.resource.data.submitted_at == null
+        && request.resource.data.schema_version == "0.1.0"
+        && nonEmptyString(request.resource.data.mobile_app_version)
         && request.resource.data.keys().hasOnly([
           "submission_id",
           "event_id",
@@ -261,7 +366,16 @@ service cloud.firestore {
         && request.resource.data.submission_id == resource.data.submission_id
         && request.resource.data.event_id == resource.data.event_id
         && collectorSubmissionUpdateKeysOnly()
-        && validCollectorSubmissionTransition();
+        && validCollectorSubmissionTransition()
+        && request.resource.data.site_id == resource.data.site_id
+        && request.resource.data.current_revision_no is int
+        && request.resource.data.latest_collected_at is timestamp
+        && request.resource.data.updated_at is timestamp
+        && request.resource.data.submitted_at is timestamp
+        && (
+          request.resource.data.status in ["DRAFT", "NEEDS_CORRECTION"]
+          || validFinalRevisionLink(submissionId)
+        );
 
       allow delete: if false;
 
@@ -296,7 +410,7 @@ service cloud.firestore {
 
           allow create, update: if ownsSubmission(submissionId)
             && revisionIsDraft(submissionId, revisionId)
-            && validAttachment(attachmentId);
+            && validAttachment(submissionId, revisionId, attachmentId);
 
           allow delete: if ownsSubmission(submissionId)
             && revisionIsDraft(submissionId, revisionId);
