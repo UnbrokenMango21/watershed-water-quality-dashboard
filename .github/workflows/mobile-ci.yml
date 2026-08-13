@@ -1,89 +1,138 @@
-name: Mobile CI
+name: Mobile Production CI
 
 on:
   pull_request:
     paths:
+      - 'Phone App/**'
       - 'mobile/**'
+      - 'config/**'
+      - 'firebase/**'
+      - 'functions/**'
+      - 'tests/**'
+      - 'validation/**'
+      - 'package*.json'
       - '.github/workflows/mobile-ci.yml'
-      - 'AGENTS.md'
-      - 'docs/PHASE11A_EAS_PLATFORM_PROOF.md'
-      - 'docs/PHASE11_EXECUTION_LOG.md'
-      - 'docs/PHASE11_FLOW_MATRIX.md'
-      - 'config/collection_protocol.json'
-      - 'config/firebase_schema.json'
-      - 'config/validation_rules.json'
-      - 'config/workflow_states.json'
   push:
     branches:
-      - platform-v0.1-foundation
+      - codex/mobile-production-integration-v1
     paths:
+      - 'Phone App/**'
       - 'mobile/**'
+      - 'config/**'
+      - 'firebase/**'
+      - 'functions/**'
+      - 'tests/**'
+      - 'validation/**'
+      - 'package*.json'
       - '.github/workflows/mobile-ci.yml'
-      - 'AGENTS.md'
-      - 'docs/PHASE11A_EAS_PLATFORM_PROOF.md'
-      - 'docs/PHASE11_EXECUTION_LOG.md'
-      - 'docs/PHASE11_FLOW_MATRIX.md'
-      - 'config/collection_protocol.json'
-      - 'config/firebase_schema.json'
-      - 'config/validation_rules.json'
-      - 'config/workflow_states.json'
 
 permissions:
   contents: read
 
+concurrency:
+  group: mobile-production-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  mobile:
-    name: Expo / TypeScript health
+  backend-contracts:
+    name: Backend contracts and security rules
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            tests/firestore-rules/package-lock.json
+            tests/validation-firestore/package-lock.json
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - run: npm ci
+      - run: npm ci --prefix tests/firestore-rules
+      - run: npm ci --prefix tests/validation-firestore
+      - run: npm run test:contracts
+      - name: Firestore, Storage, and validation persistence
+        run: npx firebase emulators:exec --project central-pa-watershed-dev --only firestore,storage "node tests/firestore-rules/run-tests.cjs && node tests/firestore-rules/run-storage-tests.cjs && node tests/validation-firestore/run-tests.cjs"
+      - name: Validation trigger integration
+        run: npx firebase emulators:exec --project central-pa-watershed-dev --only firestore,functions "npm run test:trigger"
+
+  android:
+    name: Android native
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: Phone App/Android App
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Unit, lint, debug, minified release, and instrumentation APKs
+        run: ./gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:assembleRelease :app:assembleDebugAndroidTest
+      - name: Room and repository instrumentation
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          script: cd 'Phone App/Android App' && ./gradlew :app:connectedDebugAndroidTest
+
+  ios:
+    name: iOS native
+    runs-on: macos-15
+    defaults:
+      run:
+        working-directory: Phone App/iPhone App/PAWatershedWatch
+    steps:
+      - uses: actions/checkout@v4
+      - name: Select an available iPhone simulator
+        shell: bash
+        run: |
+          destination_id="$(xcrun simctl list devices available -j | python3 -c 'import json,sys; data=json.load(sys.stdin); print(next(d["udid"] for devices in data["devices"].values() for d in devices if d["name"].startswith("iPhone")))')"
+          echo "IOS_DESTINATION=platform=iOS Simulator,id=$destination_id" >> "$GITHUB_ENV"
+      - name: Build and unit tests
+        run: xcodebuild test -project PAWatershedWatch.xcodeproj -scheme PAWatershedWatch -destination "$IOS_DESTINATION" -test-timeouts-enabled YES -default-test-execution-time-allowance 60 -maximum-test-execution-time-allowance 120 CODE_SIGNING_ALLOWED=NO
+      - name: Unsigned release archive
+        run: xcodebuild archive -project PAWatershedWatch.xcodeproj -scheme PAWatershedWatch -configuration Release -destination 'generic/platform=iOS' -archivePath "$RUNNER_TEMP/PAWatershedWatch.xcarchive" CODE_SIGNING_ALLOWED=NO
+
+  legacy-expo:
+    name: Legacy Expo regression guard
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: mobile
-
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Repository hygiene
-        working-directory: .
-        shell: bash
-        run: |
-          tracked="$(git ls-files | grep -E '(^|/)\.DS_Store$|^mobile/(GoogleService-Info\.plist|google-services\.json|ios/|android/)' || true)"
-          if [ -n "$tracked" ]; then
-            echo "Unexpected generated/private files are tracked:"
-            echo "$tracked"
-            exit 1
-          fi
-
-      - name: Set up Node
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: '22.x'
           cache: npm
           cache-dependency-path: mobile/package-lock.json
+      - run: npm ci
+      - run: npx expo install --check
+      - run: npm run verify:contracts
+      - run: npx tsc --noEmit
+      - run: npm run lint
+      - run: npm run verify:privacy
+      - run: npx expo export --platform ios --output-dir /tmp/phase11-export-ios
+      - run: npx expo export --platform android --output-dir /tmp/phase11-export-android
+      - run: npx expo-doctor
 
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Check Expo dependency compatibility
-        run: npx expo install --check
-
-      - name: Phase 9/10 mobile contract guard
-        run: npm run verify:contracts
-
-      - name: TypeScript
-        run: npx tsc --noEmit
-
-      - name: Lint
-        run: npm run lint
-
-      - name: Privacy telemetry guard
-        run: npm run verify:privacy
-
-      - name: Bundle iOS JavaScript
-        run: npx expo export --platform ios --output-dir /tmp/phase11-export-ios
-
-      - name: Bundle Android JavaScript
-        run: npx expo export --platform android --output-dir /tmp/phase11-export-android
-
-      - name: Expo Doctor
-        run: npx expo-doctor
+  hygiene:
+    name: Repository hygiene
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - shell: bash
+        run: |
+          tracked="$(git ls-files | grep -E '(^|/)\.DS_Store$|(^|/)DerivedData/|(^|/)build/|(^|/)\.gradle/|xcuserdata|\.xcuserstate$|(^|/)local\.properties$|\.zip$' || true)"
+          if [ -n "$tracked" ]; then
+            echo "Unexpected generated or local files are tracked:"
+            echo "$tracked"
+            exit 1
+          fi
