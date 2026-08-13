@@ -1,0 +1,28 @@
+{
+  "catalogVersion": "1.0.0",
+  "canonicalValuePolicy": "Firestore stores finite canonical numeric values; local drafts also retain the entered value and unit.",
+  "measurements": [
+    {"uiKey":"temperature","displayName":"Water Temperature","support":"FULLY_SUPPORTED","parameterCode":"WATER_TEMP_C","canonicalUnit":"degC","serializationTarget":"revision_temperature"},
+    {"uiKey":"ph","displayName":"pH","support":"FULLY_SUPPORTED","parameterCode":"PH","canonicalUnit":"pH","serializationTarget":"measurement"},
+    {"uiKey":"dissolvedOxygen","displayName":"Dissolved Oxygen","support":"FULLY_SUPPORTED","parameterCode":"DO_MG_L","canonicalUnit":"mg/L","serializationTarget":"measurement"},
+    {"uiKey":"dissolvedOxygenSaturation","displayName":"Dissolved Oxygen Saturation","support":"FULLY_SUPPORTED","parameterCode":"DO_PERCENT","canonicalUnit":"percent","serializationTarget":"measurement"},
+    {"uiKey":"conductivity","displayName":"Conductivity","support":"FULLY_SUPPORTED","parameterCode":"CONDUCTIVITY_US_CM","canonicalUnit":"uS/cm","serializationTarget":"measurement"},
+    {"uiKey":"tds","displayName":"Total Dissolved Solids","support":"FULLY_SUPPORTED","parameterCode":"TDS_MG_L","canonicalUnit":"mg/L","serializationTarget":"measurement"},
+    {"uiKey":"orp","displayName":"ORP","support":"FULLY_SUPPORTED","parameterCode":"ORP_MV","canonicalUnit":"mV","serializationTarget":"measurement"},
+    {"uiKey":"chloride","displayName":"Chloride","support":"FULLY_SUPPORTED","parameterCode":"CHLORIDE_MG_L","canonicalUnit":"mg/L","serializationTarget":"measurement"},
+    {"uiKey":"sulfate","displayName":"Sulfate","support":"FULLY_SUPPORTED","parameterCode":"SULFATE_MG_L","canonicalUnit":"mg/L","serializationTarget":"measurement"},
+    {"uiKey":"nitrate","displayName":"Nitrate","support":"FULLY_SUPPORTED","parameterCode":"NITRATE_MG_L","canonicalUnit":"mg/L as N","serializationTarget":"measurement"},
+    {"uiKey":"phosphate","displayName":"Phosphate","support":"FULLY_SUPPORTED","parameterCode":"PHOSPHATE_MG_L","canonicalUnit":"mg/L as P","serializationTarget":"measurement"},
+    {"uiKey":"flow","displayName":"Discharge / Flow","support":"FULLY_SUPPORTED","parameterCode":"DISCHARGE_M3_S","canonicalUnit":"m3/s","serializationTarget":"measurement"},
+    {"uiKey":"turbidity","displayName":"Turbidity","support":"FEATURE_GATED","reason":"No Phase 10 parameter code, validation rule, Firestore unit contract, or publishing mapping."},
+    {"uiKey":"salinity","displayName":"Salinity","support":"FEATURE_GATED","reason":"No Phase 10 parameter code, validation rule, Firestore unit contract, or publishing mapping."},
+    {"uiKey":"totalSuspendedSolids","displayName":"Total Suspended Solids","support":"FEATURE_GATED","reason":"No Phase 10 parameter code, validation rule, Firestore unit contract, or publishing mapping."},
+    {"uiKey":"alkalinity","displayName":"Alkalinity","support":"FEATURE_GATED","reason":"No Phase 10 parameter code, validation rule, Firestore unit contract, or publishing mapping."},
+    {"uiKey":"hardness","displayName":"Hardness","support":"FEATURE_GATED","reason":"No Phase 10 parameter code, validation rule, Firestore unit contract, or publishing mapping."},
+    {"uiKey":"ammoniaNitrogen","displayName":"Ammonia Nitrogen","support":"FEATURE_GATED","reason":"No Phase 10 parameter code, validation rule, Firestore unit contract, or publishing mapping."},
+    {"uiKey":"nitriteNitrogen","displayName":"Nitrite Nitrogen","support":"FEATURE_GATED","reason":"No Phase 10 parameter code, validation rule, Firestore unit contract, or publishing mapping."},
+    {"uiKey":"totalPhosphorus","displayName":"Total Phosphorus","support":"FEATURE_GATED","reason":"No Phase 10 parameter code, validation rule, Firestore unit contract, or publishing mapping."},
+    {"uiKey":"chlorophyllA","displayName":"Chlorophyll a","support":"FEATURE_GATED","reason":"No Phase 10 parameter code, validation rule, Firestore unit contract, or publishing mapping."},
+    {"uiKey":"eColi","displayName":"E. coli","support":"FEATURE_GATED","reason":"No Phase 10 parameter code, validation rule, Firestore unit contract, or publishing mapping."}
+  ]
+}

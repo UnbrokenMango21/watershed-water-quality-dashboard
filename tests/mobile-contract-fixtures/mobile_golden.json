@@ -1,0 +1,186 @@
+{
+  "fixtureVersion": "1.0.0",
+  "schemaVersion": "0.1.0",
+  "idAlgorithm": "measurement_id = UUID-shaped first 128 bits of SHA-256(revision_id + '|' + parameter_code), with RFC 4122 version/variant bits",
+  "testTypes": [
+    "In-situ / Field Instrument",
+    "Penn State Lab",
+    "External Lab",
+    "Field Kit / Colorimetric",
+    "Continuous Sensor / Sonde",
+    "Mixed In-situ + Lab",
+    "Other"
+  ],
+  "serializationCases": [
+    {
+      "name": "new_in_situ_fahrenheit_negative_orp_with_photo",
+      "input": {
+        "submissionId": "11111111-1111-4111-8111-111111111111",
+        "eventId": "22222222-2222-4222-8222-222222222222",
+        "revisionId": "33333333-3333-4333-8333-333333333333",
+        "revisionNo": 1,
+        "ownerUid": "collector-a",
+        "siteId": "SITE-TEST-001",
+        "createdAt": "2026-08-08T20:25:00Z",
+        "collectedAt": "2026-08-08T16:30:00-04:00",
+        "submittedAt": "2026-08-08T20:45:00Z",
+        "latitude": 40.7934,
+        "longitude": -77.86,
+        "gpsAccuracyM": 4.2,
+        "siteDistanceM": null,
+        "collectorDisplayName": "Maya Chen",
+        "testType": "In-situ / Field Instrument",
+        "methodName": "Calibrated multiparameter field meter",
+        "instrumentName": "YSI ProDSS · Unit 4412",
+        "temperature": {"enteredValue":68,"enteredUnit":"F"},
+        "fieldNotes": "Clear flow after overnight rain.",
+        "measurements": [
+          {"parameterCode":"PH","displayName":"pH","enteredValue":7.2,"enteredUnit":"pH","canonicalValue":7.2,"canonicalUnit":"pH"},
+          {"parameterCode":"DO_MG_L","displayName":"Dissolved Oxygen","enteredValue":9,"enteredUnit":"mg/L as O2","canonicalValue":9,"canonicalUnit":"mg/L"},
+          {"parameterCode":"CONDUCTIVITY_US_CM","displayName":"Conductivity","enteredValue":0.35,"enteredUnit":"mS/cm","canonicalValue":350,"canonicalUnit":"uS/cm"},
+          {"parameterCode":"ORP_MV","displayName":"ORP","enteredValue":-0.1224,"enteredUnit":"V","canonicalValue":-122.4,"canonicalUnit":"mV"}
+        ],
+        "attachments": [
+          {"attachmentId":"55555555-5555-4555-8555-555555555555","contentType":"image/jpeg","sizeBytes":2487312,"kind":"SITE_PHOTO","caption":"Upstream view","fileExtension":"jpg"}
+        ]
+      },
+      "expected": {
+        "submission": {
+          "submission_id":"11111111-1111-4111-8111-111111111111",
+          "event_id":"22222222-2222-4222-8222-222222222222",
+          "collector_user_id":"collector-a",
+          "site_id":"SITE-TEST-001",
+          "status":"SUBMITTED",
+          "current_revision_id":"33333333-3333-4333-8333-333333333333",
+          "current_revision_no":1,
+          "latest_collected_at":"2026-08-08T20:30:00Z",
+          "created_at":"2026-08-08T20:25:00Z",
+          "updated_at":"2026-08-08T20:45:00Z",
+          "submitted_at":"2026-08-08T20:45:00Z",
+          "schema_version":"0.1.0",
+          "mobile_app_version":"1.0.0"
+        },
+        "revision": {
+          "revision_id":"33333333-3333-4333-8333-333333333333",
+          "revision_no":1,
+          "submission_id":"11111111-1111-4111-8111-111111111111",
+          "event_id":"22222222-2222-4222-8222-222222222222",
+          "collector_user_id":"collector-a",
+          "site_id":"SITE-TEST-001",
+          "revision_status":"SUBMITTED",
+          "created_at":"2026-08-08T20:25:00Z",
+          "submitted_at":"2026-08-08T20:45:00Z",
+          "collected_at":"2026-08-08T20:30:00Z",
+          "time_known":true,
+          "time_imputed":false,
+          "latitude":40.7934,
+          "longitude":-77.86,
+          "location":{"latitude":40.7934,"longitude":-77.86},
+          "gps_accuracy_m":4.2,
+          "site_distance_m":null,
+          "weather_condition":"",
+          "data_collected_by":"Maya Chen",
+          "test_type":"In-situ / Field Instrument",
+          "test_type_other":null,
+          "method_name":"Calibrated multiparameter field meter",
+          "instrument_name":"YSI ProDSS · Unit 4412",
+          "instrument_other":null,
+          "temp_entered_value":68,
+          "temp_entered_unit":"F",
+          "temp_c":20,
+          "temp_f":68,
+          "field_notes_original":"Clear flow after overnight rain.",
+          "schema_version":"0.1.0",
+          "mobile_app_version":"1.0.0"
+        },
+        "measurements": [
+          {"measurement_id":"f890767f-9220-5b4e-aafd-77f053f17390","parameter_code":"PH","display_name":"pH","value":7.2,"unit_code":"pH","method_name":"Calibrated multiparameter field meter","instrument_name":"YSI ProDSS · Unit 4412","qualifier":null,"notes":null,"entered_at":"2026-08-08T20:30:00Z"},
+          {"measurement_id":"3c684016-17ac-5891-ad9b-7280b67d9e6a","parameter_code":"DO_MG_L","display_name":"Dissolved Oxygen","value":9,"unit_code":"mg/L","method_name":"Calibrated multiparameter field meter","instrument_name":"YSI ProDSS · Unit 4412","qualifier":null,"notes":null,"entered_at":"2026-08-08T20:30:00Z"},
+          {"measurement_id":"f401d76c-ee63-5631-8092-63cd32d5d8e6","parameter_code":"CONDUCTIVITY_US_CM","display_name":"Conductivity","value":350,"unit_code":"uS/cm","method_name":"Calibrated multiparameter field meter","instrument_name":"YSI ProDSS · Unit 4412","qualifier":null,"notes":null,"entered_at":"2026-08-08T20:30:00Z"},
+          {"measurement_id":"ef444e2f-c39e-50d4-86ad-70baffda1508","parameter_code":"ORP_MV","display_name":"ORP","value":-122.4,"unit_code":"mV","method_name":"Calibrated multiparameter field meter","instrument_name":"YSI ProDSS · Unit 4412","qualifier":null,"notes":null,"entered_at":"2026-08-08T20:30:00Z"}
+        ],
+        "attachments": [
+          {"attachment_id":"55555555-5555-4555-8555-555555555555","storage_path":"users/collector-a/submissions/11111111-1111-4111-8111-111111111111/revisions/33333333-3333-4333-8333-333333333333/55555555-5555-4555-8555-555555555555.jpg","content_type":"image/jpeg","size_bytes":2487312,"kind":"SITE_PHOTO","caption":"Upstream view","created_at":"2026-08-08T20:30:00Z"}
+        ]
+      }
+    },
+    {
+      "name": "correction_revision_2",
+      "input": {
+        "submissionId":"11111111-1111-4111-8111-111111111111",
+        "eventId":"22222222-2222-4222-8222-222222222222",
+        "revisionId":"44444444-4444-4444-8444-444444444444",
+        "revisionNo":2,
+        "ownerUid":"collector-a",
+        "siteId":"SITE-TEST-001",
+        "createdAt":"2026-08-10T13:00:00Z",
+        "collectedAt":"2026-08-08T16:30:00-04:00",
+        "submittedAt":"2026-08-10T13:05:00Z",
+        "latitude":40.7934,
+        "longitude":-77.86,
+        "gpsAccuracyM":4.2,
+        "siteDistanceM":null,
+        "collectorDisplayName":"Maya Chen",
+        "testType":"In-situ / Field Instrument",
+        "methodName":"Calibrated multiparameter field meter",
+        "instrumentName":"YSI ProDSS · Unit 4412",
+        "temperature":{"enteredValue":68,"enteredUnit":"F"},
+        "fieldNotes":"Clear flow after overnight rain.",
+        "measurements":[{"parameterCode":"DO_MG_L","displayName":"Dissolved Oxygen","enteredValue":9.1,"enteredUnit":"mg/L as O2","canonicalValue":9.1,"canonicalUnit":"mg/L"}],
+        "attachments":[]
+      },
+      "expectedIdentity": {
+        "submission_id":"11111111-1111-4111-8111-111111111111",
+        "event_id":"22222222-2222-4222-8222-222222222222",
+        "revision_id":"44444444-4444-4444-8444-444444444444",
+        "revision_no":2,
+        "measurement_id":"6b87aac3-feb4-5116-8e76-c5219808a390"
+      }
+    },
+    {
+      "name":"lab_observation_long_site_name",
+      "input": {
+        "submissionId":"77777777-7777-4777-8777-777777777777",
+        "eventId":"88888888-8888-4888-8888-888888888888",
+        "revisionId":"66666666-6666-4666-8666-666666666666",
+        "revisionNo":1,
+        "ownerUid":"collector-b",
+        "siteId":"SITE-LONG-001",
+        "siteName":"Little Juniata River at Spruce Creek, Route 45 Access",
+        "createdAt":"2026-01-15T15:00:00Z",
+        "collectedAt":"2026-01-15T10:00:00-05:00",
+        "submittedAt":"2026-01-15T16:00:00Z",
+        "latitude":40.61261,
+        "longitude":-78.14092,
+        "gpsAccuracyM":8.0,
+        "collectorDisplayName":"Alex Rivera",
+        "testType":"Penn State Lab",
+        "methodName":"Grab sample",
+        "instrumentName":"Penn State Agricultural Analytical Services Laboratory",
+        "temperature":{"enteredValue":5.5,"enteredUnit":"C"},
+        "measurements":[{"parameterCode":"NITRATE_MG_L","displayName":"Nitrate","enteredValue":10,"enteredUnit":"mg/L as N","canonicalValue":10,"canonicalUnit":"mg/L as N"}],
+        "attachments":[]
+      },
+      "expectedIdentity":{"measurement_id":"d76e34f3-1e63-58bd-90a0-73a899fe078a"}
+    }
+  ],
+  "temperatureCases": [
+    {"enteredValue":0,"enteredUnit":"C","tempC":0,"tempF":32},
+    {"enteredValue":20,"enteredUnit":"C","tempC":20,"tempF":68},
+    {"enteredValue":-5,"enteredUnit":"C","tempC":-5,"tempF":23},
+    {"enteredValue":70.25,"enteredUnit":"F","tempC":21.25,"tempF":70.25}
+  ],
+  "timeCases": [
+    {"name":"utc_to_eastern_winter","instant":"2026-01-15T15:00:00Z","eastern":"2026-01-15T10:00:00-05:00"},
+    {"name":"utc_to_eastern_summer","instant":"2026-08-08T20:30:00Z","eastern":"2026-08-08T16:30:00-04:00"},
+    {"name":"dst_before_spring_forward","instant":"2026-03-08T06:30:00Z","eastern":"2026-03-08T01:30:00-05:00"},
+    {"name":"dst_after_spring_forward","instant":"2026-03-08T07:30:00Z","eastern":"2026-03-08T03:30:00-04:00"},
+    {"name":"dst_first_fall_hour","instant":"2026-11-01T05:30:00Z","eastern":"2026-11-01T01:30:00-04:00"},
+    {"name":"dst_second_fall_hour","instant":"2026-11-01T06:30:00Z","eastern":"2026-11-01T01:30:00-05:00"}
+  ],
+  "readbackCases": [
+    {"name":"validation_blocked","status":"NEEDS_CORRECTION","syncState":"SYNCED","validation":{"blocking":true,"error_flag_count":1},"correctionReason":"Dissolved oxygen unit or decimal must be verified."},
+    {"name":"published","status":"PUBLISHED","syncState":"SYNCED","validation":{"blocking":false,"error_flag_count":0},"publishedAt":"2026-08-12T18:00:00Z"},
+    {"name":"offline_queued","status":"SUBMITTED","syncState":"WAITING_TO_SYNC","serverConfirmed":false}
+  ]
+}
