@@ -1,5 +1,5 @@
 {
-  "catalogVersion": "0.1.1",
+  "catalogVersion": "0.1.2",
   "namingPolicy": {
     "displayLabelsUseUnitsInParentheses": true,
     "backendNamesAreMachineSafe": true,
@@ -14,9 +14,11 @@
     {"code":"WATER_TEMP_C","backendName":"water_temp_c","displayLabel":"Temp (C)","canonicalUnit":"degC","storageType":"double","uiDecimals":2,"mvpStatus":"core"},
     {"code":"WATER_TEMP_F","backendName":"water_temp_f","displayLabel":"Temp (F)","canonicalUnit":"degF","storageType":"double","uiDecimals":2,"mvpStatus":"source_or_display"},
     {"code":"DO_PERCENT","backendName":"do_percent","displayLabel":"DO (%)","canonicalUnit":"percent","storageType":"double","uiDecimals":1,"mvpStatus":"core"},
-    {"code":"DO_PPM","backendName":"do_ppm","displayLabel":"DO (ppm)","canonicalUnit":"ppm","storageType":"double","uiDecimals":2,"mvpStatus":"core"},
+    {"code":"DO_MG_L","backendName":"do_mg_l","displayLabel":"DO (mg/L)","canonicalUnit":"mg/L","storageType":"double","uiDecimals":2,"mvpStatus":"core","legacyCodes":["DO_PPM"]},
+    {"code":"DO_PPM","backendName":"do_ppm","displayLabel":"DO (ppm)","canonicalUnit":"ppm","storageType":"double","uiDecimals":2,"mvpStatus":"legacy_alias","canonicalCode":"DO_MG_L"},
     {"code":"CONDUCTIVITY_US_CM","backendName":"conductivity_us_cm","displayLabel":"Conductivity (µS/cm)","canonicalUnit":"uS/cm","storageType":"double","uiDecimals":1,"mvpStatus":"core"},
-    {"code":"TDS_PPM","backendName":"tds_ppm","displayLabel":"TDS (ppm)","canonicalUnit":"ppm","storageType":"double","uiDecimals":1,"mvpStatus":"core"},
+    {"code":"TDS_MG_L","backendName":"tds_mg_l","displayLabel":"TDS (mg/L)","canonicalUnit":"mg/L","storageType":"double","uiDecimals":1,"mvpStatus":"core","legacyCodes":["TDS_PPM"]},
+    {"code":"TDS_PPM","backendName":"tds_ppm","displayLabel":"TDS (ppm)","canonicalUnit":"ppm","storageType":"double","uiDecimals":1,"mvpStatus":"legacy_alias","canonicalCode":"TDS_MG_L"},
     {"code":"ORP_MV","backendName":"orp_mv","displayLabel":"ORP (mV)","canonicalUnit":"mV","storageType":"double","uiDecimals":1,"mvpStatus":"core"},
     {"code":"CHLORIDE_MG_L","backendName":"chloride_mg_l","displayLabel":"Chloride (mg/L)","canonicalUnit":"mg/L","storageType":"double","uiDecimals":2,"mvpStatus":"core"},
     {"code":"SULFATE_MG_L","backendName":"sulfate_mg_l","displayLabel":"Sulphate (mg/L)","canonicalUnit":"mg/L","storageType":"double","uiDecimals":2,"mvpStatus":"core"},
@@ -29,6 +31,7 @@
     "Scientific thresholds and instrument hard limits will live in versioned validation-rule configuration.",
     "Numeric measurements must remain numeric through mobile, Firebase, validation, ArcGIS, and dashboard layers.",
     "Current historical data may contain both Temp (F) and Temp (C); preserve source values and validate their consistency.",
-    "Display labels are for spreadsheets/UI/ArcGIS aliases. Backend names and codes are used in databases and code."
+    "Display labels are for spreadsheets/UI/ArcGIS aliases. Backend names and codes are used in databases and code.",
+    "DO_PPM and TDS_PPM are historical import aliases only. New runtime writes use DO_MG_L and TDS_MG_L."
   ]
 }

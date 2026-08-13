@@ -19,6 +19,7 @@
     {"from":"DRAFT","to":"SUBMITTED","actor":"COLLECTOR"},
     {"from":"SUBMITTED","to":"VALIDATING","actor":"SYSTEM"},
     {"from":"VALIDATING","to":"PENDING_REVIEW","actor":"SYSTEM","condition":"validation permits human review"},
+    {"from":"VALIDATING","to":"NEEDS_CORRECTION","actor":"SYSTEM","condition":"validation has blocking errors"},
     {"from":"PENDING_REVIEW","to":"NEEDS_CORRECTION","actor":"SUPERVISOR","requiresReason":true},
     {"from":"NEEDS_CORRECTION","to":"RESUBMITTED","actor":"COLLECTOR"},
     {"from":"RESUBMITTED","to":"VALIDATING","actor":"SYSTEM"},
