@@ -16,6 +16,7 @@ const iconNames = {
   clock: { ios: 'clock.fill', android: 'schedule', web: 'schedule' },
   camera: { ios: 'camera.fill', android: 'photo_camera', web: 'photo_camera' },
   chevronRight: { ios: 'chevron.right', android: 'chevron_right', web: 'chevron_right' },
+  chevronDown: { ios: 'chevron.down', android: 'keyboard_arrow_down', web: 'keyboard_arrow_down' },
   person: { ios: 'person.crop.circle.fill', android: 'account_circle', web: 'account_circle' },
   signOut: { ios: 'rectangle.portrait.and.arrow.right', android: 'logout', web: 'logout' },
   plus: { ios: 'plus', android: 'add', web: 'add' },

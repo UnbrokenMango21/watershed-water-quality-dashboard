@@ -57,7 +57,7 @@ const submissionStatusMeta: Record<
   VALIDATING: { label: 'Validating', tone: 'info', icon: 'sync' },
   PENDING_REVIEW: { label: 'Pending review', tone: 'warning', icon: 'clock' },
   NEEDS_CORRECTION: { label: 'Needs correction', tone: 'danger', icon: 'warning' },
-  RESUBMITTED: { label: 'Correction resubmitted', tone: 'info', icon: 'cloud' },
+  RESUBMITTED: { label: 'Resubmitted', tone: 'info', icon: 'cloud' },
   APPROVED: { label: 'Approved', tone: 'success', icon: 'check' },
   REJECTED: { label: 'Rejected', tone: 'danger', icon: 'warning' },
   PUBLISHING: { label: 'Publishing', tone: 'info', icon: 'sync' },

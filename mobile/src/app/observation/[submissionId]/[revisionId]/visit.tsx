@@ -111,8 +111,7 @@ export default function VisitStep() {
       <ProgressHeader current="Visit" />
       <ScreenIntro
         eyebrow="WHEN & WHERE"
-        title="Record the visit"
-        body="Confirm local collection time and capture the device-reported GPS position."
+        title="Record Visit"
       />
 
       <View style={styles.section}>
@@ -150,7 +149,7 @@ export default function VisitStep() {
         ) : null}
         <PrimaryButton
           disabled={!canContinue}
-          label="Next: Method & provenance"
+          label="Next: Collection Method"
           onPress={() =>
             router.push({
               pathname: '/observation/[submissionId]/[revisionId]/method',

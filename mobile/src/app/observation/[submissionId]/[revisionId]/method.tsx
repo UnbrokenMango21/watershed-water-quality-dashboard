@@ -52,7 +52,7 @@ export default function MethodStep() {
 
     const firstError = Object.keys(next)[0] as keyof MethodErrors | undefined;
     if (firstError) {
-      void AccessibilityInfo.announceForAccessibility('Complete the required method and provenance fields.');
+      void AccessibilityInfo.announceForAccessibility('Complete the required collection method fields.');
       if (firstError === 'testTypeOther') otherRef.current?.focus();
       if (firstError === 'dataCollectedBy') collectorRef.current?.focus();
       if (firstError === 'methodName') methodRef.current?.focus();
@@ -68,11 +68,10 @@ export default function MethodStep() {
 
   return (
     <AppScreen edges={['right', 'bottom', 'left']} contentStyle={styles.content}>
-      <ProgressHeader current="Method" />
+      <ProgressHeader current="Collection Method" />
       <ScreenIntro
         eyebrow="HOW IT WAS MEASURED"
-        title="Method & provenance"
-        body="Record enough context for each measurement to remain scientifically traceable."
+        title="Collection Method"
       />
 
       <View style={styles.section}>
@@ -119,7 +118,7 @@ export default function MethodStep() {
       </View>
 
       <View style={styles.section}>
-        <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Provenance</Text>
+        <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Method Details</Text>
         <TextField
           error={errors.dataCollectedBy}
           helper="For example: student/researcher, watershed staff, or partner lab."

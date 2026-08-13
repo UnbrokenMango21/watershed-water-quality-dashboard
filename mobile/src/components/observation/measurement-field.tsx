@@ -1,238 +1,234 @@
-import type { Ref } from 'react';
 import { useState } from 'react';
-import { Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 
-import { MinTouchTarget, Radii, Spacing, Typography } from '@/constants/theme';
+import {
+  FocusedMeasurementEntry,
+  type MeasurementUnitOption,
+} from '@/components/observation/focused-measurement-entry';
+import { AppIcon } from '@/components/ui/app-icon';
+import { MinTouchTarget, Spacing, Typography } from '@/constants/theme';
+import { displayNumericText } from '@/features/observations/measurement-presentation';
 import { useTheme } from '@/hooks/use-theme';
-
-import type { FieldRequirement } from '../ui/field';
 
 type MeasurementFieldProps = {
   label: string;
-  unit: string;
   value: string;
-  onChangeText: (value: string) => void;
-  requirement?: FieldRequirement;
-  placeholder?: string;
-  helper?: string;
+  units: readonly MeasurementUnitOption[];
+  selectedUnit: string | null;
+  onCommit: (value: string, unit: string) => void;
+  required?: boolean;
   error?: string | null;
-  derivedValue?: string;
-  disabled?: boolean;
+  derivedValue?: string | null;
   allowNegative?: boolean;
-  inputAccessoryViewID?: string;
+  derivePreview?: (value: string, unit: string) => string | null;
+  convertValue?: (value: string, fromUnit: string, toUnit: string) => string;
   testID?: string;
-  inputRef?: Ref<TextInput>;
-  onInputFocus?: () => void;
 };
 
 export function MeasurementField({
   label,
-  unit,
   value,
-  onChangeText,
-  requirement,
-  placeholder,
-  helper,
+  units,
+  selectedUnit,
+  onCommit,
+  required = false,
   error,
   derivedValue,
-  disabled = false,
   allowNegative = false,
-  inputAccessoryViewID,
+  derivePreview,
+  convertValue,
   testID,
-  inputRef,
-  onInputFocus,
 }: MeasurementFieldProps) {
   const theme = useTheme();
-  const [focused, setFocused] = useState(false);
-  const isNegative = value.trimStart().startsWith('-');
-  const isRequired = requirement === 'required';
-  const statusColor = error ? theme.danger : focused ? theme.focus : isRequired ? theme.primary : theme.border;
+  const { fontScale, width } = useWindowDimensions();
+  const compact = width < 360 || fontScale > 1.25;
+  const [editing, setEditing] = useState(false);
+  const entered = value.trim().length > 0;
+  const currentUnit = units.find(({ value: candidate }) => candidate === selectedUnit);
+  const unitIsSelectable = units.length > 1;
+
+  function openEditor() {
+    setEditing(true);
+  }
 
   return (
     <View style={styles.group}>
       <View
         style={[
           styles.row,
+          compact && styles.rowCompact,
           {
-            backgroundColor: disabled ? theme.surfaceSecondary : theme.surface,
-            borderBottomColor: theme.border,
+            backgroundColor: theme.surface,
+            borderBottomColor: error ? theme.danger : theme.border,
           },
         ]}>
-        <View
-          accessibilityElementsHidden
-          importantForAccessibility="no-hide-descendants"
-          style={[
-            styles.requirementSpine,
-            isRequired
-              ? error
-                ? { borderColor: theme.danger, borderWidth: 1, backgroundColor: 'transparent' }
-                : { backgroundColor: statusColor }
-              : {
-                  borderColor: theme.border,
-                  borderWidth: 1,
-                  borderStyle: 'dashed',
-                  backgroundColor: 'transparent',
-                },
-          ]}
-        />
-
-        <View style={styles.labelBlock}>
-          <Text style={[styles.label, { color: disabled ? theme.disabledText : theme.textPrimary }]}>
-            {label}
-          </Text>
-          <Text
-            style={[
-              styles.requirement,
-              { color: error ? theme.danger : disabled ? theme.disabledText : theme.textSecondary },
-            ]}>
-            {isRequired ? 'Required' : 'Optional'}
-          </Text>
-        </View>
-
-        <TextInput
-          ref={inputRef}
-          accessibilityLabel={`${label}, ${unit}`}
-          accessibilityHint={error ?? helper ?? `${isRequired ? 'Required' : 'Optional'} measurement`}
-          accessibilityState={{ disabled }}
-          editable={!disabled}
-          inputAccessoryViewID={inputAccessoryViewID}
-          keyboardType={
-            allowNegative
-              ? Platform.OS === 'ios'
-                ? 'numbers-and-punctuation'
-                : 'numeric'
-              : 'decimal-pad'
-          }
-          onBlur={() => setFocused(false)}
-          onChangeText={onChangeText}
-          onFocus={() => {
-            setFocused(true);
-            onInputFocus?.();
-          }}
-          placeholder={placeholder}
-          placeholderTextColor={theme.textMuted}
-          selectTextOnFocus
-          selectionColor={theme.primary}
-          style={[
-            styles.value,
-            {
-              color: disabled ? theme.disabledText : theme.textPrimary,
-              borderBottomColor: focused ? theme.focus : 'transparent',
-            },
-          ]}
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`${label}, ${entered ? displayNumericText(value) : 'not entered'}${currentUnit ? ` ${currentUnit.accessibilityLabel}` : ''}`}
+          accessibilityHint="Opens focused measurement entry"
+          onPress={openEditor}
           testID={testID}
-          value={value}
-        />
-
-        {allowNegative ? (
-          <Pressable
-            accessibilityLabel={isNegative ? 'Make value positive' : 'Make value negative'}
-            accessibilityRole="button"
-            accessibilityState={{ disabled }}
-            disabled={disabled}
-            onPress={() => onChangeText(isNegative ? value.replace(/^\s*-/, '') : `-${value}`)}
-            testID={testID ? `${testID}-sign` : undefined}
-            style={({ pressed }) => [
-              styles.signButton,
-              {
-                backgroundColor: disabled
-                  ? theme.disabledSurface
-                  : isNegative
-                    ? theme.primarySoft
-                    : pressed
-                      ? theme.secondaryPressed
-                      : 'transparent',
-                borderColor: isNegative ? theme.primary : theme.border,
-              },
-            ]}>
+          style={({ pressed }) => [
+            styles.readingAction,
+            compact && styles.readingActionCompact,
+            { backgroundColor: pressed ? theme.secondaryPressed : 'transparent' },
+          ]}>
+          <Text style={[styles.label, { color: theme.textPrimary }]}>{label}</Text>
+          <View style={[styles.valueBlock, compact && styles.valueBlockCompact]}>
             <Text
               style={[
-                styles.sign,
-                { color: disabled ? theme.disabledText : isNegative ? theme.primary : theme.textSecondary },
+                entered ? styles.value : styles.emptyValue,
+                { color: entered ? theme.textPrimary : theme.primary },
               ]}>
-              ±
+              {entered ? displayNumericText(value) : 'Enter'}
             </Text>
-          </Pressable>
-        ) : null}
+            {derivedValue ? (
+              <Text style={[styles.derived, { color: theme.textSecondary }]}>{derivedValue}</Text>
+            ) : null}
+          </View>
+        </Pressable>
 
-        <Text style={[styles.unit, { color: theme.textSecondary }]}>{unit}</Text>
+        {unitIsSelectable ? (
+          <Pressable
+            accessibilityLabel={`${label} unit${currentUnit ? `, ${currentUnit.accessibilityLabel}` : ', not selected'}`}
+            accessibilityHint="Opens unit selection and measurement entry"
+            accessibilityRole="button"
+            onPress={openEditor}
+            testID={testID ? `${testID}-unit` : undefined}
+            style={({ pressed }) => [
+              styles.unitAction,
+              {
+                backgroundColor: pressed ? theme.secondaryPressed : 'transparent',
+                borderLeftColor: theme.border,
+              },
+            ]}>
+            <Text style={[styles.unit, { color: theme.primary }]}>
+              {currentUnit?.label ?? 'Unit'}
+            </Text>
+            <AppIcon name="chevronDown" color={theme.primary} size={14} />
+          </Pressable>
+        ) : (
+          <View
+            accessible
+            accessibilityLabel={currentUnit?.accessibilityLabel}
+            accessibilityRole="text"
+            style={[styles.fixedUnit, { borderLeftColor: theme.border }]}>
+            <Text style={[styles.unit, { color: theme.textSecondary }]}>{currentUnit?.label}</Text>
+          </View>
+        )}
       </View>
 
       {error ? (
         <Text
           accessibilityLiveRegion="polite"
           accessibilityRole="alert"
-          style={[styles.helper, { color: theme.danger }]}>
+          style={[styles.error, { color: theme.danger }]}>
           {error}
         </Text>
-      ) : derivedValue ? (
-        <Text style={[styles.helper, { color: theme.textSecondary }]}>{derivedValue}</Text>
-      ) : helper ? (
-        <Text style={[styles.helper, { color: theme.textSecondary }]}>{helper}</Text>
       ) : null}
+
+      <FocusedMeasurementEntry
+        allowNegative={allowNegative}
+        convertValue={convertValue}
+        derivePreview={derivePreview}
+        error={error}
+        label={label}
+        onCancel={() => setEditing(false)}
+        onSave={(nextValue, nextUnit) => {
+          onCommit(nextValue, nextUnit);
+          setEditing(false);
+        }}
+        required={required}
+        selectedUnit={selectedUnit}
+        units={units}
+        value={value}
+        visible={editing}
+      />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   group: {
-    gap: Spacing.xxs,
+    backgroundColor: 'transparent',
   },
   row: {
-    minHeight: 68,
+    minHeight: 76,
     borderBottomWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row',
+    alignItems: 'stretch',
+  },
+  rowCompact: {
+    minHeight: 108,
+  },
+  readingAction: {
+    flex: 1,
+    minWidth: 0,
+    minHeight: 76,
+    paddingLeft: Spacing.md,
+    paddingRight: Spacing.sm,
+    paddingVertical: Spacing.sm,
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.sm,
-    paddingVertical: Spacing.xs,
-    paddingRight: Spacing.xs,
   },
-  requirementSpine: {
-    width: 3,
-    alignSelf: 'stretch',
-    minHeight: 44,
-    borderRadius: Radii.pill,
-  },
-  labelBlock: {
-    flex: 1,
-    minWidth: 104,
-    gap: 2,
+  readingActionCompact: {
+    minHeight: 108,
+    flexDirection: 'column',
+    alignItems: 'stretch',
+    justifyContent: 'center',
+    gap: Spacing.xs,
   },
   label: {
     ...Typography.bodyStrong,
+    flex: 1,
+    minWidth: 0,
   },
-  requirement: {
-    ...Typography.caption,
+  valueBlock: {
+    minWidth: 76,
+    alignItems: 'flex-end',
+  },
+  valueBlockCompact: {
+    alignItems: 'flex-start',
   },
   value: {
     ...Typography.numeric,
-    minWidth: 72,
-    maxWidth: 118,
-    minHeight: 52,
-    paddingHorizontal: Spacing.xxs,
-    paddingVertical: Spacing.xs,
     textAlign: 'right',
-    borderBottomWidth: 2,
   },
-  signButton: {
-    width: MinTouchTarget,
+  emptyValue: {
+    ...Typography.label,
+  },
+  derived: {
+    ...Typography.caption,
+    fontVariant: ['tabular-nums'],
+    textAlign: 'right',
+  },
+  unitAction: {
+    minWidth: 76,
     minHeight: MinTouchTarget,
-    borderWidth: 1,
-    borderRadius: Radii.sm,
+    borderLeftWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: Spacing.xs,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.xxs,
+  },
+  fixedUnit: {
+    minWidth: 76,
+    minHeight: MinTouchTarget,
+    borderLeftWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: Spacing.xs,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  sign: {
-    ...Typography.bodyStrong,
-    fontSize: 22,
-  },
   unit: {
     ...Typography.label,
-    minWidth: 58,
-    textAlign: 'right',
+    fontVariant: ['tabular-nums'],
+    textAlign: 'center',
   },
-  helper: {
+  error: {
     ...Typography.helper,
-    paddingLeft: 15,
+    paddingHorizontal: Spacing.md,
+    paddingTop: Spacing.xs,
   },
 });

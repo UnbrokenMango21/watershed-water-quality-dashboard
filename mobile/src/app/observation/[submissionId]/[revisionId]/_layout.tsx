@@ -15,11 +15,11 @@ export default function ObservationLayout() {
         headerTintColor: theme.primary,
         headerTitleStyle: { color: theme.textPrimary },
       }}>
-      <Stack.Screen name="site" options={{ title: 'Choose site' }} />
-      <Stack.Screen name="visit" options={{ title: 'Visit details' }} />
-      <Stack.Screen name="method" options={{ title: 'Method & provenance' }} />
-      <Stack.Screen name="measurements" options={{ title: 'Measurements' }} />
-      <Stack.Screen name="review" options={{ title: 'Review observation' }} />
+      <Stack.Screen name="site" options={{ title: '' }} />
+      <Stack.Screen name="visit" options={{ title: '' }} />
+      <Stack.Screen name="method" options={{ title: '' }} />
+      <Stack.Screen name="measurements" options={{ title: '' }} />
+      <Stack.Screen name="review" options={{ title: '' }} />
     </Stack>
   );
 }

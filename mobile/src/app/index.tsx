@@ -10,46 +10,31 @@ import {
   View,
 } from 'react-native';
 
-import { BrandMark } from '@/components/brand-mark';
-import { AppIcon } from '@/components/ui/app-icon';
-import { PrimaryButton, SecondaryButton } from '@/components/ui/button';
+import { AppIcon, type AppIconName } from '@/components/ui/app-icon';
+import { PrimaryButton } from '@/components/ui/button';
 import { ListRow } from '@/components/ui/list-row';
-import { InlineAlert, StatusChip, SubmissionStatusChip, SyncStatus } from '@/components/ui/status';
-import { AppScreen, EmptyState } from '@/components/ui/surface';
+import { InlineAlert, SubmissionStatusChip, SyncStatus } from '@/components/ui/status';
+import { AppScreen } from '@/components/ui/surface';
 import { minimumMeasurementCountFor, requiredMeasurementsFor } from '@/config/contracts';
 import type { PartialObservationDraft } from '@/domain/types';
 import { numericTextIsFinite } from '@/features/observations/measurement-presentation';
 import { Radii, Spacing, Typography } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
-import { useAuth } from '@/providers/auth-provider';
 import { useCollectorData } from '@/providers/collector-data-provider';
 import { useDrafts } from '@/providers/draft-provider';
 import { trackProductEvent, trackScreenView } from '@/services/analytics';
 
-function greetingForCurrentTime() {
-  const hour = new Date().getHours();
-  if (hour < 12) return 'Good morning';
-  if (hour < 18) return 'Good afternoon';
-  return 'Good evening';
-}
+type DraftStep = 'site' | 'visit' | 'method' | 'measurements' | 'review';
 
-function initialsForEmail(email: string | null | undefined) {
-  const localPart = email?.split('@')[0]?.trim();
-  if (!localPart) return 'FC';
-  const chunks = localPart.split(/[._-]+/).filter(Boolean);
-  if (chunks.length >= 2) return `${chunks[0][0]}${chunks[1][0]}`.toUpperCase();
-  return localPart.slice(0, 2).toUpperCase();
-}
-
-function nextStepForDraft(draft: PartialObservationDraft) {
-  if (!draft.siteId) return 'site' as const;
+function nextStepForDraft(draft: PartialObservationDraft): DraftStep {
+  if (!draft.siteId) return 'site';
   if (
     !draft.collectedAt ||
     !Number.isFinite(draft.latitude) ||
     !Number.isFinite(draft.longitude) ||
     !Number.isFinite(draft.gpsAccuracyM)
   ) {
-    return 'visit' as const;
+    return 'visit';
   }
   if (
     !draft.testType ||
@@ -58,7 +43,7 @@ function nextStepForDraft(draft: PartialObservationDraft) {
     !draft.instrumentName?.trim() ||
     (draft.testType === 'Other' && !draft.testTypeOther?.trim())
   ) {
-    return 'method' as const;
+    return 'method';
   }
   const validCodes = new Set(
     draft.measurements
@@ -78,10 +63,18 @@ function nextStepForDraft(draft: PartialObservationDraft) {
     requiredMissing ||
     validCodes.size < minimumMeasurementCountFor(draft.testType)
   ) {
-    return 'measurements' as const;
+    return 'measurements';
   }
-  return 'review' as const;
+  return 'review';
 }
+
+const stepLabels: Record<DraftStep, string> = {
+  site: 'Select Site',
+  visit: 'Visit Details',
+  method: 'Collection Method',
+  measurements: 'Measurements',
+  review: 'Review',
+};
 
 const recentFormatter = new Intl.DateTimeFormat(undefined, {
   month: 'short',
@@ -93,7 +86,6 @@ const recentFormatter = new Intl.DateTimeFormat(undefined, {
 export default function HomeScreen() {
   const theme = useTheme();
   const router = useRouter();
-  const { user } = useAuth();
   const { catalog, recent, refreshSites } = useCollectorData();
   const {
     createDraft,
@@ -104,8 +96,6 @@ export default function HomeScreen() {
     unreadableDraftCount,
   } = useDrafts();
   const [starting, setStarting] = useState(false);
-  const greeting = greetingForCurrentTime();
-  const initials = initialsForEmail(user?.email);
   const canStart = catalog.sites.length > 0 && (catalog.source === 'server' || catalog.source === 'cached');
   const draftIds = new Set(drafts.map(({ submissionId }) => submissionId));
   const correctionRecords = recent.submissions.filter(
@@ -145,15 +135,24 @@ export default function HomeScreen() {
     }
   }
 
-  const catalogCopy = catalog.source === 'loading'
-    ? 'Loading sites'
-    : catalog.source === 'cached'
-      ? `Offline — using ${catalog.sites.length} saved ${catalog.sites.length === 1 ? 'site' : 'sites'}`
-      : catalog.source === 'server'
-        ? `${catalog.sites.length} active ${catalog.sites.length === 1 ? 'site' : 'sites'} available`
-        : catalog.source === 'empty'
-          ? 'No active sites available'
-          : 'Site catalog unavailable';
+  const catalogState: { label: string; color: string; icon: AppIconName } =
+    catalog.source === 'loading'
+      ? { label: 'Loading sites', color: theme.textSecondary, icon: 'sync' }
+      : catalog.source === 'cached'
+        ? {
+            label: `Offline · ${catalog.sites.length} saved ${catalog.sites.length === 1 ? 'site' : 'sites'}`,
+            color: theme.info,
+            icon: 'cloud',
+          }
+        : catalog.source === 'server'
+          ? {
+              label: `${catalog.sites.length} ${catalog.sites.length === 1 ? 'site' : 'sites'} ready`,
+              color: theme.success,
+              icon: 'check',
+            }
+          : catalog.source === 'empty'
+            ? { label: 'No active sites', color: theme.warning, icon: 'warning' }
+            : { label: 'Site catalog unavailable', color: theme.danger, icon: 'warning' };
 
   return (
     <AppScreen
@@ -167,62 +166,57 @@ export default function HomeScreen() {
         />
       }>
       <View style={styles.header}>
-        <View style={styles.headerIdentity}>
-          <BrandMark size="small" />
-          <View style={styles.headerCopy}>
-            <Text style={[styles.eyebrow, { color: theme.brand }]}>CENTRAL PA WATERSHED</Text>
-            <Text style={[styles.greeting, { color: theme.textSecondary }]}>{greeting}</Text>
-            <Text accessibilityRole="header" style={[styles.title, { color: theme.textPrimary }]}>Field Collection</Text>
-          </View>
+        <View style={styles.headerCopy}>
+          <Text style={[styles.product, { color: theme.brand }]}>CENTRAL PA WATERSHED</Text>
+          <Text accessibilityRole="header" style={[styles.title, { color: theme.textPrimary }]}>Fieldwork</Text>
         </View>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Collector account"
-          accessibilityHint="Opens collector identity and sign-out controls"
+          accessibilityHint="Opens account and sign-out controls"
           onPress={() => router.push('/account')}
           style={({ pressed }) => [
-            styles.avatar,
-            {
-              backgroundColor: pressed ? theme.secondaryPressed : theme.surface,
-              borderColor: theme.controlBorder,
-            },
+            styles.accountButton,
+            { backgroundColor: pressed ? theme.secondaryPressed : theme.surface },
           ]}>
-          <Text style={[styles.avatarText, { color: theme.brand }]}>{initials}</Text>
+          <AppIcon name="person" color={theme.brand} size={23} />
         </Pressable>
       </View>
 
-      <View style={[styles.startSection, { borderColor: theme.border }]}>
-        <View style={styles.startHeader}>
-          <View style={[styles.startIcon, { backgroundColor: theme.primarySoft }]}>
-            <AppIcon name="plus" color={theme.primary} size={22} />
-          </View>
-          <View style={styles.startCopy}>
-            <Text style={[styles.startTitle, { color: theme.textPrimary }]}>New observation</Text>
-            <Text style={[styles.startBody, { color: theme.textSecondary }]}>Site, visit, method, measurements, and review.</Text>
-          </View>
-        </View>
-        <View style={styles.catalogState}>
-          <StatusChip
-            icon={catalog.source === 'server' ? 'check' : catalog.source === 'cached' ? 'cloud' : 'info'}
-            label={catalogCopy}
-            tone={catalog.source === 'error' || catalog.source === 'empty' ? 'warning' : catalog.source === 'server' ? 'success' : 'info'}
-          />
-          <SecondaryButton
-            label={catalog.refreshing ? 'Refreshing' : 'Refresh sites'}
-            loading={catalog.refreshing}
-            onPress={() => void refreshSites()}
-          />
-        </View>
-        {catalog.error ? <InlineAlert tone="warning" title={catalog.error} /> : null}
+      <View style={styles.primaryWork}>
         <PrimaryButton
           disabled={!canStart}
-          label="Start observation"
+          icon="plus"
+          label="Start New Observation"
           loading={starting}
-          loadingLabel="Creating draft"
+          loadingLabel="Creating Observation"
           onPress={() => void startObservation()}
+          style={styles.startButton}
         />
-        {!canStart ? (
-          <Text style={[styles.helper, { color: theme.textSecondary }]}>A valid site catalog is required before collection can begin.</Text>
+        <View style={styles.catalogRow}>
+          <View accessible accessibilityLabel={catalogState.label} style={styles.catalogStatus}>
+            {catalog.refreshing ? (
+              <ActivityIndicator color={catalogState.color} size="small" />
+            ) : (
+              <AppIcon name={catalogState.icon} color={catalogState.color} size={16} />
+            )}
+            <Text style={[styles.catalogText, { color: catalogState.color }]}>{catalogState.label}</Text>
+          </View>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Refresh sites"
+            disabled={catalog.refreshing}
+            onPress={() => void refreshSites()}
+            style={({ pressed }) => [
+              styles.refreshAction,
+              { backgroundColor: pressed ? theme.secondaryPressed : 'transparent' },
+            ]}>
+            <Text style={[styles.refreshText, { color: catalog.refreshing ? theme.disabledText : theme.primary }]}>Refresh</Text>
+          </Pressable>
+        </View>
+        {catalog.error ? <InlineAlert tone="warning" title={catalog.error} /> : null}
+        {!canStart && catalog.source !== 'loading' ? (
+          <Text style={[styles.unavailable, { color: theme.textSecondary }]}>A saved or online site catalog is required.</Text>
         ) : null}
       </View>
 
@@ -235,89 +229,91 @@ export default function HomeScreen() {
       ) : null}
 
       <View style={styles.section}>
-        <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Continue field work</Text>
-        {draftsLoading ? (
-          <View accessibilityLiveRegion="polite" style={styles.loadingRow}>
-            <ActivityIndicator color={theme.primary} />
-            <Text style={[styles.loadingText, { color: theme.textSecondary }]}>Loading saved field work</Text>
-          </View>
-        ) : null}
-        {correctionRecords.map((submission) => (
-          <ListRow
-            key={`correction-${submission.submissionId}`}
-            meta={`Revision ${submission.currentRevisionNo} · ${recentFormatter.format(submission.latestCollectedAt)}`}
-            onPress={() =>
-              router.push({
-                pathname: '/submissions/[submissionId]',
-                params: { submissionId: submission.submissionId },
-              })
-            }
-            subtitle="Reviewer or validation feedback requires a new revision"
-            title="Correction requested"
-            trailing={<SubmissionStatusChip status={submission.status} />}
-          />
-        ))}
-        {drafts.map((draft) => {
-          const transport = transportFor(draft.submissionId);
-          return (
+        <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Continue Field Work</Text>
+        <View style={[styles.workList, { borderTopColor: theme.border, borderBottomColor: theme.border }]}>
+          {draftsLoading ? (
+            <View accessibilityLiveRegion="polite" style={styles.loadingRow}>
+              <ActivityIndicator color={theme.primary} />
+              <Text style={[styles.loadingText, { color: theme.textSecondary }]}>Loading saved work</Text>
+            </View>
+          ) : null}
+          {correctionRecords.map((submission) => (
             <ListRow
-              key={`${draft.submissionId}-${draft.revisionId}`}
-              meta={`Revision ${draft.revisionNo} · updated ${recentFormatter.format(new Date(draft.updatedAt))}`}
-              onPress={() => openDraft(draft)}
-              subtitle={draft.siteCode ? `Site ${draft.siteCode}` : 'Site not selected'}
-              title={draft.correction ? draft.siteDisplayName ?? 'Correction draft' : draft.siteDisplayName ?? 'New observation draft'}
-              trailing={
-                <SyncStatus
-                  onRetry={transport.status === 'failed' ? () => retrySync(draft.submissionId) : undefined}
-                  status={transport.status}
-                />
+              key={`correction-${submission.submissionId}`}
+              meta={`Revision ${submission.currentRevisionNo} · ${recentFormatter.format(submission.latestCollectedAt)}`}
+              onPress={() =>
+                router.push({
+                  pathname: '/submissions/[submissionId]',
+                  params: { submissionId: submission.submissionId },
+                })
               }
+              subtitle="Correction Requested"
+              title={catalog.sites.find(({ siteId }) => siteId === submission.siteId)?.displayName ?? 'Sampling Site'}
+              trailing={<SubmissionStatusChip status={submission.status} />}
             />
-          );
-        })}
-        {!draftsLoading && drafts.length === 0 && correctionRecords.length === 0 ? (
-          <EmptyState
-            icon="clipboard"
-            title="No field work in progress"
-            body="Start an observation or open a requested correction when one appears."
-          />
-        ) : null}
+          ))}
+          {drafts.map((draft) => {
+            const transport = transportFor(draft.submissionId);
+            const step = nextStepForDraft(draft);
+            return (
+              <ListRow
+                key={`${draft.submissionId}-${draft.revisionId}`}
+                meta={`Updated ${recentFormatter.format(new Date(draft.updatedAt))} · Revision ${draft.revisionNo}`}
+                onPress={() => openDraft(draft)}
+                subtitle={`Continue: ${stepLabels[step]}`}
+                title={draft.siteDisplayName ?? draft.siteCode ?? (draft.correction ? 'Correction Draft' : 'New Observation')}
+                trailing={
+                  <SyncStatus
+                    onRetry={transport.status === 'failed' ? () => retrySync(draft.submissionId) : undefined}
+                    status={transport.status}
+                  />
+                }
+              />
+            );
+          })}
+          {!draftsLoading && drafts.length === 0 && correctionRecords.length === 0 ? (
+            <Text style={[styles.emptyText, { color: theme.textSecondary }]}>No field work in progress.</Text>
+          ) : null}
+        </View>
       </View>
 
       <View style={styles.section}>
         <View style={styles.sectionHeadingRow}>
-          <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Recent submissions</Text>
-          {recent.source === 'cached' ? <StatusChip icon="cloud" label="Offline cache" tone="info" /> : null}
+          <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Recent</Text>
+          {recent.source === 'cached' ? (
+            <View accessible accessibilityLabel="Showing offline cache" style={styles.offlineLabel}>
+              <AppIcon name="cloud" color={theme.info} size={14} />
+              <Text style={[styles.offlineText, { color: theme.info }]}>Offline Cache</Text>
+            </View>
+          ) : null}
         </View>
-        {recent.source === 'loading' ? (
-          <View accessibilityLiveRegion="polite" style={styles.loadingRow}>
-            <ActivityIndicator color={theme.primary} />
-            <Text style={[styles.loadingText, { color: theme.textSecondary }]}>Loading recent submissions</Text>
-          </View>
-        ) : null}
+        <View style={[styles.workList, { borderTopColor: theme.border, borderBottomColor: theme.border }]}>
+          {recent.source === 'loading' ? (
+            <View accessibilityLiveRegion="polite" style={styles.loadingRow}>
+              <ActivityIndicator color={theme.primary} />
+              <Text style={[styles.loadingText, { color: theme.textSecondary }]}>Loading recent work</Text>
+            </View>
+          ) : null}
+          {recentRecords.map((submission) => (
+            <ListRow
+              key={submission.submissionId}
+              meta={`Revision ${submission.currentRevisionNo} · ${recentFormatter.format(submission.latestCollectedAt)}`}
+              onPress={() =>
+                router.push({
+                  pathname: '/submissions/[submissionId]',
+                  params: { submissionId: submission.submissionId },
+                })
+              }
+              subtitle={submission.status === 'DRAFT' ? 'Saved Observation' : 'Observation'}
+              title={catalog.sites.find(({ siteId }) => siteId === submission.siteId)?.displayName ?? 'Sampling Site'}
+              trailing={<SubmissionStatusChip status={submission.status} />}
+            />
+          ))}
+          {recent.source !== 'loading' && recentRecords.length === 0 ? (
+            <Text style={[styles.emptyText, { color: theme.textSecondary }]}>No recent observations.</Text>
+          ) : null}
+        </View>
         {recent.error ? <InlineAlert tone="warning" title={recent.error} /> : null}
-        {recentRecords.map((submission) => (
-          <ListRow
-            key={submission.submissionId}
-            meta={`Revision ${submission.currentRevisionNo} · ${recentFormatter.format(submission.latestCollectedAt)}`}
-            onPress={() =>
-              router.push({
-                pathname: '/submissions/[submissionId]',
-                params: { submissionId: submission.submissionId },
-              })
-            }
-            subtitle={catalog.sites.find(({ siteId }) => siteId === submission.siteId)?.displayName ?? 'Sampling site'}
-            title={submission.status === 'DRAFT' ? 'Saved observation draft' : 'Submitted observation'}
-            trailing={<SubmissionStatusChip status={submission.status} />}
-          />
-        ))}
-        {recent.source !== 'loading' && recentRecords.length === 0 ? (
-          <EmptyState
-            icon="clipboard"
-            title="No recent submissions"
-            body="Server-backed drafts and submitted observations will appear here with workflow status."
-          />
-        ) : null}
       </View>
     </AppScreen>
   );
@@ -325,101 +321,74 @@ export default function HomeScreen() {
 
 const styles = StyleSheet.create({
   content: {
-    paddingTop: Spacing.xl,
-    gap: Spacing.xl,
+    paddingTop: Spacing.lg,
+    gap: Spacing.xxl,
   },
   header: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     justifyContent: 'space-between',
     gap: Spacing.md,
   },
-  headerIdentity: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: Spacing.sm,
-  },
   headerCopy: {
     flex: 1,
-    gap: 1,
+    gap: Spacing.xxs,
   },
-  eyebrow: {
+  product: {
     ...Typography.eyebrow,
-    marginBottom: Spacing.xxs,
-  },
-  greeting: {
-    ...Typography.helper,
   },
   title: {
     ...Typography.screenTitle,
   },
-  avatar: {
+  accountButton: {
     width: 48,
     height: 48,
     borderRadius: Radii.pill,
-    borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  avatarText: {
-    fontSize: 14,
-    lineHeight: 18,
-    fontWeight: '800',
-    letterSpacing: 0.4,
-  },
-  startSection: {
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    paddingVertical: Spacing.lg,
-    gap: Spacing.md,
-  },
-  startHeader: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
+  primaryWork: {
     gap: Spacing.sm,
   },
-  startIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: Radii.input,
-    alignItems: 'center',
-    justifyContent: 'center',
+  startButton: {
+    minHeight: 62,
   },
-  startCopy: {
-    flex: 1,
-    gap: Spacing.xxs,
-  },
-  startTitle: {
-    ...Typography.sectionTitle,
-  },
-  startBody: {
-    ...Typography.helper,
-  },
-  catalogState: {
+  catalogRow: {
+    minHeight: 48,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     flexWrap: 'wrap',
-    gap: Spacing.sm,
+    gap: Spacing.xs,
   },
-  helper: {
-    ...Typography.helper,
-  },
-  loadingRow: {
-    minHeight: 48,
+  catalogStatus: {
+    flex: 1,
+    minWidth: 180,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.sm,
+    gap: Spacing.xs,
   },
-  loadingText: {
+  catalogText: {
+    ...Typography.caption,
+    fontWeight: '600',
+  },
+  refreshAction: {
+    minHeight: 48,
+    paddingHorizontal: Spacing.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  refreshText: {
+    ...Typography.label,
+  },
+  unavailable: {
     ...Typography.helper,
   },
   section: {
     gap: Spacing.sm,
   },
   sectionHeadingRow: {
-    minHeight: 32,
+    minHeight: 30,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -428,5 +397,34 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     ...Typography.sectionTitle,
+  },
+  workList: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  loadingRow: {
+    minHeight: 72,
+    paddingHorizontal: Spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  loadingText: {
+    ...Typography.helper,
+  },
+  emptyText: {
+    ...Typography.body,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: Spacing.xl,
+  },
+  offlineLabel: {
+    minHeight: 32,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xxs,
+  },
+  offlineText: {
+    ...Typography.caption,
+    fontWeight: '600',
   },
 });

@@ -31,7 +31,24 @@ export function displayUnitForParameter(parameterCode: string) {
   return unit;
 }
 
+export function spokenUnitForParameter(parameterCode: string) {
+  const unit = displayUnitForParameter(parameterCode);
+  const spoken: Record<string, string> = {
+    'pH': 'pH',
+    'mg/L': 'milligrams per liter',
+    'µS/cm': 'microsiemens per centimeter',
+    '%': 'percent',
+    'mV': 'millivolts',
+    'm³/s': 'cubic meters per second',
+  };
+  return spoken[unit] ?? unit;
+}
+
 export function numericTextIsFinite(value: string) {
   const normalized = value.trim();
   return decimalNumberPattern.test(normalized) && Number.isFinite(Number(normalized));
+}
+
+export function displayNumericText(value: string) {
+  return value.trim().replace(/^-/, '−');
 }

@@ -37,8 +37,7 @@ export default function SiteStep() {
       <ProgressHeader current="Site" />
       <ScreenIntro
         eyebrow="SAMPLING LOCATION"
-        title="Choose the site"
-        body="Select an active mobile-safe site from the field catalog."
+        title="Choose Site"
       />
 
       <View style={styles.stateRow}>

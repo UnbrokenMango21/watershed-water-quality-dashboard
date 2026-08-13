@@ -1,19 +1,19 @@
-# Creekline Field System
+# Hydrograph Field System
 
 ## Purpose
 
-Creekline is the visual and interaction language for the Central PA Watershed
+Hydrograph is the visual and interaction language for the Central PA Watershed
 collector app. It must feel like a precise field instrument: calm, legible in
 direct sun, trustworthy around scientific data, and native on both iOS and
 Android.
 
 The system synthesizes low-chrome native hierarchy, rigorous semantic state
-design, warm environmental materials, and the useful parts of the existing
+design, cool mineral surfaces, and the useful parts of the existing
 app. It does not reproduce any one third-party brand.
 
 ## Design principles
 
-1. **The reading is the hero.** Site, time, location, provenance, units, and
+1. **The reading is the hero.** Site, time, location, collection method, units, and
    measurement values outrank decoration.
 2. **State is explicit.** Loading, cached, offline, saved locally, syncing,
    synced, failed, submitted, and correction states always use text plus an
@@ -21,10 +21,10 @@ app. It does not reproduce any one third-party brand.
 3. **Native before custom.** Use platform navigation, date/time controls,
    permission behavior, keyboard conventions, safe areas, and Android back
    behavior wherever Expo supports them cleanly.
-4. **Warm, flat, and field-ready.** Prefer field-paper surfaces, whitespace,
+4. **Cool, flat, and field-ready.** Prefer mineral-white surfaces, whitespace,
    and hairlines to floating cards, shadows, gradients, or glass effects.
-5. **One action signal.** Creek teal identifies interactive controls and focus.
-   Hemlock carries identity and structural emphasis, not every action.
+5. **One action signal.** Hydrograph teal identifies interactive controls and
+   focus. River slate carries identity and structural emphasis, not every action.
 6. **No silent work.** Any operation that can take time or fail explains what
    is happening and gives the collector a recovery path.
 7. **One instrument, not a set of pages.** Screen composition, status grammar,
@@ -37,65 +37,49 @@ app. It does not reproduce any one third-party brand.
 
 | Token | Value | Role |
 | --- | --- | --- |
-| `fieldPaper` | `#F5F2E8` | Primary warm canvas |
-| `workingSurface` | `#FFFDF8` | Inputs, sheets, focused work areas |
-| `surfaceMuted` | `#E7ECE6` | Alternate bands, disabled/background state |
-| `ink` | `#172321` | Primary text and high-priority data |
-| `slate` | `#4E5E5B` | Secondary text and metadata |
-| `muted` | `#5B6B68` | Tertiary text; never essential instructions alone |
-| `hairline` | `#C9D0CA` | Decorative separators only |
-| `controlBorder` | `#7A8985` | Resting input and interactive-row boundary |
-| `creek` | `#0B6268` | Primary actions, links, focus, informational state |
-| `creekPressed` | `#074C51` | Pressed primary action |
-| `creekSoft` | `#DCEBED` | Informational tint |
-| `hemlock` | `#24503F` | Brand identity and rare structural bands |
-| `hemlockSoft` | `#DDE8DF` | Cached/offline-safe environmental tint |
-| `success` | `#276749` | Confirmed completed/synced state |
-| `successSoft` | `#E1EFE6` | Success tint |
-| `warning` | `#8A5A00` | Needs attention, pending review, reduced accuracy |
-| `warningSoft` | `#F6EACB` | Warning tint |
-| `danger` | `#B42318` | Errors, failed sync, destructive actions |
-| `dangerPressed` | `#8F1C13` | Pressed destructive action |
-| `dangerSoft` | `#F8E3DF` | Error tint |
-| `disabledSurface` | `#D9DEDA` | Genuinely unavailable control surface |
-| `disabledText` | `#5B6B68` | Genuinely unavailable control label |
-| `secondaryPressed` | `#E1E6E1` | Pressed secondary control |
-| `onAction` | `#FFFFFF` | Text/icons on creek, hemlock, and semantic fills |
-| `focus` | `#0B6268` | Focus ring plus non-color focus treatment |
+| `background` | `#F2F6F7` | Cool mineral canvas |
+| `surface` | `#FFFFFF` | Inputs, sheets, and grouped working rows |
+| `surfaceSecondary` | `#E7EFF1` | Alternate bands and quiet selected states |
+| `textPrimary` | `#0A2027` | Primary text and scientific readings |
+| `textSecondary` | `#486168` | Metadata and supporting text |
+| `textMuted` | `#5E7278` | Tertiary text; never essential instructions alone |
+| `border` | `#C9D6D9` | Decorative separators only |
+| `controlBorder` | `#7D9298` | Resting control boundary |
+| `primary` | `#006C75` | Actions, links, focus, and informational state |
+| `primaryPressed` | `#00545B` | Pressed primary action |
+| `primarySoft` | `#D9EEF0` | Informational and selected tint |
+| `brand` | `#123F4A` | Product identity and structural emphasis |
+| `success` | `#146C48` | Confirmed completed/synced state |
+| `warning` | `#865900` | Needs attention or reduced accuracy |
+| `danger` | `#B3261E` | Errors, failed sync, destructive actions |
+| `disabledSurface` | `#DCE4E6` | Genuinely unavailable control surface |
+| `onPrimary` | `#FFFFFF` | Text and icons on primary fills |
+| `focus` | `#008B95` | Focus ring plus a structural cue |
 
-Primary contrast pairs are intentionally strong: ink on field paper, slate on
-field paper, and white on creek or hemlock all meet normal-text contrast needs.
-Do not reduce important text with opacity.
+Primary contrast pairs are intentionally strong: primary text on the mineral
+canvas is 15.46:1, secondary text is 6.06:1, and white on the primary action is
+6.17:1. Do not reduce important text with opacity.
 
 ### Dark field theme
 
 | Token | Value | Role |
 | --- | --- | --- |
-| `nightCreek` | `#101918` | Primary canvas |
-| `nightSurface` | `#182522` | Inputs and working surfaces |
-| `nightMuted` | `#21312D` | Alternate bands |
-| `paperText` | `#F5F2E8` | Primary text |
-| `paperSecondary` | `#C5D0CB` | Secondary text |
-| `nightHairline` | `#3C504A` | Decorative separators |
-| `nightControlBorder` | `#71867F` | Resting input and interactive-row boundary |
-| `creekBright` | `#78CDD0` | Actions and focus |
-| `creekBrightPressed` | `#6AB7BB` | Pressed primary action |
-| `nightOnAction` | `#101918` | Text/icons on bright semantic fills |
-| `hemlockBright` | `#8DC6A8` | Identity and success |
-| `nightSuccessSoft` | `#1D392C` | Success tint |
-| `nightWarning` | `#E1B75A` | Needs-attention foreground |
-| `nightWarningSoft` | `#3A2D12` | Needs-attention tint |
-| `nightDanger` | `#F0968C` | Error/destructive foreground |
-| `nightDangerSoft` | `#402321` | Error tint |
-| `nightInfoSoft` | `#183438` | Informational tint |
-| `nightDisabledSurface` | `#2A3935` | Genuinely unavailable control surface |
-| `nightDisabledText` | `#A8B5B0` | Genuinely unavailable control label |
+| `background` | `#071619` | Primary canvas |
+| `surface` | `#0E252A` | Inputs and working surfaces |
+| `surfaceSecondary` | `#17343A` | Alternate bands |
+| `textPrimary` | `#F1F7F8` | Primary text |
+| `textSecondary` | `#BED0D4` | Secondary text |
+| `border` | `#345159` | Decorative separators |
+| `controlBorder` | `#6A858C` | Resting control boundary |
+| `primary` | `#71D3DA` | Actions and focus |
+| `primaryPressed` | `#5DBBC2` | Pressed primary action |
+| `onPrimary` | `#071619` | Text and icons on primary fills |
+| `success` | `#7FC99E` | Confirmed state |
+| `warning` | `#E2B85E` | Needs-attention state |
+| `danger` | `#FF9B92` | Error and destructive state |
 
-Light `muted` meets 4.5:1 on `fieldPaper`; both control-border tokens meet the
-3:1 non-text contrast requirement against their working surfaces. Semantic
-dark-theme foregrounds use `nightOnAction`, while tinted surfaces use
-`paperText` or `paperSecondary` as verified for their role. Light theme remains
-the primary outdoor verification target.
+Light muted text meets 4.5:1 on the canvas; control borders meet 3:1 against
+working surfaces. Light theme remains the primary outdoor verification target.
 
 ## Typography
 
@@ -105,7 +89,7 @@ scientific labels.
 
 | Token | Size / line | Weight | Use |
 | --- | --- | --- | --- |
-| `screenTitle` | 30 / 36 | 700 | One clear screen purpose |
+| `screenTitle` | 34 / 40 | 700 | One clear screen purpose |
 | `sectionTitle` | 20 / 26 | 600 | Major form/list sections |
 | `body` | 17 / 24 | 400 | Primary reading text |
 | `bodyStrong` | 17 / 24 | 600 | Emphasized values and row titles |
@@ -113,7 +97,7 @@ scientific labels.
 | `helper` | 14 / 20 | 400 | Guidance and validation explanation |
 | `caption` | 13 / 18 | 500 | Metadata and compact status text |
 | `eyebrow` | 12 / 16 | 700 | Rare Central PA identity or step context |
-| `numeric` | 30 / 36 | 600 | Measurement entry and review values |
+| `numeric` | 34 / 40 | 600 | Measurement rows and review values |
 
 `numeric` uses tabular figures. Unit labels remain visible beside the number;
 never rely on placeholder text to communicate a unit. Avoid weights below 400
@@ -175,16 +159,15 @@ Never stack rounded cards inside rounded cards.
 - Profile/account is a real control with identity and sign-out, not an avatar
   ornament. Present account controls in a native sheet or stack screen, with a
   destructive sign-out confirmation.
-- Show workflow progress as `Step N of 5 · Step name`; do not compress five
-  labels into a rail that truncates under large text.
+- Show workflow progress as `Step N of 5` above the screen title; do not repeat
+  the step name or compress five labels into a rail that truncates under large text.
 
 ### Buttons
 
-- Primary: creek fill, `onAction` label, 52–56 high, 8 radius. Dark theme uses
-  `creekBright` with `nightOnAction`.
+- Primary: `primary` fill, `onPrimary` label, 52–62 high, 8–12 radius.
 - Secondary: working-surface fill, `controlBorder`, ink label.
 - Destructive: danger text/border or fill according to consequence.
-- Text action: creek text with at least a 48-point hit area.
+- Text action: primary text with at least a 48-point hit area.
 - Pressed states use the matching pressed token; focus adds both the focus ring
   and a structural cue. Disabled states use the disabled tokens only for a real,
   adjacent prerequisite.
@@ -197,7 +180,7 @@ Never stack rounded cards inside rounded cards.
 - Measurement rows are the deliberate exception: parameter identity, requiredness,
   numeric entry, and unit share one instrument row so a collector can scan the
   whole record without card-like field stacks.
-- Rest: working surface + `controlBorder`. Focus: creek 2-point border plus a
+- Rest: working surface + `controlBorder`. Focus: primary 2-point border plus a
   visible focus treatment that does not rely on color alone.
 - Error: danger structural cue plus readable message and recovery instruction.
 - Disabled style is reserved for real prerequisites and must explain them.
@@ -209,15 +192,14 @@ Never stack rounded cards inside rounded cards.
 - Treat the measurement screen as an instrument face, not a generic form.
 - Use a stable list with parameter identity on the left, a large right-aligned
   tabular reading, and a persistent fixed unit column.
-- Requiredness has a structural cue: solid creek spine for required, dashed
-  neutral spine for optional, and a hollow danger spine plus error text for a
-  required row that is incomplete/invalid.
-- Decimal keypad where available; preserve transient strings such as `-`, `.`,
-  and `1.` until commit. Signed entry is offered only for contract parameters
-  that permit it. iOS numeric entry includes a reachable Next/Done accessory.
-- Keep the native/platform input path for the Phase 11 release candidate. A
-  bespoke in-app numeric keypad sheet is deferred until it can be tested for
-  accessibility, localization, and Android parity without weakening stability.
+- Group requiredness at the section level. Individual rows remain a stable
+  `Measurement Name | Value | Unit` grid without repeated Required/Optional copy.
+- Tapping a row opens the shared focused-entry sheet with a system numeric
+  keyboard, a large tabular value, unit selection where supported, validation,
+  and an explicit completion action.
+- Preserve transient strings such as `-`, `.`, and `1.` until commit. Signed
+  entry is offered only for contract parameters that permit it; do not add a
+  detached plus/minus control. iOS includes a reachable Done accessory.
 - Temperature asks for entered unit first, preserves that entered value/unit,
   and derives the counterpart immediately. A new draft begins with neither unit
   selected; a resumed draft restores its explicit unit.
@@ -275,13 +257,13 @@ Use short native-feeling steps with a visible progress context:
 
 1. Site
 2. Visit (date/time and GPS accuracy)
-3. Method (test type and provenance)
+3. Collection Method (test type, collector, method, and instrument/lab source)
 4. Measurements
 5. Review
 
 Back/edit preserves the draft. Review uses flat labeled rows and explicit edit
 links with 48-point targets. Site, local time/timezone, GPS and reported
-accuracy, test type, provenance, every measurement and unit, notes, revision,
+accuracy, test type, collection method, every measurement and unit, notes, revision,
 and transport state are visible. Submission is never conflated with local save
 or Firestore acknowledgement, and an explicit confirmation explains that the
 submitted revision becomes read-only.
@@ -304,7 +286,7 @@ implementation is added. Notes appear only where the existing schema permits.
 ## Decorative restraint
 
 Do not use repeated creek/topographic contour stripes, wave bands, or wallpaper
-behind workflow headers. The field-paper / night-creek canvas stays quiet.
+behind workflow headers. The mineral / dark-water canvas stays quiet.
 Identity comes from the project mark, typography, spacing, field-record
 structure, and semantic color.
 
@@ -362,6 +344,6 @@ non-repeating, hidden from the accessibility tree, and never sit behind data.
 - Do not use universal pills, decorative gradients, glass, heavy shadows, or
   repeated background motifs.
 - Do not use saturated green as decoration or color alone as status.
-- Do not hide units, GPS accuracy, provenance, revision, or sync state.
+- Do not hide units, GPS accuracy, collection method, revision, or sync state.
 - Do not invent validation, ownership, quality, or publication semantics.
 - Do not expose decorative, dead, or future-facing controls in v1.

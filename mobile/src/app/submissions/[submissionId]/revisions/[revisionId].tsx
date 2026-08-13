@@ -136,7 +136,7 @@ export default function RevisionDetailScreen() {
           { label: 'Method', value: revision.methodName },
           { label: 'Instrument / lab', value: revision.instrumentName },
         ]}
-        title="Method & provenance"
+        title="Collection Method"
       />
       <ReviewSection
         items={[

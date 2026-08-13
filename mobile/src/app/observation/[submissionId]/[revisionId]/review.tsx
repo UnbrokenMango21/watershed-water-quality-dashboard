@@ -137,8 +137,7 @@ export default function ReviewStep() {
       <ProgressHeader current="Review" />
       <ScreenIntro
         eyebrow={draft.correction ? 'CORRECTION REVISION' : 'FINAL CHECK'}
-        title={draft.correction ? 'Review the correction' : 'Review the observation'}
-        body="Confirm the recorded values, units, location, and provenance before submission."
+        title={draft.correction ? 'Review Correction' : 'Review Observation'}
       />
 
       <View style={styles.statusRow}>
@@ -190,7 +189,7 @@ export default function ReviewStep() {
           { label: 'Instrument / lab', value: draft.instrumentName ?? 'Missing' },
         ]}
         onEdit={() => goTo('method')}
-        title="Method & provenance"
+        title="Collection Method"
       />
 
       <ReviewSection

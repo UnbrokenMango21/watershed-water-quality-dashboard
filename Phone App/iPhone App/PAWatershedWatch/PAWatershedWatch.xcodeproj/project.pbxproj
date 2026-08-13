@@ -1,0 +1,485 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 46;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		24226C48E8F909F128D75405 /* RecordsAccountViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20E09F98898DE6386048A01F /* RecordsAccountViews.swift */; };
+		2C6A17F985A8FE0CDDEE015D /* ReviewSubmissionViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CF4E4B30C3C4497F45685EB /* ReviewSubmissionViews.swift */; };
+		69A55ED5E84FB230A53ECF02 /* WorkflowViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = E186245AFE2848662761BFE0 /* WorkflowViews.swift */; };
+		6F939C59FE90AFCB99067499 /* ModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C8A23B1B29D070FD2670D87 /* ModelTests.swift */; };
+		8122FBB37BE315F6F00FD83F /* CoreViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA25B6C5C207E46EAE523F30 /* CoreViews.swift */; };
+		8E95A9AD2E30A25EDC25F9F8 /* Model.swift in Sources */ = {isa = PBXBuildFile; fileRef = D729E406F46E8C44BAFEA206 /* Model.swift */; };
+		96DCE53B6717EEDE463E93A6 /* DesignSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 090C161F36EDE07CE012ADB4 /* DesignSystem.swift */; };
+		AF2256EA5CC191EA76F63380 /* PAWatershedWatchApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 487E1FD2E7AC6E5204788F17 /* PAWatershedWatchApp.swift */; };
+		C6C9D93714F473F11175D262 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4ED99D4B2B30519BE0C3C693 /* Foundation.framework */; };
+		EA6B9D41E83BF5FE418A6B84 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4ED99D4B2B30519BE0C3C693 /* Foundation.framework */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		C1E09CE15C7989968F1DE62A /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = CCFE7EE891E74F4C6B495090 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 02FB57CA069F8BB35A74FCA9;
+			remoteInfo = PAWatershedWatch;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		090C161F36EDE07CE012ADB4 /* DesignSystem.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = DesignSystem.swift; sourceTree = "<group>"; };
+		170D1C25D23E58D6BEBA6A24 /* PAWatershedWatch.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PAWatershedWatch.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		20E09F98898DE6386048A01F /* RecordsAccountViews.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = RecordsAccountViews.swift; sourceTree = "<group>"; };
+		3C8A23B1B29D070FD2670D87 /* ModelTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ModelTests.swift; sourceTree = "<group>"; };
+		487E1FD2E7AC6E5204788F17 /* PAWatershedWatchApp.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = PAWatershedWatchApp.swift; sourceTree = "<group>"; };
+		4ED99D4B2B30519BE0C3C693 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.0.sdk/System/Library/Frameworks/Foundation.framework; sourceTree = DEVELOPER_DIR; };
+		5CF4E4B30C3C4497F45685EB /* ReviewSubmissionViews.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ReviewSubmissionViews.swift; sourceTree = "<group>"; };
+		CC2AEC05DF99A062BDFC2908 /* PAWatershedWatchTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = PAWatershedWatchTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		D729E406F46E8C44BAFEA206 /* Model.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = Model.swift; sourceTree = "<group>"; };
+		DA25B6C5C207E46EAE523F30 /* CoreViews.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CoreViews.swift; sourceTree = "<group>"; };
+		E186245AFE2848662761BFE0 /* WorkflowViews.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = WorkflowViews.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		20870BBCF9AA9F176145F307 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C6C9D93714F473F11175D262 /* Foundation.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A001FCCB2DEC5B608D9B3C51 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				EA6B9D41E83BF5FE418A6B84 /* Foundation.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		15BB67D89D13BB67462C3FF1 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				F894ABCFADCA1AFFE8BCCFFF /* iOS */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		1E10D2345E8C5130A5428C2B /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				170D1C25D23E58D6BEBA6A24 /* PAWatershedWatch.app */,
+				CC2AEC05DF99A062BDFC2908 /* PAWatershedWatchTests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		2968A5D941A3CBD7C1DC836D = {
+			isa = PBXGroup;
+			children = (
+				1E10D2345E8C5130A5428C2B /* Products */,
+				15BB67D89D13BB67462C3FF1 /* Frameworks */,
+				462AC696DB2F35F760B4DB20 /* PAWatershedWatch */,
+				48F3347216EE49DC76B90E48 /* PAWatershedWatchTests */,
+			);
+			sourceTree = "<group>";
+		};
+		462AC696DB2F35F760B4DB20 /* PAWatershedWatch */ = {
+			isa = PBXGroup;
+			children = (
+				DA25B6C5C207E46EAE523F30 /* CoreViews.swift */,
+				090C161F36EDE07CE012ADB4 /* DesignSystem.swift */,
+				D729E406F46E8C44BAFEA206 /* Model.swift */,
+				487E1FD2E7AC6E5204788F17 /* PAWatershedWatchApp.swift */,
+				20E09F98898DE6386048A01F /* RecordsAccountViews.swift */,
+				5CF4E4B30C3C4497F45685EB /* ReviewSubmissionViews.swift */,
+				E186245AFE2848662761BFE0 /* WorkflowViews.swift */,
+			);
+			name = PAWatershedWatch;
+			path = PAWatershedWatch;
+			sourceTree = "<group>";
+		};
+		48F3347216EE49DC76B90E48 /* PAWatershedWatchTests */ = {
+			isa = PBXGroup;
+			children = (
+				3C8A23B1B29D070FD2670D87 /* ModelTests.swift */,
+			);
+			name = PAWatershedWatchTests;
+			path = PAWatershedWatchTests;
+			sourceTree = "<group>";
+		};
+		F894ABCFADCA1AFFE8BCCFFF /* iOS */ = {
+			isa = PBXGroup;
+			children = (
+				4ED99D4B2B30519BE0C3C693 /* Foundation.framework */,
+			);
+			name = iOS;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		02FB57CA069F8BB35A74FCA9 /* PAWatershedWatch */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 5C444AD7E19E74A842DE93B5 /* Build configuration list for PBXNativeTarget "PAWatershedWatch" */;
+			buildPhases = (
+				DCEA95EF977F368C2E310F5C /* Sources */,
+				A001FCCB2DEC5B608D9B3C51 /* Frameworks */,
+				4D716591CF94673A2B4B5D76 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = PAWatershedWatch;
+			productName = PAWatershedWatch;
+			productReference = 170D1C25D23E58D6BEBA6A24 /* PAWatershedWatch.app */;
+			productType = "com.apple.product-type.application";
+		};
+		4B751A349A90FE4A7B0AD9DA /* PAWatershedWatchTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 13D436384AD51CCDF97F62DB /* Build configuration list for PBXNativeTarget "PAWatershedWatchTests" */;
+			buildPhases = (
+				53CDA5EB77D2CA5BC9544BDF /* Sources */,
+				20870BBCF9AA9F176145F307 /* Frameworks */,
+				F68311C48E0482EC388E7E9B /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				1EDDD58BD168EAE661223152 /* PBXTargetDependency */,
+			);
+			name = PAWatershedWatchTests;
+			productName = PAWatershedWatchTests;
+			productReference = CC2AEC05DF99A062BDFC2908 /* PAWatershedWatchTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		CCFE7EE891E74F4C6B495090 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				LastSwiftUpdateCheck = 1600;
+				LastUpgradeCheck = 1600;
+			};
+			buildConfigurationList = 90523CDFD00B0B5275B09F6E /* Build configuration list for PBXProject "PAWatershedWatch" */;
+			compatibilityVersion = "Xcode 3.2";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = 2968A5D941A3CBD7C1DC836D;
+			minimizedProjectReferenceProxies = 0;
+			preferredProjectObjectVersion = 100;
+			productRefGroup = 1E10D2345E8C5130A5428C2B /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				02FB57CA069F8BB35A74FCA9 /* PAWatershedWatch */,
+				4B751A349A90FE4A7B0AD9DA /* PAWatershedWatchTests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		4D716591CF94673A2B4B5D76 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		F68311C48E0482EC388E7E9B /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		53CDA5EB77D2CA5BC9544BDF /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				6F939C59FE90AFCB99067499 /* ModelTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		DCEA95EF977F368C2E310F5C /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				8122FBB37BE315F6F00FD83F /* CoreViews.swift in Sources */,
+				96DCE53B6717EEDE463E93A6 /* DesignSystem.swift in Sources */,
+				8E95A9AD2E30A25EDC25F9F8 /* Model.swift in Sources */,
+				AF2256EA5CC191EA76F63380 /* PAWatershedWatchApp.swift in Sources */,
+				24226C48E8F909F128D75405 /* RecordsAccountViews.swift in Sources */,
+				2C6A17F985A8FE0CDDEE015D /* ReviewSubmissionViews.swift in Sources */,
+				69A55ED5E84FB230A53ECF02 /* WorkflowViews.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		1EDDD58BD168EAE661223152 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			name = PAWatershedWatch;
+			target = 02FB57CA069F8BB35A74FCA9 /* PAWatershedWatch */;
+			targetProxy = C1E09CE15C7989968F1DE62A /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		4C209C3B4E3C648FD161A8C2 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		6ACEC405CDD56F26846EAFF1 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "PA Watershed Watch";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Attach photographs of sampling sites and field conditions to an observation.";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Capture the sampling position and GPS accuracy for a field observation.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Record optional audio notes while collecting a field observation.";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = org.watershed.pawatershedwatch;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		6D541E0ADDE6D28431B56A1E /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		B184837AE996FE31E98EB7E4 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				PRODUCT_BUNDLE_IDENTIFIER = org.watershed.pawatershedwatch.tests;
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/PAWatershedWatch.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/PAWatershedWatch";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		C8650C787D60A591C47A6FC7 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				PRODUCT_BUNDLE_IDENTIFIER = org.watershed.pawatershedwatch.tests;
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/PAWatershedWatch.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/PAWatershedWatch";
+			};
+			name = Debug;
+		};
+		F6A66A25A95680AC2E022429 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "PA Watershed Watch";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Attach photographs of sampling sites and field conditions to an observation.";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Capture the sampling position and GPS accuracy for a field observation.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Record optional audio notes while collecting a field observation.";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = org.watershed.pawatershedwatch;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		13D436384AD51CCDF97F62DB /* Build configuration list for PBXNativeTarget "PAWatershedWatchTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B184837AE996FE31E98EB7E4 /* Release */,
+				C8650C787D60A591C47A6FC7 /* Debug */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		5C444AD7E19E74A842DE93B5 /* Build configuration list for PBXNativeTarget "PAWatershedWatch" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				6ACEC405CDD56F26846EAFF1 /* Release */,
+				F6A66A25A95680AC2E022429 /* Debug */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		90523CDFD00B0B5275B09F6E /* Build configuration list for PBXProject "PAWatershedWatch" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				6D541E0ADDE6D28431B56A1E /* Debug */,
+				4C209C3B4E3C648FD161A8C2 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = CCFE7EE891E74F4C6B495090 /* Project object */;
+}

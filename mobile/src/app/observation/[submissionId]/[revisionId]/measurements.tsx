@@ -1,19 +1,14 @@
 import { useRouter } from 'expo-router';
-import { useEffect, useRef, useState } from 'react';
-import { AccessibilityInfo, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { AccessibilityInfo, StyleSheet, Text, View } from 'react-native';
 
 import { DraftGate } from '@/components/observation/draft-gate';
 import { MeasurementField } from '@/components/observation/measurement-field';
-import {
-  NumericKeyboardAccessory,
-  numericKeyboardAccessoryId,
-} from '@/components/observation/numeric-keyboard-accessory';
 import { ProgressHeader } from '@/components/observation/progress-header';
 import { TemperatureField, type TemperatureUnit } from '@/components/observation/temperature-field';
 import { PrimaryButton } from '@/components/ui/button';
 import { TextField } from '@/components/ui/field';
-import { ScreenIntro } from '@/components/ui/screen-intro';
-import { InlineAlert } from '@/components/ui/status';
+import { InlineAlert, SyncStatus } from '@/components/ui/status';
 import { AppScreen } from '@/components/ui/surface';
 import {
   collectionProtocol,
@@ -25,11 +20,13 @@ import {
   displayUnitForParameter,
   labelForParameter,
   numericTextIsFinite,
+  spokenUnitForParameter,
   unitLabelForParameter,
 } from '@/features/observations/measurement-presentation';
 import { Spacing, Typography } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useObservationDraft } from '@/hooks/use-observation-draft';
+import { useDrafts } from '@/providers/draft-provider';
 import { createMeasurementId } from '@/services/firestore';
 import { trackScreenView } from '@/services/analytics';
 
@@ -41,14 +38,16 @@ type MeasurementErrors = Record<string, string | undefined> & {
 const coreParameterCodes = collectionProtocol.requiredCoreParameters.filter(
   (code) => code !== 'WATER_TEMP_C',
 );
+const allParameterCodes = [...coreParameterCodes, ...collectionProtocol.optionalParameters].filter(
+  (code, index, all) => all.indexOf(code) === index,
+);
 
 export default function MeasurementsStep() {
   const theme = useTheme();
   const router = useRouter();
   const { draft, loading, routeParams, submissionId, revisionId, updateDraft } = useObservationDraft();
+  const { flushDraft, retrySync, transportFor } = useDrafts();
   const [errors, setErrors] = useState<MeasurementErrors>({});
-  const [activeInput, setActiveInput] = useState<string | null>(null);
-  const inputRefs = useRef<Record<string, TextInput | null>>({});
 
   useEffect(() => {
     void trackScreenView('measurements');
@@ -57,9 +56,9 @@ export default function MeasurementsStep() {
   if (!draft) return <DraftGate loading={loading} />;
 
   const requiredCodes = new Set(requiredMeasurementsFor(draft.testType ?? ''));
-  const inputOrder = ['temperature', ...coreParameterCodes, ...collectionProtocol.optionalParameters];
-  const activeIndex = activeInput ? inputOrder.indexOf(activeInput) : -1;
-  const nextInput = activeIndex >= 0 ? inputOrder[activeIndex + 1] : undefined;
+  const requiredParameterCodes = allParameterCodes.filter((code) => requiredCodes.has(code));
+  const optionalParameterCodes = allParameterCodes.filter((code) => !requiredCodes.has(code));
+  const transport = transportFor(submissionId);
 
   function entryFor(parameterCode: string) {
     return draft?.measurements.find((measurement) => measurement.parameterCode === parameterCode);
@@ -91,9 +90,9 @@ export default function MeasurementsStep() {
     setErrors((current) => ({ ...current, [parameterCode]: undefined, minimum: undefined }));
   }
 
-  function updateTemperature(valueText: string, unit = draft?.temperatureEnteredUnit) {
+  function updateTemperature(valueText: string, unit: TemperatureUnit) {
     const numeric = Number(valueText);
-    const valid = valueText.trim().length > 0 && Number.isFinite(numeric) && unit != null;
+    const valid = numericTextIsFinite(valueText);
     updateDraft(submissionId, {
       temperatureEnteredValueText: valueText,
       temperatureEnteredValue: valid ? numeric : undefined,
@@ -106,31 +105,31 @@ export default function MeasurementsStep() {
 
   function validate() {
     const next: MeasurementErrors = {};
-    if (!draft?.temperatureEnteredUnit) next.temperature = 'Choose °C or °F before entering temperature.';
+    if (!draft?.temperatureEnteredUnit) next.temperature = 'Choose °C or °F.';
     else if (!numericTextIsFinite(draft.temperatureEnteredValueText ?? '')) {
       next.temperature = 'Enter a numeric water temperature.';
     }
 
     let finiteMeasurementCount = 0;
-    for (const parameterCode of [...coreParameterCodes, ...collectionProtocol.optionalParameters]) {
+    let requiredMeasurementMissing = false;
+    for (const parameterCode of allParameterCodes) {
       const value = entryFor(parameterCode)?.valueText ?? '';
       if (numericTextIsFinite(value)) finiteMeasurementCount += 1;
-      else if (value.trim()) next[parameterCode] = 'Enter a number or clear this field.';
-      else if (requiredCodes.has(parameterCode)) next[parameterCode] = 'Enter this required measurement.';
+      else if (value.trim()) next[parameterCode] = 'Enter a valid number.';
+      else if (requiredCodes.has(parameterCode)) {
+        next[parameterCode] = 'Enter this measurement.';
+        requiredMeasurementMissing = true;
+      }
     }
 
     const minimum = minimumMeasurementCountFor(draft?.testType ?? '');
-    if (finiteMeasurementCount < minimum) {
+    if (!requiredMeasurementMissing && finiteMeasurementCount < minimum) {
       next.minimum = `Enter at least ${minimum} measurement${minimum === 1 ? '' : 's'} for this test type.`;
     }
     setErrors(next);
 
-    const firstError = inputOrder.find((code) =>
-      code === 'temperature' ? next.temperature : next[code],
-    );
-    if (firstError || next.minimum) {
+    if (Object.values(next).some(Boolean)) {
       void AccessibilityInfo.announceForAccessibility('Correct the measurement entries before review.');
-      if (firstError) inputRefs.current[firstError]?.focus();
       return;
     }
 
@@ -141,128 +140,178 @@ export default function MeasurementsStep() {
   }
 
   function renderMeasurement(parameterCode: string, required: boolean) {
+    const unit = displayUnitForParameter(parameterCode);
     return (
       <MeasurementField
         key={parameterCode}
         allowNegative={parameterCode === 'ORP_MV'}
         error={errors[parameterCode]}
-        inputAccessoryViewID={numericKeyboardAccessoryId}
-        inputRef={(input) => {
-          inputRefs.current[parameterCode] = input;
-        }}
         label={labelForParameter(parameterCode)}
-        onChangeText={(value) => updateMeasurement(parameterCode, value)}
-        onInputFocus={() => setActiveInput(parameterCode)}
-        placeholder="—"
-        requirement={required ? 'required' : 'optional'}
+        onCommit={(value) => updateMeasurement(parameterCode, value)}
+        required={required}
+        selectedUnit={unit}
         testID={`measurement-${parameterCode}`}
-        unit={displayUnitForParameter(parameterCode)}
+        units={[
+          {
+            value: unit,
+            label: unit,
+            accessibilityLabel: spokenUnitForParameter(parameterCode),
+          },
+        ]}
         value={entryFor(parameterCode)?.valueText ?? ''}
       />
     );
   }
 
+  const completedRequired =
+    (draft.temperatureEnteredUnit && numericTextIsFinite(draft.temperatureEnteredValueText ?? '') ? 1 : 0) +
+    requiredParameterCodes.filter((code) => numericTextIsFinite(entryFor(code)?.valueText ?? '')).length;
+  const requiredTotal = requiredParameterCodes.length + 1;
+  const optionalEntered = optionalParameterCodes.filter((code) =>
+    numericTextIsFinite(entryFor(code)?.valueText ?? ''),
+  ).length;
+  const minimum = minimumMeasurementCountFor(draft.testType ?? '');
+  const needsAdditionalChoice = minimum > requiredParameterCodes.length;
+
   return (
-    <>
-      <AppScreen edges={['right', 'bottom', 'left']} contentStyle={styles.content}>
-        <ProgressHeader current="Measurements" />
-        <ScreenIntro
-          eyebrow="FIELD READINGS"
-          title="Enter measurements"
-          body="Keep instrument units visible. Scientific plausibility remains a Phase 10 server decision."
-        />
+    <AppScreen edges={['right', 'bottom', 'left']} contentStyle={styles.content}>
+      <ProgressHeader current="Measurements" />
 
-        {!draft.testType ? (
-          <InlineAlert
-            tone="danger"
-            title="Test type is missing"
-            body="Return to Method & provenance before reviewing measurements."
+      <View style={styles.header}>
+        <View style={styles.titleRow}>
+          <Text accessibilityRole="header" style={[styles.title, { color: theme.textPrimary }]}>
+            Measurements
+          </Text>
+          <SyncStatus
+            onRetry={
+              transport.status === 'failed'
+                ? () => {
+                    if (draft.syncIntent) retrySync(submissionId);
+                    else void flushDraft(submissionId);
+                  }
+                : undefined
+            }
+            status={transport.status}
           />
-        ) : null}
+        </View>
+        <Text style={[styles.completion, { color: theme.textSecondary }]}>
+          {completedRequired} of {requiredTotal} required readings complete
+        </Text>
+      </View>
 
-        <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Water temperature</Text>
+      {!draft.testType ? (
+        <InlineAlert
+          tone="danger"
+          title="Test type is missing"
+          body="Return to Collection Method before entering readings."
+        />
+      ) : null}
+
+      <View style={styles.section}>
+        <View style={styles.sectionHeading}>
+          <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Required Measurements</Text>
+          <Text style={[styles.sectionCount, { color: theme.textSecondary }]}>
+            {completedRequired}/{requiredTotal}
+          </Text>
+        </View>
+        <View style={[styles.instrumentList, { borderTopColor: theme.border, borderBottomColor: theme.border }]}>
           <TemperatureField
             error={errors.temperature}
-            inputAccessoryViewID={numericKeyboardAccessoryId}
-            inputRef={(input) => {
-              inputRefs.current.temperature = input;
-            }}
-            onChangeText={(value) => updateTemperature(value)}
-            onInputFocus={() => setActiveInput('temperature')}
-            onUnitChange={(unit: TemperatureUnit) => updateTemperature(draft.temperatureEnteredValueText ?? '', unit)}
+            onCommit={updateTemperature}
             unit={draft.temperatureEnteredUnit ?? null}
             value={draft.temperatureEnteredValueText ?? ''}
           />
+          {requiredParameterCodes.map((code) => renderMeasurement(code, true))}
         </View>
+      </View>
 
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Core measurements</Text>
-            <Text style={[styles.sectionBody, { color: theme.textSecondary }]}>Requiredness follows the selected test type.</Text>
-          </View>
-          <View style={[styles.instrumentList, { borderTopColor: theme.border }]}>
-            {coreParameterCodes.map((code) => renderMeasurement(code, requiredCodes.has(code)))}
-          </View>
+      <View style={styles.section}>
+        <View style={styles.sectionHeading}>
+          <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Optional Measurements</Text>
+          <Text style={[styles.sectionCount, { color: theme.textSecondary }]}>
+            {optionalEntered > 0 ? `${optionalEntered} entered` : 'Add as available'}
+          </Text>
         </View>
-
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Additional measurements</Text>
-            <Text style={[styles.sectionBody, { color: theme.textSecondary }]}>Optional · leave a field empty when it was not measured.</Text>
-          </View>
-          <View style={[styles.instrumentList, { borderTopColor: theme.border }]}>
-            {collectionProtocol.optionalParameters.map((code) => renderMeasurement(code, requiredCodes.has(code)))}
-          </View>
+        {needsAdditionalChoice ? (
+          <Text style={[styles.actionableNote, { color: theme.textSecondary }]}>
+            Add at least {minimum} measurement{minimum === 1 ? '' : 's'} for this test type.
+          </Text>
+        ) : null}
+        <View style={[styles.instrumentList, { borderTopColor: theme.border, borderBottomColor: theme.border }]}>
+          {optionalParameterCodes.map((code) => renderMeasurement(code, false))}
         </View>
+      </View>
 
-        {errors.minimum ? <InlineAlert tone="danger" title={errors.minimum} /> : null}
+      {errors.minimum ? <InlineAlert tone="danger" title={errors.minimum} /> : null}
 
-        <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Field notes</Text>
-          <TextField
-            helper="Optional. Do not enter landowner names, contact details, or private access instructions."
-            inputStyle={styles.notesInput}
-            label="Observation notes"
-            multiline
-            onChangeText={(value) => updateDraft(submissionId, { fieldNotes: value })}
-            placeholder="Conditions or context relevant to this observation"
-            requirement="optional"
-            textAlignVertical="top"
-            value={draft.fieldNotes ?? ''}
-          />
-        </View>
+      <View style={styles.section}>
+        <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Notes</Text>
+        <TextField
+          helper="Do not include landowner names, contact details, or private access instructions."
+          inputStyle={styles.notesInput}
+          label="Field Notes"
+          multiline
+          onChangeText={(value) => updateDraft(submissionId, { fieldNotes: value })}
+          placeholder="Conditions relevant to this observation"
+          requirement="optional"
+          textAlignVertical="top"
+          value={draft.fieldNotes ?? ''}
+        />
+      </View>
 
-        <PrimaryButton disabled={!draft.testType} label="Next: Review" onPress={validate} />
-      </AppScreen>
-      <NumericKeyboardAccessory
-        onNext={nextInput ? () => inputRefs.current[nextInput]?.focus() : undefined}
-      />
-    </>
+      <PrimaryButton disabled={!draft.testType} label="Review Observation" onPress={validate} />
+    </AppScreen>
   );
 }
 
 const styles = StyleSheet.create({
   content: {
-    gap: Spacing.xl,
+    gap: Spacing.xxl,
+  },
+  header: {
+    gap: Spacing.xs,
+  },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: Spacing.sm,
+  },
+  title: {
+    ...Typography.screenTitle,
+  },
+  completion: {
+    ...Typography.helper,
+    fontVariant: ['tabular-nums'],
   },
   section: {
     gap: Spacing.sm,
   },
-  sectionHeader: {
-    gap: Spacing.xxs,
-  },
-  instrumentList: {
-    borderTopWidth: StyleSheet.hairlineWidth,
+  sectionHeading: {
+    minHeight: 28,
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: Spacing.sm,
   },
   sectionTitle: {
     ...Typography.sectionTitle,
   },
-  sectionBody: {
+  sectionCount: {
+    ...Typography.caption,
+    fontVariant: ['tabular-nums'],
+  },
+  actionableNote: {
     ...Typography.helper,
   },
+  instrumentList: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
   notesInput: {
-    minHeight: 120,
+    minHeight: 104,
     paddingTop: Spacing.sm,
   },
 });
