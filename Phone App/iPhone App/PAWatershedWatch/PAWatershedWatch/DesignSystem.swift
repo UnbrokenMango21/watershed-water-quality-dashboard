@@ -120,12 +120,20 @@ struct SecondaryActionButton: View {
 }
 
 struct StatusPill: View {
-    let title: LocalizedStringResource
+    let title: Text
     let systemImage: String
     let color: Color
 
+    init(title: LocalizedStringResource, systemImage: String, color: Color) {
+        self.title = Text(title); self.systemImage = systemImage; self.color = color
+    }
+
+    init(verbatimTitle: String, systemImage: String, color: Color) {
+        title = Text(verbatim: verbatimTitle); self.systemImage = systemImage; self.color = color
+    }
+
     var body: some View {
-        Label(title, systemImage: systemImage)
+        Label { title } icon: { Image(systemName: systemImage) }
             .font(.caption.weight(.semibold))
             .foregroundStyle(color)
             .padding(.horizontal, 12)
@@ -156,9 +164,17 @@ struct WorkflowSyncLine: View {
 
 struct NoticeBanner: View {
     let title: LocalizedStringResource
-    let message: LocalizedStringResource
+    let message: Text
     let systemImage: String
     var color = FieldTheme.goldenrod
+
+    init(title: LocalizedStringResource, message: LocalizedStringResource, systemImage: String, color: Color = FieldTheme.goldenrod) {
+        self.title = title; self.message = Text(message); self.systemImage = systemImage; self.color = color
+    }
+
+    init(title: LocalizedStringResource, verbatimMessage: String, systemImage: String, color: Color = FieldTheme.goldenrod) {
+        self.title = title; message = Text(verbatim: verbatimMessage); self.systemImage = systemImage; self.color = color
+    }
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
@@ -168,7 +184,7 @@ struct NoticeBanner: View {
                 .frame(width: 28)
             VStack(alignment: .leading, spacing: FieldTheme.xs) {
                 Text(title).font(.headline)
-                Text(message).font(.subheadline).foregroundStyle(.secondary)
+                message.font(.subheadline).foregroundStyle(.secondary)
             }
             Spacer(minLength: 0)
         }

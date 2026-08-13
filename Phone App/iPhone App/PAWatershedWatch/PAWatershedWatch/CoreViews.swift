@@ -80,7 +80,8 @@ private extension View {
     func fieldInputStyle() -> some View {
         font(.body)
             .padding(.horizontal, FieldTheme.m)
-            .frame(minHeight: 54)
+            .padding(.vertical, 16)
+            .contentShape([.interaction, .accessibility], Rectangle())
             .background(Color(uiColor: .systemBackground), in: RoundedRectangle(cornerRadius: FieldTheme.radiusM, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: FieldTheme.radiusM, style: .continuous)
@@ -96,7 +97,7 @@ struct HomeView: View {
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: FieldTheme.l) {
-                HomeFieldHeader()
+                HomeFieldHeader(name: model.userDisplayName, cachedSiteCount: model.sites.count)
                 if model.connection != .online {
                     ConnectionBanner(connection: model.connection)
                 }
@@ -141,12 +142,15 @@ struct HomeView: View {
 }
 
 struct HomeFieldHeader: View {
+    let name: String
+    let cachedSiteCount: Int
+
     var body: some View {
         HStack(alignment: .center, spacing: 12) {
             VStack(alignment: .leading, spacing: FieldTheme.xs) {
-                Text("Maya Chen")
+                Text(name.isEmpty ? "Field Researcher" : name)
                     .font(.title2.bold())
-                Text("Centre County · 6 Cached Sites")
+                Text("\(cachedSiteCount) Cached Site\(cachedSiteCount == 1 ? "" : "s")")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }

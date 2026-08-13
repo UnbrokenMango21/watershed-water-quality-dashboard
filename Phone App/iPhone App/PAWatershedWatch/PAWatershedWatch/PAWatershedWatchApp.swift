@@ -1,17 +1,42 @@
+import FirebaseAppCheck
+import FirebaseCore
+import SwiftData
 import SwiftUI
 
 @main
 struct PAWatershedWatchApp: App {
-    @State private var model = AppModel()
+    private let container: ModelContainer
+    @State private var model: AppModel
+
+    init() {
+        #if DEBUG
+        AppCheck.setAppCheckProviderFactory(AppCheckDebugProviderFactory())
+        #else
+        AppCheck.setAppCheckProviderFactory(AppAttestProviderFactory())
+        #endif
+        if FirebaseApp.app() == nil { FirebaseApp.configure() }
+        do {
+            let container = try MobileModelContainer.make()
+            self.container = container
+            _model = State(initialValue: AppModel(context: container.mainContext))
+        } catch {
+            fatalError("PA Watershed Watch cannot safely start without its on-device scientific record store: \(error.localizedDescription)")
+        }
+    }
 
     var body: some Scene {
         WindowGroup {
-            if model.isSignedIn {
+            if !model.authResolved {
+                ProgressView("Restoring Secure Session")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(FieldTheme.limestone.ignoresSafeArea())
+            } else if model.isSignedIn {
                 MainTabView(model: model)
             } else {
                 SignInView(model: model)
             }
         }
+        .modelContainer(container)
     }
 }
 

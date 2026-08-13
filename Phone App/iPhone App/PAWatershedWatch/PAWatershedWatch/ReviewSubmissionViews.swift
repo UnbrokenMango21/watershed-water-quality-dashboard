@@ -24,6 +24,9 @@ struct ReviewContent: View {
                 if showValidation && !reviewIsValid {
                     NoticeBanner(title: "Required Data Missing", message: "Complete all required fields.", systemImage: "exclamationmark.circle.fill", color: .red)
                 }
+                if let error = model.workflowError {
+                    NoticeBanner(title: "Observation Not Ready", verbatimMessage: error, systemImage: "exclamationmark.circle.fill", color: .red)
+                }
                 ReviewSummarySection(title: "Measurements", edit: { model.homePath.append(.measurements) }) {
                     if draft.values.values.allSatisfy({ $0.isEmpty }) && (!draft.includesLab || draft.requestedAnalytes.isEmpty) {
                         Text("No Measurements")
@@ -43,6 +46,7 @@ struct ReviewContent: View {
                 if let type = draft.testType {
                     ReviewSummarySection(title: "Method", edit: { model.homePath.append(.testMethod) }) {
                         KeyValueRow(label: "Test Type", value: String(localized: type.title))
+                        if type == .other { KeyValueRow(label: "Other Test Type", value: draft.testTypeOther) }
                         KeyValueRow(label: "Method", value: draft.method)
                         if !draft.instrument.isEmpty {
                             KeyValueRow(label: "Instrument or Lab", value: draft.instrument)
@@ -52,7 +56,7 @@ struct ReviewContent: View {
                 if let site = draft.site {
                     ReviewSummarySection(title: "Visit", edit: { model.homePath.append(.visitDetails) }) {
                         KeyValueRow(label: "Site", value: site.name)
-                        KeyValueRow(label: "Position", value: "\(site.position) · ±6 m")
+                        KeyValueRow(label: "Position", value: fieldPosition)
                         KeyValueRow(label: "Collected", value: draft.date.fieldTimestamp)
                         KeyValueRow(label: "Collector", value: draft.collector)
                     }
@@ -60,7 +64,7 @@ struct ReviewContent: View {
                 ReviewSummarySection(title: "Notes and Media", edit: { model.homePath.append(.media) }) {
                     KeyValueRow(label: "Notes", value: draft.notes.isEmpty ? "None" : draft.notes)
                     KeyValueRow(label: "Photos", value: "\(draft.photoCount)")
-                    KeyValueRow(label: "Audio Note", value: draft.hasAudio ? "0:18" : "None")
+                    KeyValueRow(label: "Audio Note", value: draft.hasAudio ? "Recorded" : "None")
                 }
             }
             .padding(.horizontal, FieldTheme.m)
@@ -81,12 +85,12 @@ struct ReviewContent: View {
     }
 
     private var reviewIsValid: Bool {
-        draft.site != nil
-        && draft.testType != nil
-        && !draft.method.isEmpty
-        && draft.invalidMeasurementKinds.isEmpty
-        && draft.completedRequiredCount == draft.requiredMeasurements.count
-        && (!draft.includesLab || !draft.labResultsPending || !draft.requestedAnalytes.isEmpty)
+        (try? draft.canonicalSnapshot()) != nil
+    }
+
+    private var fieldPosition: String {
+        guard let latitude = draft.latitude, let longitude = draft.longitude, let accuracy = draft.accuracyMeters else { return "Position unavailable" }
+        return "\(abs(latitude).formatted(.number.precision(.fractionLength(5))))° \(latitude >= 0 ? "N" : "S") · \(abs(longitude).formatted(.number.precision(.fractionLength(5))))° \(longitude >= 0 ? "E" : "W") · ±\(accuracy.formatted(.number.precision(.fractionLength(0)))) m"
     }
 }
 
@@ -127,17 +131,20 @@ struct SubmitView: View {
                     VStack(alignment: .leading, spacing: FieldTheme.s) {
                         Text(draft.site?.name ?? "Observation")
                             .font(.title2.bold())
-                        Text("Revision 1")
+                        Text("Revision \(draft.revisionNumber)")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                     }
                     VStack(alignment: .leading, spacing: FieldTheme.l) {
-                        KeyValueRow(label: "Record State", value: "Submitted", emphasized: true)
-                        KeyValueRow(label: "Sync", value: initialSyncLabel, emphasized: true)
+                        KeyValueRow(label: "Record State", value: "Draft", emphasized: true)
+                        KeyValueRow(label: "Sync", value: "Not Submitted", emphasized: true)
+                    }
+                    if let error = model.workflowError {
+                        NoticeBanner(title: "Cannot Submit Yet", verbatimMessage: error, systemImage: "exclamationmark.circle.fill", color: .red)
                     }
                     SubmissionConnectionPanel(connection: model.connection)
                     PrimaryActionButton(title: "Submit Observation", systemImage: "paperplane.fill", action: model.submitDraft)
-                    Label("Revision 1 Locked", systemImage: "lock.fill")
+                    Label("Revision \(draft.revisionNumber) will be locked after local submission", systemImage: "lock.fill")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity, alignment: .center)
@@ -153,13 +160,6 @@ struct SubmitView: View {
         }
     }
 
-    private var initialSyncLabel: String {
-        switch model.connection {
-        case .online: "Ready"
-        case .offline: "Waiting to Sync"
-        case .serverUnavailable: "Archive Unavailable"
-        }
-    }
 }
 
 struct SubmissionConnectionPanel: View {

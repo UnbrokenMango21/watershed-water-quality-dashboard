@@ -1,10 +1,19 @@
 import Foundation
+@preconcurrency import FirebaseAuth
+@preconcurrency import FirebaseFirestore
+@preconcurrency import Network
 import Observation
+import SwiftData
 import SwiftUI
 
 extension Date {
     var fieldTimestamp: String {
-        "\(formatted(date: .abbreviated, time: .omitted)) · \(formatted(date: .omitted, time: .shortened))"
+        let formatter = DateFormatter()
+        formatter.locale = .current
+        formatter.timeZone = TimeZone(identifier: "America/New_York")
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .short
+        return formatter.string(from: self)
     }
 }
 
@@ -61,42 +70,54 @@ enum SyncState: String, Hashable, Equatable {
     }
 }
 
-enum WorkflowState: String, Hashable, Equatable {
-    case draft, submitted, needsCorrection, resubmitted
+enum WorkflowState: String, Hashable, Equatable, Codable {
+    case draft, submitted, validating, pendingReview, needsCorrection, resubmitted, approved, rejected, publishing, publishFailed, published
     var title: LocalizedStringResource {
         switch self {
         case .draft: "Draft"
         case .submitted: "Submitted"
+        case .validating: "Validating"
+        case .pendingReview: "Pending Review"
         case .needsCorrection: "Needs Correction"
         case .resubmitted: "Resubmitted"
+        case .approved: "Approved"
+        case .rejected: "Rejected"
+        case .publishing: "Publishing"
+        case .publishFailed: "Publish Failed"
+        case .published: "Published"
         }
     }
     var icon: String {
         switch self {
         case .draft: "pencil"
-        case .submitted: "doc.badge.checkmark"
+        case .submitted, .pendingReview, .approved, .published: "doc.badge.checkmark"
+        case .validating, .publishing: "arrow.triangle.2.circlepath"
         case .needsCorrection: "exclamationmark.bubble.fill"
         case .resubmitted: "arrow.uturn.forward.circle.fill"
+        case .rejected, .publishFailed: "xmark.octagon.fill"
         }
     }
     var color: Color {
         switch self {
         case .draft: FieldTheme.water
-        case .submitted, .resubmitted: FieldTheme.fern
+        case .submitted, .resubmitted, .pendingReview, .approved, .published: FieldTheme.fern
+        case .validating, .publishing: FieldTheme.water
         case .needsCorrection: FieldTheme.goldenrod
+        case .rejected, .publishFailed: .red
         }
     }
 }
 
-enum GPSState: String, CaseIterable, Identifiable, Equatable {
-    case locating, good, poor, denied
+enum GPSState: String, CaseIterable, Identifiable, Equatable, Codable {
+    case locating, good, poor, denied, unavailable
     var id: Self { self }
     var title: LocalizedStringResource {
         switch self {
         case .locating: "Locating"
-        case .good: "±6 m"
-        case .poor: "±84 m"
+        case .good: "Good Accuracy"
+        case .poor: "Poor Accuracy"
         case .denied: "Location Denied"
+        case .unavailable: "Location Unavailable"
         }
     }
     var icon: String {
@@ -104,7 +125,7 @@ enum GPSState: String, CaseIterable, Identifiable, Equatable {
         case .locating: "location.viewfinder"
         case .good: "location.fill"
         case .poor: "location.circle"
-        case .denied: "location.slash.fill"
+        case .denied, .unavailable: "location.slash.fill"
         }
     }
     var color: Color {
@@ -112,13 +133,13 @@ enum GPSState: String, CaseIterable, Identifiable, Equatable {
         case .locating: FieldTheme.water
         case .good: FieldTheme.fern
         case .poor: FieldTheme.goldenrod
-        case .denied: .red
+        case .denied, .unavailable: .red
         }
     }
 }
 
 struct Site: Identifiable, Hashable {
-    let id: UUID
+    let id: String
     let name: String
     let county: String
     let watershed: String
@@ -132,7 +153,7 @@ struct Site: Identifiable, Hashable {
     }
 }
 
-enum TestType: String, CaseIterable, Identifiable, Hashable {
+enum TestType: String, CaseIterable, Identifiable, Hashable, Codable {
     case fieldInstrument, pennStateLab, externalLab, fieldKit, sonde, mixed, other
     var id: Self { self }
     var title: LocalizedStringResource {
@@ -140,7 +161,7 @@ enum TestType: String, CaseIterable, Identifiable, Hashable {
         case .fieldInstrument: "In-situ / Field Instrument"
         case .pennStateLab: "Penn State Lab"
         case .externalLab: "External Lab"
-        case .fieldKit: "Field Kit"
+        case .fieldKit: "Field Kit / Colorimetric"
         case .sonde: "Continuous Sensor / Sonde"
         case .mixed: "Mixed In-situ + Lab"
         case .other: "Other"
@@ -195,7 +216,7 @@ struct MeasurementUnit: Identifiable, Hashable {
         denominator.map { "\(numerator)/\($0)" } ?? numerator
     }
 
-    fileprivate func convert(_ value: Double, to unit: MeasurementUnit) -> Double {
+    func convert(_ value: Double, to unit: MeasurementUnit) -> Double {
         (value * scaleToBase + offsetToBase - unit.offsetToBase) / unit.scaleToBase
     }
 
@@ -267,7 +288,7 @@ struct MeasurementUnit: Identifiable, Hashable {
     static let mpnPer100Milliliters = unit("mpn-100ml", "MPN", per: "100 mL", title: "MPN/100 mL · statistical estimate", spoken: "most probable number per 100 milliliters")
 }
 
-enum MeasurementKind: String, CaseIterable, Identifiable, Hashable {
+enum MeasurementKind: String, CaseIterable, Identifiable, Hashable, Codable {
     case temperature, ph, dissolvedOxygen, dissolvedOxygenSaturation, conductivity, tds, orp, chloride, sulfate, nitrate, phosphate, flow
     case turbidity, salinity, totalSuspendedSolids, alkalinity, hardness, ammoniaNitrogen, nitriteNitrogen, totalPhosphorus, chlorophyllA, eColi
     var id: Self { self }
@@ -374,8 +395,47 @@ struct RevisionSummary: Identifiable, Hashable {
     let note: String
 }
 
+struct ValidationSummary: Hashable {
+    let errorCount: Int
+    let warningCount: Int
+    let infoCount: Int
+    let overallQualityScore: Double?
+}
+
+struct ValidationFlag: Identifiable, Hashable {
+    let id: String
+    let severity: String
+    let ruleCode: String
+    let message: String
+}
+
+enum AttachmentKind: String, Codable, Hashable { case sitePhoto = "SITE_PHOTO", instrumentPhoto = "INSTRUMENT_PHOTO", testResult = "TEST_RESULT", other = "OTHER" }
+enum AttachmentTransferState: String, Codable, Hashable { case localOnly, waiting, uploading, uploaded, failed }
+
+struct AttachmentRecord: Identifiable, Hashable, Codable {
+    let id: UUID
+    let ownerUID: String
+    let submissionID: UUID
+    let revisionID: UUID
+    let localURL: URL
+    let contentType: String
+    let sizeBytes: Int64
+    let kind: AttachmentKind
+    var caption: String?
+    let createdAt: Date
+    var transferState: AttachmentTransferState
+    var remoteStoragePath: String?
+    var lastError: String?
+
+    var isPhoto: Bool { contentType.hasPrefix("image/") }
+    var isAudio: Bool { contentType.hasPrefix("audio/") }
+}
+
 struct ObservationRecord: Identifiable, Hashable {
     let id: UUID
+    var eventID = UUID()
+    var currentRevisionID = UUID()
+    var ownerUID = ""
     var site: Site
     var date: Date
     var collector: String
@@ -385,39 +445,72 @@ struct ObservationRecord: Identifiable, Hashable {
     var measurements: [MeasurementValue]
     var notes: String
     var photoCount: Int
+    var attachments: [AttachmentRecord] = []
     var workflow: WorkflowState
     var sync: SyncState
     var revision: Int
     var correctionReason: String?
     var revisions: [RevisionSummary]
+    var latitude: Double?
+    var longitude: Double?
+    var accuracyMeters: Double?
+    var validation: ValidationSummary? = nil
+    var validationFlags: [ValidationFlag] = []
+
+    var hasAudio: Bool { attachments.contains(where: \.isAudio) }
 }
 
 @MainActor
 @Observable
 final class ObservationDraft {
     let id: UUID
-    var site: Site?
-    var date = Date.now { didSet { lastSaved = .now } }
-    var collector = "Maya Chen"
-    var gpsState: GPSState = .good
-    var testType: TestType?
-    var method = "" { didSet { lastSaved = .now } }
-    var instrument = ""
-    var values: [MeasurementKind: String] = [:]
-    var selectedUnits: [MeasurementKind: MeasurementUnit] = [:]
-    var labResultsPending = true
-    var requestedAnalytes: Set<MeasurementKind> = [.chloride, .nitrate, .phosphate]
-    var notes = "" { didSet { lastSaved = .now } }
-    var photoCount = 0 { didSet { lastSaved = .now } }
-    var hasAudio = false { didSet { lastSaved = .now } }
+    let eventID: UUID
+    let revisionID: UUID
+    let createdAt: Date
+    var revisionNumber: Int
+    var ownerUID: String
+    var site: Site? { didSet { touch() } }
+    var date = Date.now { didSet { touch() } }
+    var collector = "" { didSet { touch() } }
+    var latitude: Double? { didSet { touch() } }
+    var longitude: Double? { didSet { touch() } }
+    var accuracyMeters: Double? { didSet { touch() } }
+    var gpsState: GPSState = .locating { didSet { touch() } }
+    var testType: TestType? { didSet { touch() } }
+    var testTypeOther = "" { didSet { touch() } }
+    var method = "" { didSet { touch() } }
+    var instrument = "" { didSet { touch() } }
+    var values: [MeasurementKind: String] = [:] { didSet { touch() } }
+    var selectedUnits: [MeasurementKind: MeasurementUnit] = [:] { didSet { touch() } }
+    var labResultsPending = true { didSet { touch() } }
+    var requestedAnalytes: Set<MeasurementKind> = [.chloride, .nitrate, .phosphate] { didSet { touch() } }
+    var notes = "" { didSet { touch() } }
+    var attachments: [AttachmentRecord] = [] { didSet { touch() } }
     var lastSaved = Date.now
-    var currentStep = 1
-    var isCorrection = false
-    var baseRevision: Int?
-    var correctionReason: String?
-    var revisionNote = ""
+    var currentStep = 1 { didSet { touch() } }
+    var isCorrection = false { didSet { touch() } }
+    var baseRevision: Int? { didSet { touch() } }
+    var correctionReason: String? { didSet { touch() } }
+    var revisionNote = "" { didSet { touch() } }
 
-    init(id: UUID = UUID()) { self.id = id }
+    var onChange: (() -> Void)?
+
+    init(id: UUID = UUID(), eventID: UUID = UUID(), revisionID: UUID = UUID(), revisionNumber: Int = 1, ownerUID: String = "", createdAt: Date = .now) {
+        self.id = id
+        self.eventID = eventID
+        self.revisionID = revisionID
+        self.createdAt = createdAt
+        self.revisionNumber = revisionNumber
+        self.ownerUID = ownerUID
+    }
+
+    var photoCount: Int { attachments.count(where: \.isPhoto) }
+    var hasAudio: Bool { attachments.contains(where: \.isAudio) }
+
+    func touch() {
+        lastSaved = .now
+        onChange?()
+    }
 
     var includesLab: Bool {
         testType == .pennStateLab || testType == .externalLab || testType == .mixed
@@ -427,10 +520,8 @@ final class ObservationDraft {
         switch testType {
         case .fieldInstrument, .sonde, .mixed:
             [.temperature, .ph, .dissolvedOxygen, .conductivity]
-        case .fieldKit:
-            [.ph, .nitrate, .phosphate]
-        case .pennStateLab, .externalLab:
-            labResultsPending ? [] : [.nitrate, .phosphate, .chloride, .sulfate]
+        case .fieldKit, .pennStateLab, .externalLab:
+            [.temperature]
         case .other, .none:
             [.temperature]
         }
@@ -442,6 +533,15 @@ final class ObservationDraft {
 
     var completedRequiredCount: Int {
         requiredMeasurements.count { Double(values[$0] ?? "") != nil }
+    }
+
+    var productionProfileComplete: Bool {
+        guard completedRequiredCount == requiredMeasurements.count else { return false }
+        switch testType {
+        case .fieldInstrument, .sonde, .mixed: return true
+        case .none: return false
+        default: return values.contains { $0.key != .temperature && Double($0.value) != nil }
+        }
     }
 
     var invalidMeasurementKinds: [MeasurementKind] {
@@ -504,7 +604,6 @@ final class ObservationDraft {
         get { values[kind, default: ""] }
         set {
             values[kind] = newValue
-            lastSaved = .now
         }
     }
 }
@@ -512,10 +611,22 @@ final class ObservationDraft {
 @MainActor
 @Observable
 final class AppModel {
+    private let store: any LocalMobileRepository
+    private let remote: (any RemoteMobileRepository)?
+    private let monitor = NWPathMonitor()
+    private let monitorQueue = DispatchQueue(label: "org.watershed.pawatershedwatch.connectivity")
+    private var authHandle: AuthStateDidChangeListenerHandle?
+    private var remoteListener: ListenerRegistration?
+
+    var authResolved = false
     var isSignedIn = false
-    var email = "maya.chen@psu.edu"
-    var password = "watershed"
+    var isAuthenticating = false
+    var email = ""
+    var password = ""
     var authError: String?
+    var workflowError: String?
+    var userDisplayName = ""
+    var userEmail = ""
     var selectedTab: AppTab = .home
     var homePath: [HomeRoute] = []
     var recentPath: [RecentRoute] = []
@@ -523,33 +634,51 @@ final class AppModel {
     var syncState: SyncState = .synced
     var workflowState: WorkflowState = .draft
     var draft: ObservationDraft?
-    var records: [ObservationRecord]
-    var sites: [Site]
+    var records: [ObservationRecord] = []
+    var sites: [Site] = []
+    var sitesLoading = false
 
-    var workOffline: Bool {
-        get { connection == .offline }
-        set { connection = newValue ? .offline : .online }
-    }
+    private var ownerUID: String?
 
-    init() {
-        let sampleSites = Self.sampleSites
-        sites = sampleSites
-        records = Self.sampleRecords(sites: sampleSites)
-    }
-
-    func signIn() {
-        if email.lowercased() == "maya.chen@psu.edu" && !password.isEmpty {
-            authError = nil
-            isSignedIn = true
-        } else {
-            authError = "Authentication failed. Check email and password."
+    init(context: ModelContext, startServices: Bool = true) {
+        store = LocalMobileStore(context: context)
+        remote = startServices ? FirebaseMobileService() : nil
+        sites = (try? store.cachedSites()) ?? []
+        guard startServices else { authResolved = true; return }
+        startConnectivity()
+        authHandle = Auth.auth().addStateDidChangeListener { [weak self] _, user in
+            Task { @MainActor in self?.applySession(user) }
         }
     }
 
+    func signIn() {
+        let cleanEmail = email.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleanEmail.isEmpty, !password.isEmpty else { authError = "Enter your email and password."; return }
+        guard connection == .online, let remote else { authError = "A network connection is required for sign-in."; return }
+        authError = nil; isAuthenticating = true
+        Task {
+            do { _ = try await remote.signIn(email: cleanEmail, password: password) }
+            catch { authError = Self.authMessage(error) }
+            isAuthenticating = false
+        }
+    }
+
+    func signOut() {
+        do { try remote?.signOut() }
+        catch { authError = "We couldn't sign out. Try again." }
+    }
+
     func startNewObservation() {
-        draft = ObservationDraft()
+        guard let ownerUID else { authError = "Sign in before starting an observation."; return }
+        if let draft { try? store.deleteDraft(ownerUID: ownerUID, submissionID: draft.id) }
+        let value = ObservationDraft(ownerUID: ownerUID)
+        value.collector = userDisplayName.isEmpty ? userEmail : userDisplayName
+        draft = value
+        attachAutosave(to: value)
+        saveDraft(value)
         workflowState = .draft
         syncState = .savedLocally
+        workflowError = nil
         homePath = [.selectSite]
     }
 
@@ -569,45 +698,28 @@ final class AppModel {
 
     func advance(to route: HomeRoute, step: Int) {
         draft?.currentStep = step
-        draft?.lastSaved = .now
         syncState = .savedLocally
         homePath.append(route)
     }
 
     func submitDraft() {
-        workflowState = draft?.isCorrection == true ? .resubmitted : .submitted
-        switch connection {
-        case .online: syncState = .syncing
-        case .offline: syncState = .waiting
-        case .serverUnavailable: syncState = .failed
-        }
-        addOrUpdateRecordFromDraft()
-        homePath.append(.status)
-        if connection == .online {
-            Task {
-                try? await Task.sleep(for: .seconds(1.2))
-                guard connection == .online else { return }
-                syncState = .synced
-                updateNewestRecordSync(.synced)
-            }
-        }
+        guard let draft else { return }
+        do {
+            let snapshot = try draft.canonicalSnapshot()
+            let workflow: WorkflowState = draft.isCorrection ? .resubmitted : .submitted
+            let note = draft.isCorrection ? draft.revisionNote.trimmingCharacters(in: .whitespacesAndNewlines) : "Field observation submitted."
+            if draft.isCorrection && note.isEmpty { throw CanonicalizationError.invalid("Document what you checked before resubmitting") }
+            try store.persist(snapshot, workflow: workflow, sync: .waiting, note: note)
+            workflowState = workflow; syncState = .waiting; workflowError = nil
+            reloadRecords()
+            if !homePath.contains(.status) { homePath.append(.status) }
+            if connection == .online { retrySync(recordID: snapshot.submissionID) }
+        } catch { workflowError = error.localizedDescription }
     }
 
     func retrySync(recordID: UUID? = nil) {
-        guard connection == .online else {
-            syncState = connection == .offline ? .waiting : .failed
-            if let recordID, let index = records.firstIndex(where: { $0.id == recordID }) {
-                records[index].sync = syncState
-            }
-            return
-        }
-        syncState = .syncing
-        setRecordSync(.syncing, recordID: recordID)
-        Task {
-            try? await Task.sleep(for: .seconds(1))
-            syncState = .synced
-            setRecordSync(.synced, recordID: recordID)
-        }
+        guard connection == .online else { syncState = .waiting; return }
+        Task { await syncPending(only: recordID) }
     }
 
     func finishStatus() {
@@ -616,132 +728,218 @@ final class AppModel {
     }
 
     func startCorrection(for record: ObservationRecord) {
-        let correction = ObservationDraft()
+        guard record.workflow == .needsCorrection, record.ownerUID == ownerUID else { workflowError = "This record cannot be corrected from the current account."; return }
+        let correction = ObservationDraft(
+            id: record.id, eventID: record.eventID, revisionID: UUID(), revisionNumber: record.revision + 1,
+            ownerUID: record.ownerUID
+        )
         correction.site = record.site
         correction.date = record.date
         correction.collector = record.collector
+        correction.latitude = record.latitude
+        correction.longitude = record.longitude
+        correction.accuracyMeters = record.accuracyMeters
+        correction.gpsState = (record.accuracyMeters ?? .infinity) <= 20 ? .good : .poor
         correction.testType = record.testType
         correction.method = record.method
         correction.instrument = record.instrument
         correction.notes = record.notes
-        correction.photoCount = record.photoCount
+        do { correction.attachments = try copyAttachments(record.attachments, to: correction) }
+        catch { workflowError = "Attached files could not be prepared for the correction revision."; return }
         correction.values = Dictionary(uniqueKeysWithValues: record.measurements.map { ($0.kind, $0.value) })
         correction.selectedUnits = Dictionary(uniqueKeysWithValues: record.measurements.map { ($0.kind, $0.unit) })
         correction.isCorrection = true
         correction.baseRevision = record.revision
         correction.correctionReason = record.correctionReason
         draft = correction
+        attachAutosave(to: correction)
+        saveDraft(correction)
         workflowState = .needsCorrection
         syncState = .savedLocally
     }
 
     func resubmitCorrection(recordID: UUID) {
-        guard let draft, let index = records.firstIndex(where: { $0.id == recordID }) else { return }
-        let nextRevision = records[index].revision + 1
-        records[index].measurements = draft.values.map { kind, value in
-            MeasurementValue(id: UUID(), kind: kind, value: value, unit: draft.selectedUnit(for: kind))
-        }.sorted { $0.kind.rawValue < $1.kind.rawValue }
-        records[index].revision = nextRevision
-        records[index].workflow = .resubmitted
-        records[index].sync = connection == .online ? .syncing : (connection == .offline ? .waiting : .failed)
-        records[index].revisions.append(
-            RevisionSummary(id: UUID(), number: nextRevision, date: .now, state: .resubmitted, note: draft.revisionNote)
-        )
-        workflowState = .resubmitted
-        syncState = records[index].sync
-        recentPath.append(.status(recordID))
-        if connection == .online {
-            Task {
-                try? await Task.sleep(for: .seconds(1))
-                guard let refreshed = records.firstIndex(where: { $0.id == recordID }) else { return }
-                records[refreshed].sync = .synced
-                syncState = .synced
-            }
+        guard draft?.id == recordID else { return }
+        submitDraft()
+        if workflowError == nil {
+            homePath = []
+            if !recentPath.contains(.status(recordID)) { recentPath.append(.status(recordID)) }
         }
     }
 
     func record(id: UUID) -> ObservationRecord? { records.first { $0.id == id } }
 
-    private func addOrUpdateRecordFromDraft() {
-        guard let draft, let site = draft.site, let type = draft.testType else { return }
-        let values = draft.values.map { kind, value in
-            MeasurementValue(id: UUID(), kind: kind, value: value, unit: draft.selectedUnit(for: kind))
-        }.sorted { $0.kind.rawValue < $1.kind.rawValue }
-        let record = ObservationRecord(
-            id: UUID(), site: site, date: draft.date, collector: draft.collector, testType: type,
-            method: draft.method, instrument: draft.instrument, measurements: values, notes: draft.notes, photoCount: draft.photoCount,
-            workflow: workflowState, sync: syncState, revision: 1, correctionReason: nil,
-            revisions: [RevisionSummary(id: UUID(), number: 1, date: .now, state: workflowState, note: "Field observation submitted.")]
-        )
-        records.insert(record, at: 0)
-    }
-
-    private func updateNewestRecordSync(_ state: SyncState) {
-        guard !records.isEmpty else { return }
-        records[0].sync = state
-    }
-
-    private func setRecordSync(_ state: SyncState, recordID: UUID?) {
-        if let recordID, let index = records.firstIndex(where: { $0.id == recordID }) {
-            records[index].sync = state
-        } else {
-            for index in records.indices where records[index].sync != .synced {
-                records[index].sync = state
+    func refreshSites() {
+        guard connection == .online, let remote else { return }
+        sitesLoading = true
+        Task {
+            do {
+                let values = try await remote.fetchSites()
+                try store.replaceSites(values)
+                sites = try store.cachedSites()
+            } catch {
+                workflowError = sites.isEmpty ? "Sites could not be updated. Connect and try again." : nil
             }
+            sitesLoading = false
         }
     }
 
-    static let sampleSites: [Site] = [
-        Site(id: UUID(uuidString: "10000000-0000-0000-0000-000000000001")!, name: "Spring Creek at Houserville Road Bridge", county: "Centre County", watershed: "Spring Creek · Susquehanna", latitude: 40.83091, longitude: -77.83172, cached: true, distance: "0.4 mi"),
-        Site(id: UUID(uuidString: "10000000-0000-0000-0000-000000000002")!, name: "Spring Creek below Benner Spring Fish Hatchery", county: "Centre County", watershed: "Spring Creek · Susquehanna", latitude: 40.88742, longitude: -77.79311, cached: true, distance: "4.8 mi"),
-        Site(id: UUID(uuidString: "10000000-0000-0000-0000-000000000003")!, name: "Pine Creek below Slate Run", county: "Lycoming County", watershed: "Pine Creek · West Branch Susquehanna", latitude: 41.47272, longitude: -77.50044, cached: true, distance: "52 mi"),
-        Site(id: UUID(uuidString: "10000000-0000-0000-0000-000000000004")!, name: "Susquehanna River at City Island, Harrisburg", county: "Dauphin County", watershed: "Lower Susquehanna", latitude: 40.25294, longitude: -76.88812, cached: true, distance: "89 mi"),
-        Site(id: UUID(uuidString: "10000000-0000-0000-0000-000000000005")!, name: "Wissahickon Creek at Valley Green Road", county: "Philadelphia County", watershed: "Wissahickon · Delaware", latitude: 40.05574, longitude: -75.21862, cached: false, distance: "171 mi"),
-        Site(id: UUID(uuidString: "10000000-0000-0000-0000-000000000006")!, name: "Lehigh River below Jim Thorpe", county: "Carbon County", watershed: "Lehigh · Delaware", latitude: 40.86364, longitude: -75.73912, cached: false, distance: "124 mi")
-    ]
-
-    static func sampleRecords(sites: [Site]) -> [ObservationRecord] {
-        let calendar = Calendar(identifier: .gregorian)
-        let date1 = calendar.date(from: DateComponents(year: 2026, month: 8, day: 11, hour: 8, minute: 42))!
-        let date2 = calendar.date(from: DateComponents(year: 2026, month: 8, day: 8, hour: 14, minute: 15))!
-        let date3 = calendar.date(from: DateComponents(year: 2026, month: 8, day: 2, hour: 10, minute: 5))!
-        return [
-            ObservationRecord(
-                id: UUID(uuidString: "20000000-0000-0000-0000-000000000001")!, site: sites[0], date: date1, collector: "Maya Chen", testType: .fieldInstrument,
-                method: "Direct instrument reading",
-                instrument: "YSI ProDSS · Unit 4412",
-                measurements: [
-                    MeasurementValue(id: UUID(), kind: .temperature, value: "17.8", unit: .celsius),
-                    MeasurementValue(id: UUID(), kind: .ph, value: "7.42", unit: .pHStandard),
-                    MeasurementValue(id: UUID(), kind: .dissolvedOxygen, value: "9.10", unit: .milligramsOxygenPerLiter),
-                    MeasurementValue(id: UUID(), kind: .conductivity, value: "328", unit: .microsiemensPerCentimeter)
-                ], notes: "Clear flow after overnight rain. Sample taken from main current, 20 cm below surface.", photoCount: 2,
-                workflow: .submitted, sync: .synced, revision: 1, correctionReason: nil,
-                revisions: [RevisionSummary(id: UUID(), number: 1, date: date1, state: .submitted, note: "Original field submission.")]
-            ),
-            ObservationRecord(
-                id: UUID(uuidString: "20000000-0000-0000-0000-000000000002")!, site: sites[2], date: date2, collector: "Maya Chen", testType: .sonde,
-                method: "15 minute deployment",
-                instrument: "EXO2 Multiparameter Sonde",
-                measurements: [
-                    MeasurementValue(id: UUID(), kind: .temperature, value: "19.2", unit: .celsius),
-                    MeasurementValue(id: UUID(), kind: .ph, value: "7.18", unit: .pHStandard),
-                    MeasurementValue(id: UUID(), kind: .dissolvedOxygen, value: "91", unit: .milligramsOxygenPerLiter),
-                    MeasurementValue(id: UUID(), kind: .conductivity, value: "146", unit: .microsiemensPerCentimeter)
-                ], notes: "Sonde stabilized for 15 minutes in the shaded run.", photoCount: 1,
-                workflow: .needsCorrection, sync: .synced, revision: 1,
-                correctionReason: "Dissolved oxygen appears to be percent saturation, not mg L⁻¹. Confirm the source reading and correct the unit or value.",
-                revisions: [RevisionSummary(id: UUID(), number: 1, date: date2, state: .submitted, note: "Original submission; correction requested August 10.")]
-            ),
-            ObservationRecord(
-                id: UUID(uuidString: "20000000-0000-0000-0000-000000000003")!, site: sites[3], date: date3, collector: "Alex Rivera", testType: .mixed,
-                method: "Direct reading and grab sample",
-                instrument: "YSI ProDSS · Unit 4412",
-                measurements: [MeasurementValue(id: UUID(), kind: .temperature, value: "23.6", unit: .celsius)],
-                notes: "Brown water, moderate floating debris near west channel.", photoCount: 3,
-                workflow: .submitted, sync: .failed, revision: 1, correctionReason: nil,
-                revisions: [RevisionSummary(id: UUID(), number: 1, date: date3, state: .submitted, note: "Saved on device; upload failed.")]
-            )
-        ]
+    func addAttachment(data: Data, contentType: String, kind: AttachmentKind) {
+        guard let draft else { return }
+        do {
+            if kind == .sitePhoto, draft.photoCount >= 5 {
+                throw CanonicalizationError.invalid("Up to five site photos can be attached")
+            }
+            guard ["image/jpeg", "image/png", "image/heic", "audio/mp4"].contains(contentType), data.count > 0, data.count <= 50 * 1024 * 1024 else {
+                throw CanonicalizationError.invalid("The attachment format or size is not supported")
+            }
+            let id = UUID()
+            let ext = switch contentType { case "image/jpeg": "jpg"; case "image/png": "png"; case "image/heic": "heic"; default: "m4a" }
+            let url = try attachmentURL(revisionID: draft.revisionID, id: id, extension: ext)
+            try data.write(to: url, options: .atomic)
+            draft.attachments.append(AttachmentRecord(
+                id: id, ownerUID: draft.ownerUID, submissionID: draft.id, revisionID: draft.revisionID,
+                localURL: url, contentType: contentType, sizeBytes: Int64(data.count), kind: kind,
+                createdAt: .now, transferState: .localOnly
+            ))
+        } catch { workflowError = error.localizedDescription }
     }
+
+    func addRecordedAttachment(_ attachment: AttachmentRecord) {
+        guard let draft, !draft.hasAudio, attachment.isAudio, attachment.sizeBytes > 0,
+              attachment.ownerUID == draft.ownerUID, attachment.submissionID == draft.id, attachment.revisionID == draft.revisionID
+        else { return }
+        draft.attachments.append(attachment)
+    }
+
+    func removeAttachment(_ id: UUID) {
+        guard let draft, let attachment = draft.attachments.first(where: { $0.id == id }) else { return }
+        try? FileManager.default.removeItem(at: attachment.localURL)
+        draft.attachments.removeAll { $0.id == id }
+    }
+
+    private func applySession(_ user: User?) {
+        authResolved = true
+        remoteListener?.remove(); remoteListener = nil
+        guard let user else {
+            ownerUID = nil; isSignedIn = false; userDisplayName = ""; userEmail = ""
+            draft = nil; records = []; homePath = []; recentPath = []; selectedTab = .home
+            return
+        }
+        ownerUID = user.uid; isSignedIn = true; userEmail = user.email ?? ""
+        userDisplayName = user.displayName?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+            ?? user.email?.split(separator: "@").first.map(String.init) ?? "Field Researcher"
+        sites = (try? store.cachedSites()) ?? []
+        draft = try? store.loadDraft(ownerUID: user.uid, sites: sites)
+        if let draft { attachAutosave(to: draft) }
+        reloadRecords()
+        remoteListener = remote?.listen(ownerUID: user.uid) { [weak self] id, workflow, comment, validation, flags in
+            guard let self else { return }
+            do {
+                let reason = comment ?? flags.first(where: { $0.severity == "ERROR" })?.message
+                try self.store.updateRemoteState(ownerUID: user.uid, submissionID: id, workflow: workflow, sync: .synced, correctionReason: reason, validation: validation, flags: flags)
+                self.reloadRecords()
+                if self.records.first(where: { $0.id == id }) != nil {
+                    self.workflowState = workflow
+                }
+            } catch { self.workflowError = error.localizedDescription }
+        }
+        refreshSites()
+        if connection == .online { retrySync() }
+    }
+
+    private func attachAutosave(to value: ObservationDraft) {
+        value.onChange = { [weak self, weak value] in
+            guard let self, let value else { return }
+            self.saveDraft(value)
+        }
+    }
+
+    private func saveDraft(_ value: ObservationDraft) {
+        do { try store.save(value); syncState = .savedLocally }
+        catch { workflowError = "This draft could not be saved on this phone." }
+    }
+
+    private func copyAttachments(_ attachments: [AttachmentRecord], to draft: ObservationDraft) throws -> [AttachmentRecord] {
+        var copies: [AttachmentRecord] = []
+        do {
+            for attachment in attachments {
+                let id = UUID()
+                let ext = switch attachment.contentType { case "image/jpeg": "jpg"; case "image/png": "png"; case "image/heic": "heic"; case "application/pdf": "pdf"; default: "m4a" }
+                let url = try attachmentURL(revisionID: draft.revisionID, id: id, extension: ext)
+                try FileManager.default.copyItem(at: attachment.localURL, to: url)
+                let count = ((try FileManager.default.attributesOfItem(atPath: url.path)[.size]) as? NSNumber)?.int64Value ?? 0
+                guard count == attachment.sizeBytes, count > 0 else { throw CanonicalizationError.invalid("Attachment copy is incomplete") }
+                copies.append(AttachmentRecord(
+                    id: id, ownerUID: draft.ownerUID, submissionID: draft.id, revisionID: draft.revisionID,
+                    localURL: url, contentType: attachment.contentType, sizeBytes: count, kind: attachment.kind,
+                    caption: attachment.caption, createdAt: .now, transferState: .localOnly
+                ))
+            }
+            return copies
+        } catch {
+            copies.forEach { try? FileManager.default.removeItem(at: $0.localURL) }
+            throw error
+        }
+    }
+
+    private func reloadRecords() {
+        guard let ownerUID else { records = []; return }
+        do { records = try store.loadRecords(ownerUID: ownerUID) }
+        catch { workflowError = "Saved observations could not be loaded." }
+    }
+
+    private func syncPending(only recordID: UUID?) async {
+        guard let ownerUID, let remote, connection == .online else { return }
+        do {
+            let items = try store.queue(ownerUID: ownerUID).filter { recordID == nil || $0.submissionID == recordID?.uuidString.lowercased() }
+            for item in items {
+                guard let id = UUID(uuidString: item.submissionID), let snapshot = try store.snapshot(ownerUID: ownerUID, submissionID: id) else { continue }
+                do {
+                    try store.markQueue(item, state: "SYNCING", error: nil)
+                    let currentWorkflow = records.first(where: { $0.id == id })?.workflow ?? (snapshot.correction ? .resubmitted : .submitted)
+                    try store.updateRemoteState(ownerUID: ownerUID, submissionID: id, workflow: currentWorkflow, sync: .syncing, correctionReason: nil, validation: nil, flags: [])
+                    syncState = .syncing; reloadRecords()
+                    let acknowledged = try await remote.sync(snapshot) { [weak self] attachmentID, state, path, error in
+                        try? self?.store.updateAttachment(ownerUID: ownerUID, attachmentID: attachmentID, state: state, remotePath: path, error: error)
+                    }
+                    try store.markQueue(item, state: "CONFIRMED", error: nil)
+                    try store.updateRemoteState(ownerUID: ownerUID, submissionID: id, workflow: acknowledged, sync: .synced, correctionReason: nil, validation: nil, flags: [])
+                    syncState = .synced; workflowState = acknowledged
+                } catch {
+                    try? store.markQueue(item, state: "RETRYABLE_FAILURE", error: error.localizedDescription)
+                    try? store.updateRemoteState(ownerUID: ownerUID, submissionID: id, workflow: records.first(where: { $0.id == id })?.workflow ?? .submitted, sync: .failed, correctionReason: nil, validation: nil, flags: [])
+                    syncState = .failed; workflowError = "Sync failed. The record remains saved on this phone."
+                }
+                reloadRecords()
+            }
+        } catch { workflowError = "The on-device sync queue is unavailable." }
+    }
+
+    private func startConnectivity() {
+        monitor.pathUpdateHandler = { [weak self] path in
+            let online = path.status == .satisfied
+            Task { @MainActor in
+                guard let self else { return }
+                let wasOffline = self.connection != .online
+                self.connection = online ? .online : .offline
+                if online && wasOffline { self.refreshSites(); self.retrySync() }
+            }
+        }
+        monitor.start(queue: monitorQueue)
+    }
+
+    private static func authMessage(_ error: Error) -> String {
+        guard let code = AuthErrorCode(rawValue: (error as NSError).code) else { return "We couldn't sign you in. Try again." }
+        return switch code {
+        case .userDisabled: "This account is disabled. Contact your watershed program administrator."
+        case .wrongPassword, .userNotFound, .invalidCredential, .invalidEmail: "Email or password is incorrect."
+        case .networkError: "A network connection is required for sign-in."
+        default: "We couldn't sign you in. Try again or contact your program administrator."
+        }
+    }
+}
+
+private extension String {
+    var nilIfEmpty: String? { isEmpty ? nil : self }
 }

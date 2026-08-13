@@ -15,8 +15,14 @@
 		8E95A9AD2E30A25EDC25F9F8 /* Model.swift in Sources */ = {isa = PBXBuildFile; fileRef = D729E406F46E8C44BAFEA206 /* Model.swift */; };
 		96DCE53B6717EEDE463E93A6 /* DesignSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 090C161F36EDE07CE012ADB4 /* DesignSystem.swift */; };
 		AF2256EA5CC191EA76F63380 /* PAWatershedWatchApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 487E1FD2E7AC6E5204788F17 /* PAWatershedWatchApp.swift */; };
-		C6C9D93714F473F11175D262 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4ED99D4B2B30519BE0C3C693 /* Foundation.framework */; };
-		EA6B9D41E83BF5FE418A6B84 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4ED99D4B2B30519BE0C3C693 /* Foundation.framework */; };
+		AA0000000000000000000002 /* ProductionData.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000001 /* ProductionData.swift */; };
+		AA0000000000000000000004 /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000003 /* GoogleService-Info.plist */; };
+		AA0000000000000000000006 /* mobile_golden.json in Resources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000005 /* mobile_golden.json */; };
+		AA0000000000000000000021 /* FirebaseCore in Frameworks */ = {isa = PBXBuildFile; productRef = AA0000000000000000000011 /* FirebaseCore */; };
+		AA0000000000000000000022 /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = AA0000000000000000000012 /* FirebaseAuth */; };
+		AA0000000000000000000023 /* FirebaseFirestore in Frameworks */ = {isa = PBXBuildFile; productRef = AA0000000000000000000013 /* FirebaseFirestore */; };
+		AA0000000000000000000024 /* FirebaseStorage in Frameworks */ = {isa = PBXBuildFile; productRef = AA0000000000000000000014 /* FirebaseStorage */; };
+		AA0000000000000000000025 /* FirebaseAppCheck in Frameworks */ = {isa = PBXBuildFile; productRef = AA0000000000000000000015 /* FirebaseAppCheck */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -35,12 +41,15 @@
 		20E09F98898DE6386048A01F /* RecordsAccountViews.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = RecordsAccountViews.swift; sourceTree = "<group>"; };
 		3C8A23B1B29D070FD2670D87 /* ModelTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ModelTests.swift; sourceTree = "<group>"; };
 		487E1FD2E7AC6E5204788F17 /* PAWatershedWatchApp.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = PAWatershedWatchApp.swift; sourceTree = "<group>"; };
-		4ED99D4B2B30519BE0C3C693 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.0.sdk/System/Library/Frameworks/Foundation.framework; sourceTree = DEVELOPER_DIR; };
 		5CF4E4B30C3C4497F45685EB /* ReviewSubmissionViews.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ReviewSubmissionViews.swift; sourceTree = "<group>"; };
 		CC2AEC05DF99A062BDFC2908 /* PAWatershedWatchTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = PAWatershedWatchTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		D729E406F46E8C44BAFEA206 /* Model.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = Model.swift; sourceTree = "<group>"; };
 		DA25B6C5C207E46EAE523F30 /* CoreViews.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CoreViews.swift; sourceTree = "<group>"; };
 		E186245AFE2848662761BFE0 /* WorkflowViews.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = WorkflowViews.swift; sourceTree = "<group>"; };
+		AA0000000000000000000001 /* ProductionData.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ProductionData.swift; sourceTree = "<group>"; };
+		AA0000000000000000000003 /* GoogleService-Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = "GoogleService-Info.plist"; sourceTree = "<group>"; };
+		AA0000000000000000000005 /* mobile_golden.json */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.json; name = mobile_golden.json; path = "../../../tests/mobile-contract-fixtures/mobile_golden.json"; sourceTree = SOURCE_ROOT; };
+		AA0000000000000000000007 /* PAWatershedWatch.entitlements */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.entitlements; path = PAWatershedWatch.entitlements; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -48,7 +57,6 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				C6C9D93714F473F11175D262 /* Foundation.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -56,7 +64,11 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				EA6B9D41E83BF5FE418A6B84 /* Foundation.framework in Frameworks */,
+				AA0000000000000000000021 /* FirebaseCore in Frameworks */,
+				AA0000000000000000000022 /* FirebaseAuth in Frameworks */,
+				AA0000000000000000000023 /* FirebaseFirestore in Frameworks */,
+				AA0000000000000000000024 /* FirebaseStorage in Frameworks */,
+				AA0000000000000000000025 /* FirebaseAppCheck in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -93,10 +105,13 @@
 		462AC696DB2F35F760B4DB20 /* PAWatershedWatch */ = {
 			isa = PBXGroup;
 			children = (
+				AA0000000000000000000007 /* PAWatershedWatch.entitlements */,
+				AA0000000000000000000003 /* GoogleService-Info.plist */,
 				DA25B6C5C207E46EAE523F30 /* CoreViews.swift */,
 				090C161F36EDE07CE012ADB4 /* DesignSystem.swift */,
 				D729E406F46E8C44BAFEA206 /* Model.swift */,
 				487E1FD2E7AC6E5204788F17 /* PAWatershedWatchApp.swift */,
+				AA0000000000000000000001 /* ProductionData.swift */,
 				20E09F98898DE6386048A01F /* RecordsAccountViews.swift */,
 				5CF4E4B30C3C4497F45685EB /* ReviewSubmissionViews.swift */,
 				E186245AFE2848662761BFE0 /* WorkflowViews.swift */,
@@ -109,6 +124,7 @@
 			isa = PBXGroup;
 			children = (
 				3C8A23B1B29D070FD2670D87 /* ModelTests.swift */,
+				AA0000000000000000000005 /* mobile_golden.json */,
 			);
 			name = PAWatershedWatchTests;
 			path = PAWatershedWatchTests;
@@ -117,7 +133,6 @@
 		F894ABCFADCA1AFFE8BCCFFF /* iOS */ = {
 			isa = PBXGroup;
 			children = (
-				4ED99D4B2B30519BE0C3C693 /* Foundation.framework */,
 			);
 			name = iOS;
 			sourceTree = "<group>";
@@ -138,6 +153,13 @@
 			dependencies = (
 			);
 			name = PAWatershedWatch;
+			packageProductDependencies = (
+				AA0000000000000000000011 /* FirebaseCore */,
+				AA0000000000000000000012 /* FirebaseAuth */,
+				AA0000000000000000000013 /* FirebaseFirestore */,
+				AA0000000000000000000014 /* FirebaseStorage */,
+				AA0000000000000000000015 /* FirebaseAppCheck */,
+			);
 			productName = PAWatershedWatch;
 			productReference = 170D1C25D23E58D6BEBA6A24 /* PAWatershedWatch.app */;
 			productType = "com.apple.product-type.application";
@@ -181,6 +203,9 @@
 			minimizedProjectReferenceProxies = 0;
 			preferredProjectObjectVersion = 100;
 			productRefGroup = 1E10D2345E8C5130A5428C2B /* Products */;
+			packageReferences = (
+				AA0000000000000000000010 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */,
+			);
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
@@ -195,6 +220,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				AA0000000000000000000004 /* GoogleService-Info.plist in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -202,6 +228,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				AA0000000000000000000006 /* mobile_golden.json in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -220,6 +247,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				AA0000000000000000000002 /* ProductionData.swift in Sources */,
 				8122FBB37BE315F6F00FD83F /* CoreViews.swift in Sources */,
 				96DCE53B6717EEDE463E93A6 /* DesignSystem.swift in Sources */,
 				8E95A9AD2E30A25EDC25F9F8 /* Model.swift in Sources */,
@@ -302,6 +330,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGN_ENTITLEMENTS = PAWatershedWatch/PAWatershedWatch.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_PREVIEWS = YES;
@@ -315,7 +344,7 @@
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 1.0.0;
 				PRODUCT_BUNDLE_IDENTIFIER = org.watershed.pawatershedwatch;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
@@ -425,6 +454,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGN_ENTITLEMENTS = PAWatershedWatch/PAWatershedWatch.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_PREVIEWS = YES;
@@ -438,7 +468,7 @@
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 1.0.0;
 				PRODUCT_BUNDLE_IDENTIFIER = org.watershed.pawatershedwatch;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
@@ -480,6 +510,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		AA0000000000000000000010 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/firebase/firebase-ios-sdk.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 12.0.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		AA0000000000000000000011 /* FirebaseCore */ = {isa = XCSwiftPackageProductDependency; package = AA0000000000000000000010 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */; productName = FirebaseCore; };
+		AA0000000000000000000012 /* FirebaseAuth */ = {isa = XCSwiftPackageProductDependency; package = AA0000000000000000000010 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */; productName = FirebaseAuth; };
+		AA0000000000000000000013 /* FirebaseFirestore */ = {isa = XCSwiftPackageProductDependency; package = AA0000000000000000000010 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */; productName = FirebaseFirestore; };
+		AA0000000000000000000014 /* FirebaseStorage */ = {isa = XCSwiftPackageProductDependency; package = AA0000000000000000000010 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */; productName = FirebaseStorage; };
+		AA0000000000000000000015 /* FirebaseAppCheck */ = {isa = XCSwiftPackageProductDependency; package = AA0000000000000000000010 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */; productName = FirebaseAppCheck; };
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = CCFE7EE891E74F4C6B495090 /* Project object */;
 }

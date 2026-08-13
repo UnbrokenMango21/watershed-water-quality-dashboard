@@ -1,28 +1,65 @@
 import AVFoundation
 @preconcurrency import CoreLocation
+import PhotosUI
 import SwiftUI
 import UIKit
+import UniformTypeIdentifiers
 
 @MainActor
 final class LocationPermissionRequester: NSObject, ObservableObject, CLLocationManagerDelegate {
     @Published private(set) var status: CLAuthorizationStatus
+    @Published private(set) var location: CLLocation?
+    @Published private(set) var failureMessage: String?
+    @Published private(set) var isApproximate = false
     private let manager = CLLocationManager()
+    private var requestID: UUID?
 
     override init() {
         status = manager.authorizationStatus
         super.init()
         manager.delegate = self
+        manager.desiredAccuracy = kCLLocationAccuracyBest
     }
 
     func request() {
         status = manager.authorizationStatus
-        if status == .notDetermined {
-            manager.requestWhenInUseAuthorization()
+        switch status {
+        case .notDetermined: manager.requestWhenInUseAuthorization()
+        case .authorizedAlways, .authorizedWhenInUse: acquire()
+        case .denied, .restricted: failureMessage = "Location access is denied."
+        @unknown default: failureMessage = "Location is unavailable."
         }
     }
 
     func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
         status = manager.authorizationStatus
+        isApproximate = manager.accuracyAuthorization == .reducedAccuracy
+        if status == .authorizedAlways || status == .authorizedWhenInUse { acquire() }
+        if status == .denied || status == .restricted { failureMessage = "Location access is denied." }
+    }
+
+    func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
+        guard let value = locations.last, value.horizontalAccuracy >= 0,
+              abs(value.timestamp.timeIntervalSinceNow) <= 30
+        else { failureMessage = "The location reading was stale. Reacquire GPS."; return }
+        requestID = nil; failureMessage = nil; location = value
+    }
+
+    func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
+        requestID = nil
+        failureMessage = (error as? CLError)?.code == .locationUnknown
+            ? "A field position is not available yet. Reacquire GPS in an open area."
+            : "The device could not acquire a field position."
+    }
+
+    private func acquire() {
+        guard CLLocationManager.locationServicesEnabled() else { failureMessage = "Location Services are turned off."; return }
+        let id = UUID(); requestID = id; failureMessage = nil; location = nil
+        manager.requestLocation()
+        Task {
+            try? await Task.sleep(for: .seconds(15))
+            if requestID == id { requestID = nil; failureMessage = "GPS timed out. Move to an open area and try again." }
+        }
     }
 }
 
@@ -54,7 +91,6 @@ enum FieldPermissionRequester {
 struct SelectSiteView: View {
     let model: AppModel
     @State private var searchText = ""
-    @State private var checkingUpdates = true
 
     var body: some View {
         let visibleSites = searchText.isEmpty
@@ -68,7 +104,7 @@ struct SelectSiteView: View {
             LazyVStack(alignment: .leading, spacing: FieldTheme.m) {
                 if model.connection == .offline {
                     StatusPill(title: "Cached Sites", systemImage: "internaldrive.fill", color: FieldTheme.water)
-                } else if checkingUpdates {
+                } else if model.sitesLoading {
                     HStack(spacing: 8) {
                         ProgressView()
                         Text("Updating Sites")
@@ -77,8 +113,14 @@ struct SelectSiteView: View {
                     }
                     .frame(minHeight: 44)
                 }
-                NearestSiteCallout(site: model.sites[0]) {
-                    choose(model.sites[0])
+                if let nearest = model.sites.first {
+                    NearestSiteCallout(site: nearest) { choose(nearest) }
+                } else if !model.sitesLoading {
+                    ContentUnavailableView(
+                        "No Sites Available",
+                        systemImage: "map",
+                        description: Text(model.connection == .offline ? "Connect once to cache the site catalog on this phone." : "Site data could not be loaded. Try again.")
+                    )
                 }
                 FieldSectionHeader(title: "Nearby Sites")
                 if visibleSites.isEmpty {
@@ -95,10 +137,7 @@ struct SelectSiteView: View {
         .navigationTitle("Select Site")
         .navigationBarTitleDisplayMode(.inline)
         .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Site, county, or watershed")
-        .task {
-            try? await Task.sleep(for: .milliseconds(650))
-            checkingUpdates = false
-        }
+        .task { model.refreshSites() }
     }
 
     private func choose(_ site: Site) {
@@ -201,6 +240,7 @@ struct VisitDetailsView: View {
 struct VisitDetailsContent: View {
     let model: AppModel
     let draft: ObservationDraft
+    @State private var showLocationValidation = false
 
     var body: some View {
         @Bindable var draft = draft
@@ -210,7 +250,7 @@ struct VisitDetailsContent: View {
                     SelectedSiteHeader(site: site)
                 }
                 VStack(alignment: .leading, spacing: 12) {
-                    FieldSectionHeader(title: "Collected")
+                    FieldSectionHeader(title: "Collected", detail: "Pennsylvania time")
                     DatePicker("Date", selection: $draft.date, displayedComponents: .date)
                         .frame(minHeight: 48)
                     Divider()
@@ -220,6 +260,9 @@ struct VisitDetailsContent: View {
                 .padding(FieldTheme.m)
                 .background(Color(uiColor: .systemBackground), in: RoundedRectangle(cornerRadius: FieldTheme.radiusM, style: .continuous))
                 GPSQualityPanel(draft: draft)
+                if showLocationValidation && (draft.latitude == nil || draft.longitude == nil || draft.accuracyMeters == nil) {
+                    NoticeBanner(title: "Field Position Required", message: "Capture a current device GPS reading before continuing.", systemImage: "location.slash.fill", color: .red)
+                }
                 CollectorPanel(name: draft.collector)
             }
             .padding(.horizontal, FieldTheme.m)
@@ -228,8 +271,13 @@ struct VisitDetailsContent: View {
         .fieldScreen()
         .navigationTitle("Visit Details")
         .navigationBarTitleDisplayMode(.inline)
+        .environment(\.timeZone, EasternTime.zone)
         .safeAreaInset(edge: .bottom) {
             FlowFooter(step: 2, total: 6, actionTitle: "Test and Method") {
+                guard draft.latitude != nil, draft.longitude != nil, draft.accuracyMeters != nil else {
+                    showLocationValidation = true
+                    return
+                }
                 model.advance(to: .testMethod, step: 3)
             }
         }
@@ -264,31 +312,18 @@ struct GPSQualityPanel: View {
         VStack(alignment: .leading, spacing: 16) {
             HStack {
                 FieldSectionHeader(title: "Position")
-                Menu {
-                    ForEach(GPSState.allCases) { state in
-                        Button { draft.gpsState = state } label: {
-                            Label(state.title, systemImage: state.icon)
-                        }
-                    }
-                } label: {
-                    StatusPill(title: draft.gpsState.title, systemImage: draft.gpsState.icon, color: draft.gpsState.color)
-                }
-                .accessibilityLabel("Location quality: \(String(localized: draft.gpsState.title))")
+                StatusPill(verbatimTitle: gpsTitle, systemImage: draft.gpsState.icon, color: draft.gpsState.color)
+                    .accessibilityLabel("Location quality: \(gpsTitle)")
             }
             if draft.gpsState == .denied {
-                NoticeBanner(title: "Location Access Required", message: "Open Settings or enter a position.", systemImage: "location.slash.fill", color: .red)
-                HStack {
-                    Button("Open Settings") { openSettings() }
-                        .buttonStyle(.borderedProminent)
-                        .frame(minHeight: 48)
-                    Button("Enter Manually") { draft.gpsState = .poor }
-                        .buttonStyle(.bordered)
-                        .frame(minHeight: 48)
-                }
+                NoticeBanner(title: "Location Access Required", message: "Open Settings to capture the field position. Site coordinates cannot replace the observed GPS reading.", systemImage: "location.slash.fill", color: .red)
+                Button("Open Settings") { openSettings() }
+                    .buttonStyle(.borderedProminent)
+                    .frame(minHeight: 48)
             } else {
                 KeyValueRow(
                     label: "Position",
-                    value: "\(draft.site?.position ?? "Position unavailable") · \(String(localized: draft.gpsState.title))",
+                    value: coordinateText,
                     emphasized: true
                 )
                 Button {
@@ -302,7 +337,7 @@ struct GPSQualityPanel: View {
                 .disabled(draft.gpsState == .locating)
             }
             if draft.gpsState == .poor {
-                Text("Target Accuracy · ±20 m")
+                Text(locationPermission.isApproximate ? "Approximate Location is enabled · target ±20 m" : "Target Accuracy · ±20 m")
                     .font(.subheadline.bold())
                     .foregroundStyle(FieldTheme.goldenrod)
             }
@@ -311,12 +346,23 @@ struct GPSQualityPanel: View {
         .background(Color(uiColor: .systemBackground), in: RoundedRectangle(cornerRadius: FieldTheme.radiusM, style: .continuous))
         .onChange(of: locationPermission.status) { _, status in
             switch status {
-            case .authorizedAlways, .authorizedWhenInUse: reacquire()
+            case .authorizedAlways, .authorizedWhenInUse: break
             case .denied, .restricted: draft.gpsState = .denied
             case .notDetermined: break
-            @unknown default: draft.gpsState = .denied
+            @unknown default: draft.gpsState = .unavailable
             }
         }
+        .onChange(of: locationPermission.location) { _, location in
+            guard let location else { return }
+            draft.latitude = location.coordinate.latitude
+            draft.longitude = location.coordinate.longitude
+            draft.accuracyMeters = location.horizontalAccuracy
+            draft.gpsState = location.horizontalAccuracy <= 20 && !locationPermission.isApproximate ? .good : .poor
+        }
+        .onChange(of: locationPermission.failureMessage) { _, message in
+            if message != nil && draft.gpsState != .denied { draft.gpsState = .unavailable }
+        }
+        .task { if draft.latitude == nil { requestLocation() } }
     }
 
     private func requestLocation() {
@@ -332,10 +378,19 @@ struct GPSQualityPanel: View {
 
     private func reacquire() {
         draft.gpsState = .locating
-        Task {
-            try? await Task.sleep(for: .milliseconds(900))
-            draft.gpsState = .good
-        }
+        locationPermission.request()
+    }
+
+    private var gpsTitle: String {
+        if let accuracy = draft.accuracyMeters { return "±\(accuracy.formatted(.number.precision(.fractionLength(0)))) m" }
+        return String(localized: draft.gpsState.title)
+    }
+
+    private var coordinateText: String {
+        guard let latitude = draft.latitude, let longitude = draft.longitude else { return locationPermission.failureMessage ?? "Position unavailable" }
+        let latitudeText = abs(latitude).formatted(.number.precision(.fractionLength(5)))
+        let longitudeText = abs(longitude).formatted(.number.precision(.fractionLength(5)))
+        return "\(latitudeText)° \(latitude >= 0 ? "N" : "S") · \(longitudeText)° \(longitude >= 0 ? "E" : "W")"
     }
 
     private func openSettings() {
@@ -384,8 +439,8 @@ struct TestMethodContent: View {
         ScrollView {
             VStack(alignment: .leading, spacing: FieldTheme.l) {
                 FieldSectionHeader(title: "Test Type")
-                if showValidation && draft.testType == nil {
-                    NoticeBanner(title: "Test Type Required", message: "Select a test type.", systemImage: "exclamationmark.circle.fill", color: .red)
+                if showValidation {
+                    NoticeBanner(title: "Complete Test Details", message: "Select a test type and complete its method, instrument or laboratory, and description when Other is selected.", systemImage: "exclamationmark.circle.fill", color: .red)
                 }
                 TestTypeList(selected: draft.testType) { type in
                     withAnimation(reduceMotion ? nil : .snappy) {
@@ -398,6 +453,13 @@ struct TestMethodContent: View {
                 }
                 if draft.testType != nil {
                     VStack(alignment: .leading, spacing: FieldTheme.l) {
+                        if draft.testType == .other {
+                            FieldSectionHeader(title: "Other Test Type")
+                            TextField("Describe the test type", text: $draft.testTypeOther, axis: .vertical)
+                                .lineLimit(2...4)
+                                .padding(16)
+                                .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: FieldTheme.radiusS, style: .continuous))
+                        }
                         FieldSectionHeader(title: "Method")
                         TextField("Method", text: $draft.method, axis: .vertical)
                             .lineLimit(2...5)
@@ -423,7 +485,11 @@ struct TestMethodContent: View {
         .navigationBarTitleDisplayMode(.inline)
         .safeAreaInset(edge: .bottom) {
             FlowFooter(step: 3, total: 6, actionTitle: "Enter Measurements") {
-                guard draft.testType != nil, !draft.method.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                guard let testType = draft.testType,
+                      !draft.method.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                      !draft.instrument.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                      testType != .other || !draft.testTypeOther.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                else {
                     showValidation = true
                     return
                 }
@@ -548,6 +614,8 @@ struct MeasurementsContent: View {
         return labSelectionValid
             && draft.invalidMeasurementKinds.isEmpty
             && draft.completedRequiredCount == draft.requiredMeasurements.count
+            && draft.values.allSatisfy { $0.value.isEmpty || $0.key.productionSpec.support == .fullySupported }
+            && draft.productionProfileComplete
     }
 }
 
@@ -557,8 +625,12 @@ struct MeasurementValidationBanner: View {
     var body: some View {
         if !draft.invalidMeasurementKinds.isEmpty {
             NoticeBanner(title: "Invalid Number", message: "Enter a number without units.", systemImage: "exclamationmark.circle.fill", color: .red)
+        } else if draft.values.contains(where: { !$0.value.isEmpty && $0.key.productionSpec.support == .featureGated }) {
+            NoticeBanner(title: "Measurement Not Yet Enabled", message: "Clear values marked unavailable before continuing. They cannot be silently omitted from a scientific record.", systemImage: "lock.fill", color: .red)
         } else if draft.includesLab && draft.labResultsPending && draft.requestedAnalytes.isEmpty {
             NoticeBanner(title: "Analysis Required", message: "Select at least one analysis.", systemImage: "exclamationmark.circle.fill", color: .red)
+        } else if !draft.productionProfileComplete {
+            NoticeBanner(title: "Measured Result Required", message: "Enter at least one supported result in addition to temperature for this test type.", systemImage: "exclamationmark.circle.fill", color: .red)
         } else {
             NoticeBanner(title: "Measurements Required", message: "Complete all required measurements.", systemImage: "exclamationmark.circle.fill", color: .red)
         }
@@ -658,7 +730,8 @@ struct MeasurementEntryRow: View {
 
     var body: some View {
         @Bindable var draft = draft
-        let valueIsValid = Double(draft[valueFor: kind]) != nil
+        let isEnabled = kind.productionSpec.support == .fullySupported
+        let valueIsValid = isEnabled && Double(draft[valueFor: kind]) != nil
         let selectedUnit = draft.selectedUnit(for: kind)
         VStack(alignment: .leading, spacing: 8) {
             HStack {
@@ -668,7 +741,7 @@ struct MeasurementEntryRow: View {
                     Image(systemName: kind.symbol).foregroundStyle(FieldTheme.water)
                 }
                 Spacer()
-                Image(systemName: valueIsValid ? "checkmark.circle.fill" : "circle")
+                Image(systemName: isEnabled ? (valueIsValid ? "checkmark.circle.fill" : "circle") : "lock.fill")
                     .foregroundStyle(valueIsValid ? FieldTheme.fern : Color.secondary)
                     .accessibilityLabel(valueIsValid ? "Complete" : "Incomplete")
             }
@@ -680,12 +753,14 @@ struct MeasurementEntryRow: View {
                     .accessibilityLabel(kind.title)
                     .accessibilityHint("Enter " + selectedUnit.spokenName)
                     .layoutPriority(1)
+                    .disabled(!isEnabled)
                 if kind != .ph {
                     MeasurementUnitMenu(
                         options: kind.unitOptions,
                         selected: selectedUnit,
                         onSelect: changeUnit
                     )
+                    .disabled(!isEnabled)
                 }
             }
             .padding(.horizontal, 16)
@@ -700,6 +775,17 @@ struct MeasurementEntryRow: View {
                     .font(.title3.bold().monospacedDigit())
                     .foregroundStyle(FieldTheme.water)
             }
+            if !isEnabled {
+                HStack {
+                    Text("Visible for field planning; production mapping is not yet approved.")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                    if !draft[valueFor: kind].isEmpty {
+                        Button("Clear") { draft[valueFor: kind] = "" }
+                            .font(.caption.weight(.bold))
+                    }
+                }
+            }
             if isRequired && !valueIsValid {
                 Text(draft[valueFor: kind].isEmpty ? "Required" : "Enter a number without units")
                     .font(.caption.weight(.semibold))
@@ -708,6 +794,7 @@ struct MeasurementEntryRow: View {
         }
         .padding(FieldTheme.m)
         .background(Color(uiColor: .systemBackground), in: RoundedRectangle(cornerRadius: FieldTheme.radiusM, style: .continuous))
+        .opacity(isEnabled ? 1 : 0.72)
         .alert("Change Unit and Clear Value?", isPresented: unitChangeNeedsConfirmation) {
             Button("Clear Value and Change Unit", role: .destructive) {
                 if let pendingUnit {
@@ -807,7 +894,11 @@ struct NotesMediaContent: View {
     let draft: ObservationDraft
     @Environment(\.openURL) private var openURL
     @State private var showPhotoOptions = false
-    @State private var showAudioOptions = false
+    @State private var showPhotoPicker = false
+    @State private var showCamera = false
+    @State private var selectedPhotos: [PhotosPickerItem] = []
+    @State private var recorder = AudioNoteRecorder()
+    @State private var isRecording = false
     @State private var showPermissionAlert = false
     @State private var permissionTitle = ""
     @State private var permissionMessage = ""
@@ -826,8 +917,14 @@ struct NotesMediaContent: View {
                 }
                 .padding(FieldTheme.m)
                 .background(Color(uiColor: .systemBackground), in: RoundedRectangle(cornerRadius: FieldTheme.radiusM, style: .continuous))
-                PhotoPanel(count: draft.photoCount) { showPhotoOptions = true }
-                AudioPanel(hasAudio: draft.hasAudio) { showAudioOptions = true } onRemove: { draft.hasAudio = false }
+                PhotoPanel(
+                    attachments: draft.attachments.filter(\.isPhoto),
+                    add: { showPhotoOptions = true },
+                    onRemove: model.removeAttachment
+                )
+                AudioPanel(hasAudio: draft.hasAudio, isRecording: isRecording, add: toggleRecording) {
+                    if let audio = draft.attachments.first(where: \.isAudio) { model.removeAttachment(audio.id) }
+                }
             }
             .padding(.horizontal, FieldTheme.m)
             .padding(.bottom, FieldTheme.l)
@@ -844,8 +941,8 @@ struct NotesMediaContent: View {
         .confirmationDialog("Add Photo", isPresented: $showPhotoOptions, titleVisibility: .visible) {
             Button("Take Photo") {
                 Task {
-                    if await FieldPermissionRequester.camera() {
-                        draft.photoCount += 1
+                    if await FieldPermissionRequester.camera(), UIImagePickerController.isSourceTypeAvailable(.camera) {
+                        showCamera = true
                     } else {
                         showPermissionDenied(
                             title: "Camera Access Needed",
@@ -854,23 +951,22 @@ struct NotesMediaContent: View {
                     }
                 }
             }
-            Button("Choose from Library") { draft.photoCount += 1 }
+            Button("Choose from Library") { showPhotoPicker = true }
             Button("Cancel", role: .cancel) { }
         }
-        .confirmationDialog("Audio Note", isPresented: $showAudioOptions, titleVisibility: .visible) {
-            Button("Record 18-second Note") {
-                Task {
-                    if await FieldPermissionRequester.microphone() {
-                        draft.hasAudio = true
-                    } else {
-                        showPermissionDenied(
-                            title: "Microphone Access Needed",
-                            message: "Allow microphone access in Settings to record an audio note."
-                        )
-                    }
-                }
-            }
-            Button("Cancel", role: .cancel) { }
+        .photosPicker(
+            isPresented: $showPhotoPicker,
+            selection: $selectedPhotos,
+            maxSelectionCount: max(1, 5 - draft.photoCount),
+            matching: .images,
+            preferredItemEncoding: .current
+        )
+        .onChange(of: selectedPhotos) { _, items in
+            Task { await importPhotos(items) }
+        }
+        .fullScreenCover(isPresented: $showCamera) {
+            CameraCaptureView { data in model.addAttachment(data: data, contentType: "image/jpeg", kind: .sitePhoto) }
+                .ignoresSafeArea()
         }
         .alert(permissionTitle, isPresented: $showPermissionAlert) {
             Button("Open Settings") { openSettings() }
@@ -886,6 +982,42 @@ struct NotesMediaContent: View {
         showPermissionAlert = true
     }
 
+    private func importPhotos(_ items: [PhotosPickerItem]) async {
+        defer { selectedPhotos = [] }
+        for item in items.prefix(max(0, 5 - draft.photoCount)) {
+            do {
+                guard let data = try await item.loadTransferable(type: Data.self),
+                      let contentType = Self.contentType(for: item)
+                else { throw CanonicalizationError.invalid("That photo format is not supported") }
+                model.addAttachment(data: data, contentType: contentType, kind: .sitePhoto)
+            } catch { model.workflowError = error.localizedDescription }
+        }
+    }
+
+    private func toggleRecording() {
+        if isRecording {
+            do { model.addRecordedAttachment(try recorder.stop()); isRecording = false }
+            catch { model.workflowError = error.localizedDescription }
+            return
+        }
+        Task {
+            guard await FieldPermissionRequester.microphone() else {
+                showPermissionDenied(title: "Microphone Access Needed", message: "Allow microphone access in Settings to record an audio note.")
+                return
+            }
+            do { try recorder.start(for: draft); isRecording = true }
+            catch { model.workflowError = error.localizedDescription }
+        }
+    }
+
+    private static func contentType(for item: PhotosPickerItem) -> String? {
+        let type = item.supportedContentTypes.first
+        if type?.conforms(to: .jpeg) == true { return "image/jpeg" }
+        if type?.conforms(to: .png) == true { return "image/png" }
+        if type?.conforms(to: .heic) == true || type?.conforms(to: .heif) == true { return "image/heic" }
+        return nil
+    }
+
     private func openSettings() {
         if let url = URL(string: UIApplication.openSettingsURLString) {
             openURL(url)
@@ -894,25 +1026,27 @@ struct NotesMediaContent: View {
 }
 
 struct PhotoPanel: View {
-    let count: Int
+    let attachments: [AttachmentRecord]
     let add: () -> Void
+    let onRemove: (UUID) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                FieldSectionHeader(title: "Photos", detail: count == 0 ? nil : "\(count) Attached")
+                FieldSectionHeader(title: "Photos", detail: attachments.isEmpty ? nil : "\(attachments.count) Attached")
                 Button(action: add) {
                     Label("Add", systemImage: "camera.fill")
                         .font(.subheadline.weight(.semibold))
                         .frame(minWidth: 72, minHeight: 44)
                 }
                 .buttonStyle(.bordered)
+                .disabled(attachments.count >= 5)
             }
-            if count > 0 {
+            if !attachments.isEmpty {
                 ScrollView(.horizontal) {
                     HStack(spacing: 8) {
-                        ForEach(1...count, id: \.self) { number in
-                            PhotoThumbnail(number: number)
+                        ForEach(Array(attachments.enumerated()), id: \.element.id) { number, attachment in
+                            PhotoThumbnail(number: number + 1, url: attachment.localURL) { onRemove(attachment.id) }
                         }
                     }
                 }
@@ -926,14 +1060,20 @@ struct PhotoPanel: View {
 
 struct PhotoThumbnail: View {
     let number: Int
+    let url: URL
+    let onRemove: () -> Void
 
     var body: some View {
         ZStack(alignment: .bottomLeading) {
-            FieldTheme.water.opacity(0.14)
-            Image(systemName: number.isMultiple(of: 2) ? "water.waves" : "leaf.fill")
-                .font(.largeTitle)
-                .foregroundStyle(FieldTheme.hemlock.opacity(0.65))
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            if let image = UIImage(contentsOfFile: url.path) {
+                Image(uiImage: image).resizable().scaledToFill()
+            } else {
+                FieldTheme.water.opacity(0.14)
+                Image(systemName: "photo")
+                    .font(.largeTitle)
+                    .foregroundStyle(FieldTheme.hemlock.opacity(0.65))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
             Text("Photo \(number)")
                 .font(.caption.bold())
                 .padding(8)
@@ -943,11 +1083,13 @@ struct PhotoThumbnail: View {
         .frame(width: 126, height: 92)
         .clipShape(RoundedRectangle(cornerRadius: FieldTheme.radiusS, style: .continuous))
         .accessibilityLabel("Attached photo \(number)")
+        .contextMenu { Button("Remove Photo", role: .destructive, action: onRemove) }
     }
 }
 
 struct AudioPanel: View {
     let hasAudio: Bool
+    let isRecording: Bool
     let add: () -> Void
     let onRemove: () -> Void
 
@@ -977,11 +1119,11 @@ struct AudioPanel: View {
                         .font(.title2)
                         .foregroundStyle(FieldTheme.water)
                         .frame(maxWidth: .infinity)
-                    Text("0:18").font(.subheadline.monospacedDigit()).foregroundStyle(.secondary)
+                    Text("Recorded").font(.subheadline).foregroundStyle(.secondary)
                 }
             } else {
                 Button(action: add) {
-                    Label("Record Audio Note", systemImage: "mic.fill")
+                    Label(isRecording ? "Stop and Save Recording" : "Record Audio Note", systemImage: isRecording ? "stop.fill" : "mic.fill")
                         .font(.headline)
                         .frame(maxWidth: .infinity, minHeight: 50)
                 }
@@ -990,6 +1132,31 @@ struct AudioPanel: View {
         }
         .padding(FieldTheme.m)
         .background(Color(uiColor: .systemBackground), in: RoundedRectangle(cornerRadius: FieldTheme.radiusM, style: .continuous))
+    }
+}
+
+struct CameraCaptureView: UIViewControllerRepresentable {
+    @Environment(\.dismiss) private var dismiss
+    let onCapture: (Data) -> Void
+
+    func makeCoordinator() -> Coordinator { Coordinator(parent: self) }
+    func makeUIViewController(context: Context) -> UIImagePickerController {
+        let controller = UIImagePickerController()
+        controller.sourceType = .camera
+        controller.cameraCaptureMode = .photo
+        controller.delegate = context.coordinator
+        return controller
+    }
+    func updateUIViewController(_ uiViewController: UIImagePickerController, context: Context) { }
+
+    final class Coordinator: NSObject, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
+        let parent: CameraCaptureView
+        init(parent: CameraCaptureView) { self.parent = parent }
+        func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]) {
+            if let image = info[.originalImage] as? UIImage, let data = image.jpegData(compressionQuality: 0.94) { parent.onCapture(data) }
+            parent.dismiss()
+        }
+        func imagePickerControllerDidCancel(_ picker: UIImagePickerController) { parent.dismiss() }
     }
 }
 

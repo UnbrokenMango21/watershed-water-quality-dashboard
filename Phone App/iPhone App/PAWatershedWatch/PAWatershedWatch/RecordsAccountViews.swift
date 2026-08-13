@@ -126,10 +126,13 @@ struct ObservationDetailContent: View {
                 if record.sync == .failed {
                     SyncFailurePanel(connection: model.connection) { model.retrySync(recordID: record.id) }
                 }
+                if let validation = record.validation {
+                    ValidationReadbackSection(summary: validation, flags: record.validationFlags)
+                }
                 DetailMeasurementsSection(measurements: record.measurements)
                 DetailMethodSection(record: record)
                 DetailVisitSection(record: record)
-                DetailNotesMediaSection(notes: record.notes, photoCount: record.photoCount)
+                DetailNotesMediaSection(notes: record.notes, attachments: record.attachments)
                 RevisionHistorySection(revisions: record.revisions)
             }
             .padding(.horizontal, FieldTheme.m)
@@ -156,6 +159,52 @@ struct ObservationDetailContent: View {
                 .overlay(alignment: .top) { Divider() }
             }
         }
+    }
+}
+
+struct ValidationReadbackSection: View {
+    let summary: ValidationSummary
+    let flags: [ValidationFlag]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: FieldTheme.m) {
+            FieldSectionHeader(title: "Server Validation")
+            HStack(spacing: FieldTheme.l) {
+                ValidationCount(label: "Errors", value: summary.errorCount, color: summary.errorCount > 0 ? .red : FieldTheme.fern)
+                ValidationCount(label: "Warnings", value: summary.warningCount, color: FieldTheme.goldenrod)
+                ValidationCount(label: "Info", value: summary.infoCount, color: FieldTheme.water)
+            }
+            if let score = summary.overallQualityScore {
+                KeyValueRow(label: "Quality Score", value: score.formatted(.number.precision(.fractionLength(0...1))))
+            }
+            ForEach(flags) { flag in
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(flag.severity.replacingOccurrences(of: "_", with: " ").localizedCapitalized)
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(flag.severity == "ERROR" ? Color.red : FieldTheme.goldenrod)
+                    Text(flag.message).font(.subheadline)
+                    Text(flag.ruleCode).font(.caption.monospaced()).foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                if flag.id != flags.last?.id { Divider() }
+            }
+        }
+        .padding(FieldTheme.m)
+        .background(Color(uiColor: .systemBackground), in: RoundedRectangle(cornerRadius: FieldTheme.radiusM, style: .continuous))
+    }
+}
+
+struct ValidationCount: View {
+    let label: LocalizedStringResource
+    let value: Int
+    let color: Color
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(value, format: .number).font(.title3.bold()).foregroundStyle(color)
+            Text(label).font(.caption).foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
@@ -217,10 +266,15 @@ struct DetailVisitSection: View {
     var body: some View {
         VStack(alignment: .leading, spacing: FieldTheme.m) {
             FieldSectionHeader(title: "Visit")
-            KeyValueRow(label: "Position", value: "\(record.site.position) · ±6 m")
+            KeyValueRow(label: "Position", value: position)
             KeyValueRow(label: "Collected", value: record.date.fieldTimestamp)
             KeyValueRow(label: "Collector", value: record.collector)
         }
+    }
+
+    private var position: String {
+        guard let latitude = record.latitude, let longitude = record.longitude, let accuracy = record.accuracyMeters else { return "Position unavailable" }
+        return "\(abs(latitude).formatted(.number.precision(.fractionLength(5))))° \(latitude >= 0 ? "N" : "S") · \(abs(longitude).formatted(.number.precision(.fractionLength(5))))° \(longitude >= 0 ? "E" : "W") · ±\(accuracy.formatted(.number.precision(.fractionLength(0)))) m"
     }
 }
 
@@ -258,13 +312,14 @@ struct DetailMeasurementsSection: View {
 
 struct DetailNotesMediaSection: View {
     let notes: String
-    let photoCount: Int
+    let attachments: [AttachmentRecord]
 
     var body: some View {
         VStack(alignment: .leading, spacing: FieldTheme.m) {
             FieldSectionHeader(title: "Notes")
             KeyValueRow(label: "Field Notes", value: notes.isEmpty ? "None" : notes)
-            KeyValueRow(label: "Photos", value: "\(photoCount)")
+            KeyValueRow(label: "Photos", value: attachments.count(where: \.isPhoto).formatted())
+            KeyValueRow(label: "Audio Note", value: attachments.contains(where: \.isAudio) ? "Attached" : "None")
         }
     }
 }
@@ -314,10 +369,12 @@ struct CorrectionRevisionView: View {
                         CorrectionRequestPanel(reason: reason)
                     }
                     if showValidation {
-                        NoticeBanner(title: "Correction Required", message: "Dissolved oxygen and revision note required.", systemImage: "exclamationmark.circle.fill", color: .red)
+                        NoticeBanner(title: "Correction Required", message: "Complete the required values and document what you checked.", systemImage: "exclamationmark.circle.fill", color: .red)
                     }
                     OriginalValuePanel(record: record)
-                    MeasurementEntryRow(kind: .dissolvedOxygen, isRequired: true, draft: draft, focused: $focus)
+                    ForEach(editableKinds(draft: draft, record: record)) { kind in
+                        MeasurementEntryRow(kind: kind, isRequired: draft.requiredMeasurements.contains(kind), draft: draft, focused: $focus)
+                    }
                     VStack(alignment: .leading, spacing: 8) {
                         FieldSectionHeader(title: "Revision Note")
                         @Bindable var draft = draft
@@ -330,7 +387,11 @@ struct CorrectionRevisionView: View {
                     .padding(FieldTheme.m)
                     .background(Color(uiColor: .systemBackground), in: RoundedRectangle(cornerRadius: FieldTheme.radiusM, style: .continuous))
                     PrimaryActionButton(title: "Resubmit Revision \(record.revision + 1)", systemImage: "paperplane.fill") {
-                        guard validCorrection else { showValidation = true; focus = .dissolvedOxygen; return }
+                        guard validCorrection(draft: draft, record: record) else {
+                            showValidation = true
+                            focus = editableKinds(draft: draft, record: record).first
+                            return
+                        }
                         confirmResubmit = true
                     }
                     Label("Revision \(record.revision) Retained", systemImage: "lock.fill")
@@ -365,10 +426,14 @@ struct CorrectionRevisionView: View {
         }
     }
 
-    private var validCorrection: Bool {
-        guard let value = model.draft?.values[.dissolvedOxygen] else { return false }
-        guard let draft = model.draft else { return false }
-        return Double(value).map { $0 != 91 } == true && !draft.revisionNote.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    private func editableKinds(draft: ObservationDraft, record: ObservationRecord) -> [MeasurementKind] {
+        MeasurementKind.allCases.filter { kind in
+            kind.productionSpec.support == .fullySupported && (draft.requiredMeasurements.contains(kind) || record.measurements.contains { $0.kind == kind })
+        }
+    }
+
+    private func validCorrection(draft: ObservationDraft, record: ObservationRecord) -> Bool {
+        !draft.revisionNote.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && (try? draft.canonicalSnapshot()) != nil
     }
 }
 
@@ -393,10 +458,11 @@ struct OriginalValuePanel: View {
     let record: ObservationRecord
 
     var body: some View {
-        let original = record.measurements.first { $0.kind == .dissolvedOxygen }
         VStack(alignment: .leading, spacing: 8) {
-            FieldSectionHeader(title: "Submitted Value")
-            KeyValueRow(label: "Dissolved Oxygen", value: original?.displayValue ?? "Not Recorded", emphasized: true)
+            FieldSectionHeader(title: "Submitted Revision")
+            ForEach(record.measurements) { measurement in
+                KeyValueRow(label: measurement.kind.title, value: measurement.displayValue, emphasized: true)
+            }
             Label("Revision \(record.revision) Retained", systemImage: "lock.fill")
                 .font(.caption.weight(.medium))
                 .foregroundStyle(.secondary)
@@ -411,26 +477,21 @@ struct AccountView: View {
     @State private var showSignOut = false
 
     var body: some View {
-        @Bindable var model = model
         NavigationStack {
             List {
                 Section {
-                    AccountIdentityRow()
+                    AccountIdentityRow(name: model.userDisplayName, detail: model.userEmail)
                 }
                 Section("Field Connectivity") {
-                    HStack {
-                        Label("Work Offline", systemImage: "wifi.slash")
-                        Spacer()
-                        Toggle("Work Offline", isOn: $model.workOffline)
-                            .labelsHidden()
-                            .frame(minWidth: 63, minHeight: 44)
-                    }
                     LabeledContent {
                         StatusPill(title: model.connection == .online ? "Online" : "Offline", systemImage: model.connection == .online ? "wifi" : "wifi.slash", color: model.connection == .online ? FieldTheme.fern : FieldTheme.goldenrod)
                     } label: {
                         Label("Connection", systemImage: "antenna.radiowaves.left.and.right")
                     }
-                    LabeledContent("Cached Sites", value: "6")
+                    LabeledContent("Cached Sites", value: model.sites.count.formatted())
+                    Text("Drafts and submitted records remain available offline. Sync resumes automatically when a connection returns.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
                 }
                 Section("Sync and Storage") {
                     LabeledContent {
@@ -446,13 +507,13 @@ struct AccountView: View {
                     .disabled(model.connection != .online)
                 }
                 Section("Field Permissions") {
-                    LabeledContent("Location", value: "Asked on Reacquire")
+                    LabeledContent("Location", value: "Asked at Visit Details")
                     LabeledContent("Camera", value: "Asked on Capture")
                     LabeledContent("Microphone", value: "Asked on Record")
                 }
                 Section("About") {
                     LabeledContent("App", value: "PA Watershed Watch")
-                    LabeledContent("Version", value: "1.0")
+                    LabeledContent("Version", value: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0")
                 }
                 Section {
                     Button("Sign Out", role: .destructive) { showSignOut = true }
@@ -462,7 +523,7 @@ struct AccountView: View {
             .tint(FieldTheme.hemlock)
             .alert("Sign Out of PA Watershed Watch?", isPresented: $showSignOut) {
                 Button("Sign Out", role: .destructive) {
-                    model.isSignedIn = false
+                    model.signOut()
                     model.selectedTab = .home
                 }
                 Button("Cancel", role: .cancel) { }
@@ -474,14 +535,17 @@ struct AccountView: View {
 }
 
 struct AccountIdentityRow: View {
+    let name: String
+    let detail: String
+
     var body: some View {
         HStack(spacing: 16) {
             Image(systemName: "person.crop.circle.fill")
                 .font(.system(size: 48))
                 .foregroundStyle(FieldTheme.hemlock)
             VStack(alignment: .leading, spacing: 4) {
-                Text("Maya Chen").font(.headline)
-                Text("Penn State Center for Watershed Stewardship")
+                Text(name.isEmpty ? "Field Researcher" : name).font(.headline)
+                Text(detail)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
