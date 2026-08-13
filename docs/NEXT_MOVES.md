@@ -2,83 +2,53 @@
 
 _Last updated: 2026-08-13_
 
-This is the execution plan from the current mobile checkpoint to a complete working system. It is intentionally optimized for speed, small scope, and testable handoffs.
+This is the execution plan from the accepted mobile/Firebase checkpoint to a complete working scientific system. Optimize for vertical completion, scientific defensibility, usability, and small testable handoffs.
 
-## Current starting point
+## Starting point — mobile/Firebase accepted
 
-The current pushed mobile checkpoint is:
+Current mobile authority:
 
 `codex/mobile-production-integration-v1` @ `7dbc714ca5a92b32ab159d09e8786fcc86f5bbeb`
 
-Android's real Spark-backed happy path is verified. iOS production code is integrated and real Auth/session/site-catalog checks passed, but the final iOS offline/restart/correction live proof was interrupted by the Codex usage limit.
+The independent code audit is complete and **passes the project to begin the QC integration phase**. See `MOBILE_INDEPENDENT_AUDIT_7DBC714.md`.
 
-Do not restart the mobile architecture. Resume only the unfinished verification/fixes when Codex capacity returns.
+The remaining iOS live proof is explicitly accepted as non-blocking. Do not restart the mobile architecture.
 
-## Fast path to a complete platform
+## Fast path to vertical completion
 
 ```mermaid
 flowchart TD
-    A[1. Audit mobile checkpoint] --> B[2. Finish iOS live verification]
-    B --> C[3. Minimal QC review page]
-    C --> D[4. Trusted reviewer actions]
-    D -->|Request correction| E[Mobile creates Revision N+1]
-    E --> C
-    D -->|Approve| F[5. ArcGIS publisher]
-    F --> G[6. Verify ArcGIS authoritative record]
-    G --> H[7. Connect dashboard]
-    H --> I[8. Full lifecycle test]
-    I --> J[9. Small field pilot]
-    J --> K[10. Production hardening / v1.0]
+    A[Mobile + Firebase accepted] --> B[1. Minimal QC review page]
+    B --> C[2. Trusted review actions]
+    C -->|Request correction| D[Mobile receives NEEDS_CORRECTION]
+    D --> E[Collector creates Revision N+1]
+    E --> B
+    C -->|Approve| F[3. ArcGIS publisher]
+    F --> G[4. Authoritative ArcGIS record]
+    G --> H[5. Public/research-safe ArcGIS view]
+    H --> I[6. High-quality dashboard]
+    I --> J[7. Complete lifecycle test]
+    J --> K[8. Small field pilot]
+    K --> L[9. Production hardening / v1.0]
 ```
 
-## Move 1 — Independent mobile audit
+## Parallel mobile closeout lane
 
-**Goal:** determine whether `7dbc714` contains any release-blocking defects before building on it.
+Do not delay QC implementation for these, but close them before the stated gate:
 
-Audit only the production-critical surfaces:
+- **Before field use:** hide/disable cloud photo/audio in the Spark build so media cannot break submission sync.
+- **Before QC/publication production readiness:** persist original entered value + entered unit/basis for every supported measurement alongside the canonical value.
+- **Before QC/publication production readiness:** use trusted server-authored workflow/audit timestamps and keep them distinct from researcher collection time.
 
-- local durable persistence on iOS and Android
-- account ownership/isolation
-- stable `submission_id`, `event_id`, `revision_id`, and measurement IDs
-- Firestore mapping parity
-- offline submit intent
-- process restart recovery
-- retry/idempotency behavior
-- server acknowledgement before `Synced`
-- correction/revision immutability
-- Pennsylvania collection-time handling
-- unsupported measurement feature gating
-- build/release configuration
+These are contract-hardening tasks, not another mobile redesign.
 
-Do not use this audit as an excuse to redesign the approved UI or add optional features.
+## Move 1 — Minimal QC review page
 
-## Move 2 — Finish the remaining iOS proof
+**Primary user:** one or two scientific reviewers, especially the project supervisor. Usability is more important than enterprise-workflow breadth.
 
-Resume the existing local working tree when Codex is available again.
+Do not build a Workflow Manager clone.
 
-Required live sequence:
-
-1. Real Firebase sign-in.
-2. Restore authenticated session.
-3. Read the real site catalog.
-4. Create a draft.
-5. Terminate/restart the app; draft survives.
-6. Submit while offline.
-7. Terminate/restart while still offline.
-8. Restore connectivity.
-9. Exactly one logical Firestore submission is acknowledged by the server.
-10. Record appears in Recent/detail.
-11. Account isolation holds.
-12. Set a test record to `NEEDS_CORRECTION` using a trusted/admin test path.
-13. iOS creates immutable Revision 2 and resubmits without modifying Revision 1.
-
-When green: commit, push, and stop mobile implementation work.
-
-## Move 3 — Minimal QC review page
-
-**Do not build a large custom operations console.** Expected reviewer population is approximately one or two people.
-
-Initial surface:
+Initial routes:
 
 ```text
 /review
@@ -86,32 +56,46 @@ Initial surface:
 /review/history   optional if trivial
 ```
 
-The queue should show only what helps the reviewer decide:
+### Review queue
 
-- site
-- collection date/time
-- collector
-- current revision
-- measurements
-- method/instrument provenance
-- GPS/map context
-- notes
-- validation information when available
-- revision history
+Show enough information to prioritize work without forcing the reviewer into each record:
+
+- site name;
+- collection date/time in Eastern Time;
+- collector;
+- current revision number;
+- workflow state;
+- concise measurement summary;
+- validation warning/error counts when available;
+- correction/resubmission indicator.
+
+### Submission review
+
+The reviewer must be able to inspect the scientific record without hunting through screens:
+
+1. **Identity / provenance** — submission, event, revision, collector, app/schema version.
+2. **Site / map** — site, captured GPS, accuracy, distance/context when available.
+3. **Collection** — collection time, test type, method, instrument/lab.
+4. **Measurements** — original entered value/unit plus canonical normalized value where conversion occurred.
+5. **Notes** — field notes exactly as submitted.
+6. **Validation** — flags and quality/confidence context when available; unusual science remains reviewable rather than auto-rejected.
+7. **Revision history** — prior immutable revisions and correction reasons.
 
 Primary actions only:
 
-- Approve
-- Request Correction
-- Reject
+- **Approve**
+- **Request Correction**
+- **Reject**
 
-No chat, Kanban board, assignment engine, social features, or enterprise Workflow Manager clone.
+Correction and rejection require a reviewer reason. Approval may allow an optional note.
 
-## Move 4 — Trusted review actions
+No chat, Kanban board, assignment engine, social features, or generic project-management UI.
 
-The web browser must not have broad authority to rewrite workflow documents directly.
+## Move 2 — Trusted reviewer actions
 
-Preferred trusted endpoints:
+The browser must not receive broad authority to modify Firestore workflow fields.
+
+Preferred endpoints:
 
 ```text
 POST /api/review/approve
@@ -121,165 +105,221 @@ POST /api/review/reject
 
 Each action must:
 
-1. verify the authenticated reviewer identity;
+1. verify Firebase-authenticated reviewer identity;
 2. verify reviewer/admin authorization;
-3. load the current submission and current revision;
-4. reject stale-state or stale-revision actions;
-5. apply only the allowed transition;
-6. record a trusted timestamp;
-7. record reviewer UID and reason/comment;
+3. load the current submission and current revision server-side;
+4. reject stale tabs, stale revisions, or invalid state transitions;
+5. apply only the requested allowed transition atomically;
+6. use a trusted server timestamp;
+7. record reviewer identity and reason/comment;
 8. append an immutable audit event;
 9. return the committed server state.
 
-This trusted layer does not need to be Firebase Cloud Functions. The project can remain on Spark while the server-side web layer performs privileged operations using properly protected server credentials/IAM.
+### Correction path
 
-## Move 5 — ArcGIS publisher
+```text
+PENDING_REVIEW
+    ↓ Request Correction
+NEEDS_CORRECTION
+    ↓ mobile listener
+Collector creates Revision N+1
+    ↓
+RESUBMITTED
+    ↓
+review queue again
+```
 
-The publisher is required for v1.
+Revision N remains unchanged.
 
-It should consume **approved revisions only**.
+### Spark compatibility
+
+This trusted layer does not need Firebase Cloud Functions. A small protected web/server runtime may verify Firebase ID tokens and use server credentials/IAM for privileged Firestore actions while the Firebase project remains on Spark.
+
+## Move 3 — ArcGIS publisher
+
+The publisher consumes **approved revisions only**.
 
 ```mermaid
 flowchart LR
     A[APPROVED] --> B[PUBLISHING]
     B --> C[Transform canonical revision]
-    C --> D[ArcGIS Feature Service]
-    D --> E[Verify created feature]
-    E --> F[Store ArcGIS IDs]
+    C --> D[ArcGIS authoritative service]
+    D --> E[Verify created feature + related rows]
+    E --> F[Store ArcGIS identifiers]
     F --> G[PUBLISHED]
-    D -->|failure| H[PUBLISH_FAILED]
+    D -->|retryable failure| H[PUBLISH_FAILED]
     H --> B
 ```
 
 Requirements:
 
-- server-side ArcGIS credentials only
-- deterministic publication key tied to approved submission/revision
-- no direct mobile → ArcGIS writes
-- idempotent retry
-- protect against “ArcGIS write succeeded but response was lost” duplication
-- verify ArcGIS ObjectID/GlobalID or equivalent authoritative identifier
-- never undo scientific approval because publication failed
+- ArcGIS credentials remain server-side;
+- deterministic publication key tied to approved submission + revision;
+- no direct mobile → ArcGIS writes;
+- idempotent retry;
+- recover safely when the ArcGIS write succeeded but the response was lost;
+- verify ObjectID/GlobalID or equivalent identifiers;
+- verify related measurements are present;
+- preserve approval if publication fails;
+- append publication audit events.
 
-## Move 6 — Connect the dashboard
+## Existing ArcGIS assets — use them, do not recreate the GIS model
 
-The dashboard must read **approved ArcGIS data only**.
+The repository already documents:
 
-Do not connect the public/research dashboard to raw Firestore staging.
+- local `MyProject.aprx` / `CentralPA_Watershed.gdb` environment;
+- WGS84 watershed schema;
+- SamplingSites, SamplingEvents, Measurements, ValidationFlags, AuditEvents;
+- GlobalID/GUID relationships;
+- private ArcGIS Online item `b7775c1bdada4aa8b0787714eca3eb15`;
+- fixed service IDs `10 / 20 / 30 / 40 / 50`;
+- Eastern preferred presentation time with UTC hosted storage;
+- verification scripts.
 
-Minimum useful v1 dashboard:
+The Phase 7 item `Central_PA_Watershed_QC_Staging` is explicitly **private QC staging**, not the final authoritative/public layer.
 
-- sampling-site map
-- site selection
-- latest approved observation
-- measurement summaries
-- historical trend by parameter
-- date filtering
-- quality/validation context where safe and meaningful
+Therefore the next ArcGIS task is not “build ArcGIS from scratch.” It is:
 
-Exports and advanced analysis can follow after the core path is proven.
+1. inspect/verify the existing hosted schema;
+2. define/create or designate the **authoritative approved-data service**;
+3. define public/research-safe hosted feature layer view(s);
+4. map canonical Firebase fields to ArcGIS fields once;
+5. build and test the idempotent publisher against that mapping.
 
-## Move 7 — One complete lifecycle test
+## Move 4 — Authoritative/public-safe ArcGIS boundary
 
-Before adding more features, prove this exact chain:
+Recommended separation:
 
-1. Create observation on phone with no signal.
-2. Kill/restart the app.
-3. Draft survives exactly.
-4. Submit offline.
-5. Reconnect.
-6. Exactly one submission reaches Firestore.
-7. Reviewer opens the submission.
-8. Reviewer requests a correction.
-9. Phone receives `NEEDS_CORRECTION`.
-10. Collector creates Revision 2.
-11. Revision 1 remains unchanged.
-12. Reviewer approves Revision 2.
-13. Publisher writes exactly one ArcGIS observation.
-14. ArcGIS write is verified.
-15. Dashboard displays the approved Revision 2 data.
-16. Unapproved/staging data never appears publicly.
+```text
+Private authoritative ArcGIS service
+    approved published science + internal publication identifiers
+        ↓ filtered/field-restricted hosted views
+Public/research-safe ArcGIS views
+    no collector identity
+    no reviewer identity
+    no landowner/access notes
+    approved/published data only
+        ↓
+Dashboard
+```
 
-If this passes, the system has a legitimate end-to-end scientific lifecycle.
+The dashboard must never need Firestore credentials and must never infer approval from raw staging data.
 
-## Move 8 — Pilot
+## Move 5 — Dashboard: highest-quality presentation surface
 
-Use TestFlight and Google Play Internal Testing with a small group.
+The dashboard is not an afterthought. It is the research/public interpretation layer and should receive a dedicated design/data audit once publication works.
 
-Target: approximately 3–10 researchers, one or two reviewers, and a controlled set of sites.
+### v1 information architecture
 
-Deliberately test:
+Prioritize clarity over feature count:
 
-- poor cellular signal
-- airplane mode
-- app termination
-- device restart
-- permission denial
-- GPS outliers
-- repeated Submit taps
-- reviewer corrections
-- account switching
-- app update with saved draft
-- ArcGIS publication interruption
+- watershed/site map as the spatial anchor;
+- site selection and search/filtering;
+- latest approved observation summary;
+- parameter selector;
+- scientifically labeled units/bases;
+- historical time-series trend;
+- date range filtering;
+- data availability / missingness clarity;
+- quality/validation context without turning quality score into a water-health grade;
+- provenance link or detail drawer for advanced/research users;
+- responsive desktop/tablet/mobile layout;
+- accessible legends, tooltips, keyboard navigation, and non-color-only status encoding.
 
-## Move 9 — Hardening before v1.0
+### Dashboard scientific rules
 
-Only after the complete pipeline works:
+- show only `PUBLISHED`/approved ArcGIS data;
+- never silently interpolate missing observations;
+- do not imply continuous monitoring when measurements are discrete samples;
+- preserve parameter unit/basis in labels;
+- explain derived/normalized values where relevant;
+- show collection time in Eastern Time while preserving the actual stored instant;
+- distinguish data-quality warnings from ecological/water-health conclusions;
+- avoid visual scales that exaggerate small differences;
+- make sampling density/time coverage visible enough that users do not overinterpret sparse data.
 
-- explicit Development / Pilot / Production environments
-- app/schema/validation-rule compatibility handling
-- site-catalog versioning
-- device-clock sanity checks
-- deterministic duplicate fingerprint
-- privacy-safe diagnostics screen
-- operational monitoring
-- App Check strategy
-- media decision: remove entirely or enable cloud attachments deliberately
-- attachment SHA-256/checksums if media remains
-- multi-device draft policy
+Advanced exports, forecasting, AI interpretation, and heavy analytics wait until the core dashboard is scientifically and visually trustworthy.
+
+## Move 6 — One complete lifecycle test
+
+Before adding features, prove this exact chain:
+
+1. collector creates an observation on the native app;
+2. local durable record exists;
+3. submission reaches Firestore exactly once;
+4. reviewer opens the same revision in `/review`;
+5. reviewer requests correction with a reason;
+6. mobile receives `NEEDS_CORRECTION`;
+7. collector creates Revision 2; Revision 1 remains immutable;
+8. reviewer reopens and approves Revision 2;
+9. publisher writes exactly one authoritative ArcGIS event plus related measurements;
+10. ArcGIS write is verified and IDs are stored;
+11. Firebase state becomes `PUBLISHED`;
+12. public/research-safe ArcGIS view exposes only approved safe fields;
+13. dashboard displays Revision 2 correctly;
+14. Revision 1 and all raw/unapproved staging data remain absent from public views.
+
+If this passes, the project has a legitimate end-to-end scientific lifecycle.
+
+## Move 7 — Pilot
+
+Use TestFlight and Google Play Internal Testing with a small group: roughly 3–10 researchers, one or two reviewers, and controlled sampling sites.
+
+Deliberately test poor signal, airplane mode, app termination/restart, denied permissions, GPS outliers, repeated Submit taps, correction loops, account switching, ArcGIS publication interruption, and dashboard refresh after publication.
+
+## Move 8 — Production hardening / v1.0
+
+Only after the complete vertical path works:
+
+- Development / Pilot / Production environment separation;
+- app/schema/validation-rule compatibility;
+- site-catalog versioning;
+- device-clock sanity checks;
+- deterministic duplicate fingerprint;
+- privacy-safe diagnostics;
+- operational monitoring;
+- App Check enforcement strategy;
+- final media decision and checksums if retained;
+- multi-device draft policy;
+- release-store/privacy documentation;
+- backup/recovery/runbook for Firebase, publisher credentials, and ArcGIS service.
 
 ## Explicitly deferred
 
-These are not required to complete the core system:
+Not required for the core vertical system:
 
-- Firebase Storage / cloud photo/audio for the current release
-- Blaze billing
-- deployed Firebase Cloud Functions validation trigger
-- chat
-- AI scientific conclusions
-- automatic rejection of anomalies
-- Bluetooth instruments
-- broad background location
-- social/community features
-- elaborate field-app analytics
+- Firebase Storage/cloud media for the current release;
+- Blaze billing;
+- deployed Firebase Cloud Functions validation trigger;
+- chat;
+- AI scientific conclusions;
+- automatic anomaly rejection;
+- Bluetooth instruments;
+- broad background location;
+- social/community features;
+- elaborate field-app analytics.
 
 ## Branch plan
-
-Do not create multiple competing authorities.
 
 ```text
 main
 └── stable Phase 1–10 baseline until controlled integration merge
 
 codex/mobile-production-integration-v1
-└── current mobile production authority
+└── accepted mobile + Firebase production authority
 
-future recommended implementation branch:
+recommended next implementation branch:
 codex/web-qc-publishing-dashboard-v1
-└── minimal reviewer + trusted API + ArcGIS publisher + dashboard connection
+└── minimal reviewer + trusted API + ArcGIS publisher + dashboard integration
 
 docs/project-roadmap-2026-08-13
-└── roadmap / architecture / coordination
+└── roadmap / audit / architecture coordination
 ```
-
-The next web branch should begin from the agreed integration base after the mobile audit, not from an unrelated historical dashboard prototype.
 
 ## Definition of progress
 
-Prioritize vertical completion over breadth.
+Prioritize vertical completion over breadth:
 
-A small system that reliably performs:
+**collect → sync → inspect → correct → approve → publish → visualize**
 
-**collect → sync → correct → approve → publish → visualize**
-
-is more valuable than a larger system with unfinished connections.
+Every transition should be scientifically traceable, idempotent where it crosses systems, easy for the human user, and explicit when it has not yet been confirmed.
