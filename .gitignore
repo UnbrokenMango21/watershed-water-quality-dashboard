@@ -1,6 +1,12 @@
 # macOS metadata
 .DS_Store
 
+# Local handoffs and IDE state
+*.zip
+**/xcuserdata/
+*.xcuserstate
+**/DerivedData/
+
 # Logs
 logs
 *.log
