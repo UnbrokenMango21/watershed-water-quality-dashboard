@@ -2,290 +2,211 @@
 
 _Last updated: 2026-08-13_
 
-This roadmap reflects the current native iOS + Android direction, the locked Phase 1–10 backend contracts, and the decision to keep the product focused. It intentionally separates what must ship from what can wait.
+This roadmap reflects the current native iOS + Android direction, the locked Phase 1–10 scientific/backend foundation, the Spark-compatible mobile checkpoint, and the shortest path to a complete production system.
 
-## Current objective
+## North-star lifecycle
 
-Finish the production mobile integration before adding new product features.
-
-The release-critical proof is one observation traveling safely through the entire lifecycle without duplication or data loss:
+The project is not complete when the mobile apps work independently. It is complete when one scientific observation can safely travel through the entire lifecycle:
 
 ```mermaid
 flowchart LR
     A[iOS / Android] --> B[Durable local draft]
     B --> C[Firebase staging]
-    C --> D[Automated validation]
-    D -->|blocking issue| E[Needs Correction]
-    E --> A
-    D -->|valid| F[Pending Review]
-    F --> G[Reviewer decision]
-    G -->|approve| H[Publishing service]
-    H --> I[ArcGIS authoritative data]
-    G -->|request correction| E
+    C --> D[Human QC]
+    D -->|correction| E[Immutable next revision]
+    E --> C
+    D -->|approve| F[ArcGIS publisher]
+    F --> G[ArcGIS authoritative data]
+    G --> H[Research / public dashboard]
 ```
 
-## Phase A — Production mobile integration
+Automated validation remains part of the architecture, but its live Cloud Functions trigger is not required for the current Spark milestone.
 
-**Status: in progress via Codex**
+## Phase 12 — Native mobile ↔ Firebase
 
-Do not redesign either native frontend during this phase.
+**Status: substantially complete; final iOS live verification remains.**
 
-Required outcomes:
+Current pushed checkpoint:
 
-- Native SwiftUI iOS and Jetpack Compose Android remain the approved UX.
-- Real Firebase Authentication.
-- Account-scoped durable local drafts.
-- Stable `submission_id`, `event_id`, `revision_id`, measurement IDs, and attachment IDs.
-- Canonical Firestore mappings shared by behavior, not by runtime code.
-- Real authenticated site catalog with offline cache.
-- Real GPS coordinates and accuracy.
-- Explicit `America/New_York` collection-time semantics.
-- Real photo/audio attachment files.
-- Secure Firebase Storage contract.
-- Offline submit intent and durable retry.
-- Idempotent writes and server-backed sync confirmation.
-- Immutable correction revisions.
-- Validation trigger/readback.
-- Cross-platform golden fixtures.
-- Existing Phase 9/10 tests remain green.
-- Debug/release native builds pass.
+`codex/mobile-production-integration-v1` @ `7dbc714ca5a92b32ab159d09e8786fcc86f5bbeb`
 
-### Merge gate
+### Already proven / integrated
 
-Before this branch merges, perform an independent review of:
+- native SwiftUI and Jetpack Compose frontends preserved
+- Firebase Email/Password Auth
+- account-scoped durable local storage
+- stable submission/event/revision identities
+- Firestore site catalog
+- real GPS
+- canonical supported measurement mapping
+- offline submit/retry architecture
+- server-backed acknowledgement behavior
+- immutable correction revisions
+- native/backend CI gates
+- Android real authenticated lifecycle including offline/restart/single-sync/correction/account isolation
 
-- SwiftData / Room schema and migrations
-- Firestore DTO mapping
-- Firebase Auth and account isolation
-- retry/idempotency logic
-- Storage rules and attachment lifecycle
-- App Check configuration
-- timestamps and timezone handling
-- validation trigger behavior
-- revision immutability
-- cross-platform serialization parity
+### Remaining close-out
 
-A summary saying “tests passed” is not sufficient without inspecting the implementation.
+- independently audit the pushed implementation
+- finish equivalent iOS offline/restart/sync/correction live proof
+- commit any remaining local readiness evidence
+- push final mobile checkpoint
 
-## Phase B — Reliability and scientific provenance hardening
+### Current Spark boundary
 
-These items should be added after the core production path is proven.
+The current milestone does **not** require:
 
-### Environment separation
+- Firebase Storage deployment
+- cloud photo/audio upload
+- Blaze billing
+- deployed Firebase Cloud Functions validation trigger
 
-Create explicit environments:
+These are deferred infrastructure/features, not blockers to QC, ArcGIS publication, or dashboard work.
 
-- Development
-- Staging / Pilot
-- Production
+## Phase 13 — Minimal QC + trusted review actions
 
-Each environment must have separate backend configuration and hard safeguards against a development build writing production data. Debug builds should make the active environment visually obvious.
+**Status: next implementation.**
 
-### Schema / app compatibility
+For the expected one or two reviewers, build a deliberately small authenticated review surface rather than a Workflow Manager clone.
 
-Introduce explicit compatibility handling between:
+Minimum routes:
 
-- application version
-- schema version
-- validation-rule version
+```text
+/review
+/review/{submissionId}
+```
 
-Older clients must fail safely when encountering data they cannot interpret rather than corrupting records.
+Minimum reviewer actions:
 
-### Scientific provenance
+- Approve
+- Request Correction
+- Reject
 
-Every submitted revision should retain, where applicable:
+The reviewer should see the current scientific revision, measurements, site/map context, collection provenance, notes, validation information when available, and immutable revision history.
 
-- original entered value
-- original entered unit/basis
-- normalized value
-- method
-- instrument/lab
-- collector UID
-- app version
-- schema version
-- collection time
-- GPS coordinate + accuracy
-- creation/submission timestamps
-- revision ancestry
+Trusted actions should be server-side and narrowly scoped:
 
-A later correction must never erase the original observation.
+```text
+POST /api/review/approve
+POST /api/review/correction
+POST /api/review/reject
+```
 
-### Duplicate detection
+Each action verifies identity/role/current state/current revision, performs an allowed transition, records a trusted timestamp and reviewer identity, and appends an immutable audit event.
 
-Add a deterministic observation fingerprint used to flag likely accidental duplicates caused by retries or repeated submission actions.
+ArcGIS Workflow Manager Online remains optional. Current licensing uncertainty must not block this phase.
 
-The fingerprint is advisory: never automatically delete scientific records solely because they appear similar.
+## Phase 14 — ArcGIS publishing
 
-### Attachment integrity
+**Status: immediately after QC.**
 
-Calculate SHA-256 for photo/audio attachments before upload.
-
-Use checksums for:
-
-- upload verification
-- corruption detection
-- retry safety
-- provenance
-- optional future deduplication
-
-### Trusted time
-
-Collection time remains researcher-entered scientific data.
-
-Audit/workflow timestamps such as `created_at`, `submitted_at`, validation timestamps, review timestamps, and publication timestamps should use trusted server time where the contract permits.
-
-Add device-clock sanity checks so a badly configured phone clock does not contaminate provenance.
-
-### Spatial anomalies
-
-GPS/site-distance warnings remain advisory.
-
-A legitimate observation outside the expected site tolerance must be preserved and flagged for review rather than automatically discarded.
-
-### Site-catalog versioning
-
-Drafts must preserve the exact site definition/version used when the field observation was created.
-
-A later cache refresh must not silently mutate historic science if the site's name, reference coordinate, tolerance, or active state changes.
-
-### Multi-device policy
-
-Local drafts are device-specific by default.
-
-Submitted records/revisions are server identities.
-
-Do not silently merge an unfinished iPhone draft with an Android draft. Cross-device draft continuation can be designed later if there is a real need.
-
-### Field diagnostics
-
-Add a privacy-safe Account → Diagnostics screen showing operational information only:
-
-- app/build version
-- schema version
-- active environment
-- truncated/safe authenticated UID
-- site-catalog refresh time/source
-- pending submission count
-- pending attachment count
-- last sync attempt/result
-- backend reachability
-
-Do not include measurement values, notes, coordinates, credentials, or private site details in diagnostic output.
-
-## Phase C — Minimal human QC + publication
-
-### Review workflow strategy
-
-ArcGIS Workflow Manager Online is **optional**, not a release dependency.
-
-Current licensing uncertainty must not block the project.
-
-For one or two reviewers, prefer a very small authenticated review page rather than a large operations console.
-
-The review interface should only need:
-
-- pending review queue
-- observation/revision detail
-- validation flags/quality information
-- notes/media/map context
-- immutable revision history
-- **Approve**
-- **Request Correction**
-- **Reject**
-
-Firebase remains the staging/workflow source of truth.
-
-The reviewer UI must invoke trusted server actions rather than directly mutating arbitrary workflow fields.
-
-### Publishing service
-
-Treat publishing as a first-class backend component.
-
-Only approved records may publish.
+The publisher consumes approved revisions only.
 
 Requirements:
 
 - transform canonical approved revision → ArcGIS schema
-- deterministic publication/idempotency key
-- write once
-- verify the ArcGIS response
-- record ArcGIS identifiers
-- safe retry for `PUBLISH_FAILED`
-- protect against the “write succeeded but response was lost” duplicate scenario
+- use server-side ArcGIS credentials only
+- deterministic publication key
+- idempotent write/retry
+- verify the ArcGIS feature after write
+- store ArcGIS identifiers
+- preserve approval if publication fails
+- support `PUBLISH_FAILED → PUBLISHING → PUBLISHED`
+- protect against duplicate creation when the write succeeds but the response is lost
 
-Mobile apps never contain ArcGIS publishing credentials and never publish directly.
+The mobile apps never publish directly to ArcGIS.
 
-### Immutable audit events
+## Phase 15 — Dashboard connection
 
-Every meaningful workflow transition should record:
+**Status: required after publication.**
 
-- actor
-- trusted timestamp
-- prior state
-- new state
-- submission ID
-- revision ID
-- action context/reason
+The research/public dashboard reads approved ArcGIS data only.
 
-Audit data is append-only from trusted server logic.
+Minimum useful v1:
 
-## Phase D — Pilot
+- watershed/site map
+- site selection
+- latest approved observation
+- parameter summaries
+- historical trends
+- date filtering
+- appropriate quality/provenance context
 
-Do not jump from simulators/emulators directly to public release.
+Do not expose raw Firebase staging records in the public/research dashboard.
 
-Use:
+## Phase 16 — End-to-end lifecycle proof
 
-- TestFlight
-- Google Play Internal Testing
+Before expanding scope, prove this chain under failure:
 
-Start with roughly 3–10 real researchers and a small set of known sampling sites.
-
-Deliberately test:
-
-- poor/no cellular connectivity
-- process termination
-- phone restart
-- permission denial
-- GPS quality problems
-- long observations
-- attachment failures
-- corrections
-- device/account switching
-- app upgrade with saved drafts
-
-### End-to-end pilot acceptance test
-
-A release candidate should prove:
-
-1. Researcher completes an observation with no signal.
-2. App is terminated/restarted.
-3. Every field value and ID survives.
-4. Connectivity returns.
-5. Exactly one logical submission reaches Firebase.
-6. Automated validation runs.
+1. Collect offline on a phone.
+2. Kill/restart the app.
+3. Draft survives.
+4. Submit offline.
+5. Reconnect.
+6. Exactly one logical Firestore submission is acknowledged.
 7. Reviewer requests a correction.
-8. Collector creates Revision 2; Revision 1 stays immutable.
+8. Collector creates Revision 2; Revision 1 remains immutable.
 9. Reviewer approves Revision 2.
-10. Publishing service writes exactly one authoritative ArcGIS observation.
+10. Publisher writes exactly one ArcGIS observation.
 11. ArcGIS publication is verified.
-12. Dashboard reads only the approved ArcGIS record.
+12. Dashboard displays only the approved observation.
+
+This is the primary system acceptance gate.
+
+## Phase 17 — Field pilot
+
+Use TestFlight + Google Play Internal Testing.
+
+Start with approximately 3–10 researchers, one or two reviewers, and a small set of known sampling sites.
+
+Deliberately test poor connectivity, process death, phone restart, permission denial, GPS anomalies, repeated submit taps, corrections, account switching, app upgrades with saved drafts, and ArcGIS publication interruption.
+
+## Phase 18 — Production hardening + v1.0
+
+Only after the vertical lifecycle is working, add the remaining hardening deliberately:
+
+- Development / Pilot / Production environment separation
+- schema/app/validation-rule compatibility
+- site-catalog versioning
+- deterministic duplicate fingerprints
+- device-clock sanity checks
+- privacy-safe diagnostics
+- operational monitoring
+- App Check strategy
+- explicit multi-device draft policy
+- cloud attachment decision
+- SHA-256/checksums if attachments remain
+
+## Scientific provenance requirements
+
+Regardless of phase, preserve where applicable:
+
+- original entered value/unit
+- normalized value
+- method/instrument
+- collector UID
+- app/schema versions
+- collection time
+- GPS + accuracy
+- creation/submission/review/publication timestamps
+- revision ancestry
+
+Never silently overwrite the original submitted scientific record.
 
 ## Three product surfaces
-
-Keep the system boundaries explicit:
 
 | Surface | Data source | Purpose |
 | --- | --- | --- |
 | Collector mobile | local store + Firebase staging | own field drafts/submissions/corrections |
-| Reviewer interface | Firebase staging | validation/QC/reviewer actions |
+| Minimal reviewer interface | Firebase staging through trusted review logic | human QC and corrections |
 | Research/public dashboard | ArcGIS approved data | maps, trends, exports, analytics |
 
-The public dashboard must not read raw staging submissions.
+## Intentionally deferred / excluded from the core path
 
-## Intentionally deferred
+Keep the field product simple until the lifecycle is proven:
 
-Keep the field product simple. Do **not** add these before the basic pipeline is proven:
-
+- Firebase Storage / cloud media for the current milestone
+- deployed Firebase Cloud Functions trigger while remaining on Spark
 - chat
 - AI-generated scientific conclusions
 - automatic rejection of anomalous environmental values
@@ -296,14 +217,6 @@ Keep the field product simple. Do **not** add these before the basic pipeline is
 - elaborate analytics inside the collector app
 - Bluetooth instrument integration
 
-## Optional later enhancements
+## Immediate next action
 
-Only consider these after pilot feedback proves a need:
-
-- sample bottle / QR / barcode scanning
-- instrument catalog and calibration history
-- laboratory chain-of-custody workflow
-- structured weather/field-condition metadata
-- sanitized support-package export
-- debug-build failure injection tools
-- public/shared observations in the mobile app sourced from approved ArcGIS data
+Follow [`NEXT_MOVES.md`](NEXT_MOVES.md): audit the mobile checkpoint, finish the remaining iOS proof, then move immediately into the minimal QC → ArcGIS publisher → dashboard vertical slice.
