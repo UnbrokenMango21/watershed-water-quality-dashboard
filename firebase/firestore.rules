@@ -358,7 +358,10 @@ service cloud.firestore {
         ]);
 
       allow read: if signedIn()
-        && (resource.data.collector_user_id == uid() || isAdmin() || isReviewer());
+        && (!exists(submissionPath(submissionId))
+          || resource.data.collector_user_id == uid()
+          || isAdmin()
+          || isReviewer());
 
       allow update: if signedIn()
         && resource.data.collector_user_id == uid()

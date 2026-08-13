@@ -167,6 +167,12 @@ test('collector cannot inject server-owned fields into submission creation', asy
   await assertFails(setDoc(doc(db, `submissions/${submissionId}`), draftSubmission({ overall_quality_score: 99 })));
 });
 
+test('authenticated collector can preflight a missing submission before first sync', async () => {
+  const db = env.authenticatedContext('collector-a').firestore();
+  const snapshot = await assertSucceeds(getDoc(doc(db, `submissions/${submissionId}`)));
+  assert.equal(snapshot.exists(), false);
+});
+
 test('collector cannot read another collector submission', async () => {
   await seed(`submissions/${submissionId}`, draftSubmission());
   const db = env.authenticatedContext('collector-b').firestore();
