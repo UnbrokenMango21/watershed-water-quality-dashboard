@@ -1,68 +1,98 @@
 # PA Watershed Watch
 
-A production-oriented watershed data platform for native field collection, automated validation, focused human QC, authoritative ArcGIS publication, and research/public dashboards.
+Native watershed field collection, private Firebase staging, focused human QC, authoritative ArcGIS publication, and research/public visualization.
 
-> **Current priority:** finish the native iOS + Android production integration before adding new product features.
+> **Current path:** finish the remaining iOS verification, audit the pushed mobile checkpoint, then move directly through **QC → ArcGIS → dashboard**.
 
-## Current status
+## Project status
 
-| Area | Status | Source of truth |
-| --- | --- | --- |
-| Phases 1–10 platform foundation | ✅ Complete / locked baseline | `main` @ `794e55c8` |
-| Approved iPhone UX | ✅ Complete frontend | `Phone App/iPhone App/PAWatershedWatch` |
-| Approved Android UX | ✅ Complete frontend | `Phone App/Android App` |
-| Native production integration | 🚧 In progress | `codex/mobile-production-integration-v1` |
-| Automated validation engine | ✅ Implemented + tested | `validation/` + Phase 10 tests |
-| Minimal reviewer/QC workflow | 🧭 Next | Firebase-backed review page |
-| ArcGIS publishing service | 🧭 Next | server-side only |
-| Research/public dashboard | 🧭 Later | approved ArcGIS data only |
+| Area | Status |
+| --- | --- |
+| Phase 1–10 scientific/backend foundation | ✅ Stable |
+| Android native Spark lifecycle | ✅ Live verified |
+| iOS native production integration | 🟡 Integrated; final live offline/correction proof pending |
+| Mobile production checkpoint | ✅ `codex/mobile-production-integration-v1` @ `7dbc714` |
+| Firebase Auth + Firestore staging | ✅ Active Spark path |
+| Automated validation engine | ✅ Implemented/tested baseline; deployed trigger deferred |
+| Cloud photo/audio | ⏸ Deferred from current release path |
+| Minimal reviewer/QC | ▶️ Next |
+| ArcGIS publishing | ▶️ Next |
+| Dashboard connection | ▶️ Next |
+| End-to-end pilot | 🧭 After vertical integration |
 
-The historical `mobile/` Expo/React Native implementation remains in the repository as **engineering reference only**. The approved product direction is native SwiftUI on iOS and native Jetpack Compose on Android.
+The historical `mobile/` Expo/React Native tree remains engineering reference only. The approved apps are native SwiftUI on iOS and native Jetpack Compose on Android.
 
-## System flow
+## End-to-end architecture
 
 ```mermaid
 flowchart LR
     A[iPhone / Android] --> B[Durable local draft]
     B --> C[Firebase staging]
-    C --> D[Automated validation]
-    D -->|blocking issue| E[NEEDS_CORRECTION]
-    E --> A
-    D -->|ready for review| F[Minimal QC review]
-    F -->|approve| G[Publishing service]
-    F -->|request correction| E
-    F -->|reject| H[REJECTED]
-    G --> I[ArcGIS authoritative data]
-    I --> J[Research / public dashboard]
+    C --> D[Minimal QC]
+    D -->|Correction| E[Immutable Revision N+1]
+    E --> C
+    D -->|Approve| F[Trusted ArcGIS publisher]
+    D -->|Reject| R[REJECTED]
+    F --> G[ArcGIS authoritative data]
+    G --> H[Research / public dashboard]
 ```
 
-ArcGIS Workflow Manager Online is **optional**, not a release dependency. If Penn State licensing becomes available later, it can be added as a workflow adapter without becoming the database of truth.
+ArcGIS Workflow Manager Online is optional. The project must remain able to complete human review without waiting on that license.
+
+## Current mobile handoff
+
+```text
+codex/mobile-production-integration-v1
+└── 7dbc714  stable-ID Firestore sync preflight
+    └── 5fe0e3e  native + backend CI gates
+        └── 995dc6b  production mobile integration
+```
+
+Android has passed the real authenticated Spark lifecycle including session restoration, server site catalog, GPS, durable draft restart, offline submit/restart, exactly-one synchronization, server acknowledgement, recent/detail, correction flow, and account isolation.
+
+iOS production wiring is present. Real authentication, restored session, and server site-catalog checks passed before the Codex usage limit interrupted the remaining live verification. Resume from the existing working tree; do not restart the implementation.
+
+## Spark-compatible scope
+
+The current project remains on Firebase Spark.
+
+**Required:** Auth, Firestore staging, durable local storage, offline synchronization, stable identities, correction revisions, QC, ArcGIS publishing, and dashboard integration.
+
+**Deferred:** Firebase Storage/cloud media, Blaze billing, and the deployed Firebase Cloud Functions validation trigger.
+
+QC and ArcGIS publication are not deferred by this decision. Trusted review/publishing logic can live in the web/server layer.
+
+## Next execution path
+
+```mermaid
+flowchart LR
+    A[Audit 7dbc714] --> B[Finish iOS proof]
+    B --> C[QC review]
+    C --> D[Trusted review actions]
+    D --> E[ArcGIS publisher]
+    E --> F[Dashboard]
+    F --> G[Full lifecycle test]
+    G --> H[Small field pilot]
+    H --> I[v1.0 hardening]
+```
+
+See **[`docs/NEXT_MOVES.md`](docs/NEXT_MOVES.md)** for the executable plan.
 
 ## Product surfaces
 
-| Surface | Reads/writes | Purpose |
+| Surface | Data source | Purpose |
 | --- | --- | --- |
-| Collector mobile | local database + Firebase staging | own drafts, submissions, corrections |
-| Minimal reviewer page | Firebase staging | validation review, approve/correct/reject |
-| Research/public dashboard | ArcGIS approved data | maps, trends, exports, analytics |
+| Collector mobile | native local store + Firebase staging | drafts, submissions, corrections |
+| Minimal reviewer interface | Firebase staging through trusted actions | approve / request correction / reject |
+| Research/public dashboard | approved ArcGIS data | maps, trends, analysis |
 
-The public dashboard must never use raw Firebase staging submissions as authoritative data.
+The research/public dashboard must not treat raw Firebase staging records as authoritative data.
 
-## Native mobile apps
+## Native apps
 
-### iOS — SwiftUI
+**iOS — SwiftUI:** `Phone App/iPhone App/PAWatershedWatch`
 
-`Phone App/iPhone App/PAWatershedWatch`
-
-Approved design and workflow source for the native product. Production integration is being added underneath the existing UI without redesigning it.
-
-### Android — Jetpack Compose
-
-`Phone App/Android App`
-
-Native Android counterpart preserving the same product semantics with Android-native interaction behavior.
-
-### Approved iOS design previews
+**Android — Jetpack Compose:** `Phone App/Android App`
 
 <p align="center">
   <img src="Phone%20App/iPhone%20App/PAWatershedWatch-Previews/01-Home.png" width="210" alt="PA Watershed Watch home screen" />
@@ -70,63 +100,31 @@ Native Android counterpart preserving the same product semantics with Android-na
   <img src="Phone%20App/iPhone%20App/PAWatershedWatch-Previews/05-Correction-Revision.png" width="210" alt="PA Watershed Watch correction revision screen" />
 </p>
 
-## Data ownership
+## Scientific rules
 
-- **Local native stores:** durable collector drafts, media queue, retry/sync state.
-- **Firebase:** private/unapproved staging submissions, immutable revisions, validation/readback state, reviewer workflow state.
-- **Trusted backend:** validation, audit, reviewer actions, publication transitions, ArcGIS writes.
-- **ArcGIS:** authoritative approved sites and observations after verified publication.
-- **GitHub:** code, contracts, schemas, tests, documentation, history, issues, and releases — never live environmental data.
+- Preserve original submitted science.
+- Corrections create immutable new revisions.
+- Keep local transport state separate from scientific workflow state.
+- Reuse stable identities across retries so network failure does not create duplicate observations.
+- Record meaningful workflow transitions with actor, time, state change, and reason.
+- Version app/schema/validation contracts.
+- Flag unusual observations for review rather than silently discarding them.
+- Publish only approved records that are successfully verified in ArcGIS.
 
-## Non-negotiable scientific rules
+## Documentation
 
-- Preserve the original field submission.
-- Corrections create a new immutable revision; they do not overwrite submitted science.
-- Keep transport state separate from scientific/workflow state.
-- Use stable identities and idempotent retries so failures cannot create duplicate observations.
-- Record who changed what, when, and why.
-- Version application, schema, and validation contracts.
-- Flag unusual measurements and spatial anomalies for review rather than silently discarding them.
-- Treat quality/confidence scores as data-quality signals, not water-health grades.
-- Publish only records that were approved and successfully verified in ArcGIS.
-- Never expose private access/landowner information through collector-safe or public data paths.
+- [`docs/NEXT_MOVES.md`](docs/NEXT_MOVES.md) — immediate execution plan
+- [`docs/PROJECT_STATUS.md`](docs/PROJECT_STATUS.md) — current operational status
+- [`docs/PROJECT_ROADMAP.md`](docs/PROJECT_ROADMAP.md) — phases through v1.0
+- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — system ownership and boundaries
+- [`docs/SYSTEM_FLOW_AND_FAILURES.md`](docs/SYSTEM_FLOW_AND_FAILURES.md) — happy path and failure handling
+- [`docs/REVIEW_AND_PUBLISHING_STRATEGY.md`](docs/REVIEW_AND_PUBLISHING_STRATEGY.md) — QC and ArcGIS strategy
+- [`docs/DEVELOPMENT_WORKFLOW.md`](docs/DEVELOPMENT_WORKFLOW.md) — branches and checkpoint workflow
 
-## Development path
+## Keep v1 focused
 
-```mermaid
-flowchart LR
-    A[Phase A
-Mobile production integration] --> B[Independent implementation audit]
-    B --> C[Phase B
-Reliability + provenance hardening]
-    C --> D[Phase C
-Minimal QC + publishing]
-    D --> E[Phase D
-Field pilot]
-    E --> F[v1.0 production]
-```
+Do not add chat, AI scientific conclusions, automatic rejection of anomalous data, direct mobile → ArcGIS writes, public dashboard → Firebase staging reads, broad background location, social features, elaborate field analytics, or Bluetooth instrument integrations before the core lifecycle is proven.
 
-The current detailed roadmap is in **[`docs/PROJECT_ROADMAP.md`](docs/PROJECT_ROADMAP.md)**.
+## v1 acceptance gate
 
-## Key documentation
-
-- **Current roadmap:** [`docs/PROJECT_ROADMAP.md`](docs/PROJECT_ROADMAP.md)
-- **Architecture:** [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
-- **Happy path + failure paths:** [`docs/SYSTEM_FLOW_AND_FAILURES.md`](docs/SYSTEM_FLOW_AND_FAILURES.md)
-- **Review / publishing strategy:** [`docs/REVIEW_AND_PUBLISHING_STRATEGY.md`](docs/REVIEW_AND_PUBLISHING_STRATEGY.md)
-- **Project status:** [`docs/PROJECT_STATUS.md`](docs/PROJECT_STATUS.md)
-- **Development / branch workflow:** [`docs/DEVELOPMENT_WORKFLOW.md`](docs/DEVELOPMENT_WORKFLOW.md)
-- **Data dictionary:** [`docs/DATA_DICTIONARY.md`](docs/DATA_DICTIONARY.md)
-- **Firebase Phase 9:** [`docs/FIREBASE_STEP9.md`](docs/FIREBASE_STEP9.md)
-- **Validation Phase 10:** [`docs/VALIDATION_ENGINE_STEP10.md`](docs/VALIDATION_ENGINE_STEP10.md)
-- **Android implementation audit:** [`docs/ANDROID_PORT_AUDIT.md`](docs/ANDROID_PORT_AUDIT.md)
-
-## Intentionally out of scope for now
-
-Keep the field product focused. Do not add chat, AI-generated scientific conclusions, automatic rejection of anomalous data, direct mobile → ArcGIS writes, public dashboard → Firebase staging reads, broad background location tracking, social/community features, elaborate field analytics, or Bluetooth instrument integration before the core pipeline is proven.
-
-## Release philosophy
-
-The release candidate is not considered ready because screens render or unit tests pass. It must prove the complete scientific lifecycle under failure:
-
-**collect offline → preserve draft through restart → sync exactly once → validate → request correction → create immutable Revision 2 → approve → publish exactly once to ArcGIS → dashboard reads the approved record.**
+**collect offline → survive restart → sync exactly once → request correction → create immutable Revision 2 → approve → publish exactly once to ArcGIS → dashboard displays only the approved record.**
