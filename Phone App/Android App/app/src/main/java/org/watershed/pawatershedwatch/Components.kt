@@ -182,8 +182,10 @@ fun SyncPill(state: SyncState) {
 fun WorkflowPill(state: WorkflowState) {
     val color = when (state) {
         WorkflowState.Draft -> Water
-        WorkflowState.Submitted, WorkflowState.Resubmitted -> Fern
+        WorkflowState.Submitted, WorkflowState.Validating, WorkflowState.PendingReview, WorkflowState.Resubmitted,
+        WorkflowState.Approved, WorkflowState.Publishing, WorkflowState.Published -> Fern
         WorkflowState.NeedsCorrection -> Goldenrod
+        WorkflowState.Rejected, WorkflowState.PublishFailed -> MaterialTheme.colorScheme.error
     }
     Row(
         modifier = Modifier.clip(CircleShape).background(color.copy(alpha = .11f)).padding(horizontal = 10.dp, vertical = 6.dp),

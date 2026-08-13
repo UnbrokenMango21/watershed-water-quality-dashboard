@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "652403958133",
+    "project_id": "central-pa-watershed-dev",
+    "storage_bucket": "central-pa-watershed-dev.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:652403958133:android:aeb5964c9605bf8886f33c",
+        "android_client_info": {
+          "package_name": "org.watershed.pawatershedwatch"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBlOEoyEMhjSahdxiyNocLEiOkjJXmext8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

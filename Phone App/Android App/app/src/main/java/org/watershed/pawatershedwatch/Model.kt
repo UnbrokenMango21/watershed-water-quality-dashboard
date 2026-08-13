@@ -21,11 +21,22 @@ enum class SyncState(val label: String) {
     Failed("Sync failed"),
 }
 
-enum class WorkflowState(val label: String) {
-    Draft("Draft"),
-    Submitted("Submitted"),
-    NeedsCorrection("Needs Correction"),
-    Resubmitted("Resubmitted"),
+enum class WorkflowState(val label: String, val backendValue: String) {
+    Draft("Draft", "DRAFT"),
+    Submitted("Submitted", "SUBMITTED"),
+    Validating("Validating", "VALIDATING"),
+    PendingReview("Pending Review", "PENDING_REVIEW"),
+    NeedsCorrection("Needs Correction", "NEEDS_CORRECTION"),
+    Resubmitted("Resubmitted", "RESUBMITTED"),
+    Approved("Approved", "APPROVED"),
+    Rejected("Rejected", "REJECTED"),
+    Publishing("Publishing", "PUBLISHING"),
+    PublishFailed("Publish Failed", "PUBLISH_FAILED"),
+    Published("Published", "PUBLISHED");
+
+    companion object {
+        fun fromBackend(value: String): WorkflowState? = entries.firstOrNull { it.backendValue == value }
+    }
 }
 
 enum class GpsState(val label: String) {
@@ -184,15 +195,21 @@ val MeasurementKind.preservesQuantity: Boolean
 val MeasurementKind.allowsNegative: Boolean get() = this == MeasurementKind.Orp
 
 data class ObservationDraft(
-    val id: String = UUID.randomUUID().toString(),
+    val submissionId: SubmissionId = SubmissionId.new(),
+    val eventId: EventId = EventId.new(),
+    val revisionId: RevisionId = RevisionId.new(),
+    val revisionNo: Int = 1,
+    val ownerUid: String = "",
+    val createdAt: Long = System.currentTimeMillis(),
     val siteId: String? = null,
     val collectedAt: Long = System.currentTimeMillis(),
-    val collector: String = "Maya Chen",
+    val collector: String = "",
     val latitude: Double? = null,
     val longitude: Double? = null,
-    val accuracyMeters: Float? = null,
+    val accuracyMeters: Double? = null,
     val gpsState: GpsState = GpsState.Acquiring,
     val testType: TestType? = null,
+    val testTypeOther: String = "",
     val method: String = "",
     val instrument: String = "",
     val labResultsPending: Boolean = true,
@@ -200,8 +217,7 @@ data class ObservationDraft(
     val values: Map<MeasurementKind, String> = emptyMap(),
     val unitIds: Map<MeasurementKind, String> = emptyMap(),
     val notes: String = "",
-    val photoCount: Int = 0,
-    val hasAudio: Boolean = false,
+    val attachments: List<ObservationAttachment> = emptyList(),
     val currentStep: Int = 1,
     val isCorrection: Boolean = false,
     val sourceRecordId: String? = null,
@@ -210,6 +226,9 @@ data class ObservationDraft(
     val revisionNote: String = "",
     val lastSavedAt: Long = System.currentTimeMillis(),
 ) {
+    val id: String get() = submissionId.value
+    val photoCount: Int get() = attachments.count(ObservationAttachment::isPhoto)
+    val hasAudio: Boolean get() = attachments.any(ObservationAttachment::isAudio)
     val requiredMeasurements: List<MeasurementKind>
         get() = when (testType) {
             TestType.FieldInstrument, TestType.Sonde, TestType.Mixed -> listOf(
@@ -218,13 +237,7 @@ data class ObservationDraft(
                 MeasurementKind.DissolvedOxygen,
                 MeasurementKind.Conductivity,
             )
-            TestType.FieldKit -> listOf(MeasurementKind.Ph, MeasurementKind.Nitrate, MeasurementKind.Phosphate)
-            TestType.PennStateLab, TestType.ExternalLab -> if (labResultsPending) emptyList() else listOf(
-                MeasurementKind.Nitrate,
-                MeasurementKind.Phosphate,
-                MeasurementKind.Chloride,
-                MeasurementKind.Sulfate,
-            )
+            TestType.FieldKit, TestType.PennStateLab, TestType.ExternalLab -> listOf(MeasurementKind.Temperature)
             TestType.Other, null -> listOf(MeasurementKind.Temperature)
         }
 
@@ -238,6 +251,12 @@ data class ObservationDraft(
 
     val completedRequiredCount: Int get() = requiredMeasurements.count(::isComplete)
     val requiredComplete: Boolean get() = completedRequiredCount == requiredMeasurements.size
+    val profileMinimumComplete: Boolean
+        get() = when (testType) {
+            TestType.FieldInstrument, TestType.Sonde, TestType.Mixed -> requiredComplete
+            null -> false
+            else -> requiredComplete && values.any { (kind, value) -> kind != MeasurementKind.Temperature && value.toDoubleOrNull() != null }
+        }
 }
 
 data class MeasurementValue(val kind: MeasurementKind, val value: String, val unitId: String)
@@ -250,8 +269,20 @@ data class Revision(
     val measurements: List<MeasurementValue>,
 )
 
+data class ValidationSummary(
+    val errorCount: Int,
+    val warningCount: Int,
+    val infoCount: Int,
+    val overallQualityScore: Double?,
+)
+
+data class ValidationFlag(val id: String, val severity: String, val ruleCode: String, val message: String)
+
 data class ObservationRecord(
     val id: String,
+    val eventId: EventId = EventId.new(),
+    val currentRevisionId: RevisionId = RevisionId.new(),
+    val ownerUid: String = "",
     val site: Site,
     val collectedAt: Long,
     val collector: String,
@@ -260,7 +291,7 @@ data class ObservationRecord(
     val instrument: String,
     val measurements: List<MeasurementValue>,
     val notes: String,
-    val photoCount: Int,
+    val attachments: List<ObservationAttachment>,
     val workflow: WorkflowState,
     val sync: SyncState,
     val revision: Int,
@@ -268,11 +299,16 @@ data class ObservationRecord(
     val revisions: List<Revision>,
     val latitude: Double? = null,
     val longitude: Double? = null,
-    val accuracyMeters: Float? = null,
-    val hasAudio: Boolean = false,
+    val accuracyMeters: Double? = null,
     val labResultsPending: Boolean = false,
     val requestedAnalytes: Set<MeasurementKind> = emptySet(),
+    val validation: ValidationSummary? = null,
+    val validationFlags: List<ValidationFlag> = emptyList(),
 )
+{
+    val photoCount: Int get() = attachments.count(ObservationAttachment::isPhoto)
+    val hasAudio: Boolean get() = attachments.any(ObservationAttachment::isAudio)
+}
 
 fun formatEntry(value: Double): String {
     if (!value.isFinite()) return ""
@@ -301,7 +337,9 @@ fun measurementError(kind: MeasurementKind, raw: String): String? {
 }
 
 fun formatDateTime(epochMillis: Long): String =
-    DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).format(Date(epochMillis))
+    DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).apply {
+        timeZone = java.util.TimeZone.getTimeZone(EasternTime.zone)
+    }.format(Date(epochMillis))
 
 val PennsylvaniaSites = listOf(
     Site("spring-houserville", "Spring Creek at Houserville Road Bridge", "Centre County", "Spring Creek · Susquehanna", 40.83091, -77.83172, true, "0.4 mi"),

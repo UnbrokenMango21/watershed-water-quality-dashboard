@@ -1,0 +1,866 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 4,
+    "identityHash": "842445f52cf34b13a575366f75fa87b4",
+    "entities": [
+      {
+        "tableName": "drafts",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`submission_id` TEXT NOT NULL, `event_id` TEXT NOT NULL, `revision_id` TEXT NOT NULL, `revision_no` INTEGER NOT NULL, `owner_uid` TEXT NOT NULL, `created_at` INTEGER NOT NULL, `site_id` TEXT, `collected_at` INTEGER NOT NULL, `collector` TEXT NOT NULL, `latitude` REAL, `longitude` REAL, `accuracy_m` REAL, `gps_state` TEXT NOT NULL, `test_type` TEXT, `test_type_other` TEXT NOT NULL, `method` TEXT NOT NULL, `instrument` TEXT NOT NULL, `lab_results_pending` INTEGER NOT NULL, `requested_analytes` TEXT NOT NULL, `notes` TEXT NOT NULL, `current_step` INTEGER NOT NULL, `is_correction` INTEGER NOT NULL, `source_submission_id` TEXT, `base_revision` INTEGER, `correction_reason` TEXT, `revision_note` TEXT NOT NULL, `last_saved_at` INTEGER NOT NULL, PRIMARY KEY(`submission_id`))",
+        "fields": [
+          {
+            "fieldPath": "submissionId",
+            "columnName": "submission_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "eventId",
+            "columnName": "event_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "revisionId",
+            "columnName": "revision_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "revisionNo",
+            "columnName": "revision_no",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "ownerUid",
+            "columnName": "owner_uid",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "created_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "siteId",
+            "columnName": "site_id",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "collectedAt",
+            "columnName": "collected_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "collector",
+            "columnName": "collector",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "latitude",
+            "columnName": "latitude",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "longitude",
+            "columnName": "longitude",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "accuracyM",
+            "columnName": "accuracy_m",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "gpsState",
+            "columnName": "gps_state",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "testType",
+            "columnName": "test_type",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "testTypeOther",
+            "columnName": "test_type_other",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "method",
+            "columnName": "method",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "instrument",
+            "columnName": "instrument",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "labResultsPending",
+            "columnName": "lab_results_pending",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "requestedAnalytes",
+            "columnName": "requested_analytes",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "notes",
+            "columnName": "notes",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "currentStep",
+            "columnName": "current_step",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "isCorrection",
+            "columnName": "is_correction",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sourceSubmissionId",
+            "columnName": "source_submission_id",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "baseRevision",
+            "columnName": "base_revision",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "correctionReason",
+            "columnName": "correction_reason",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "revisionNote",
+            "columnName": "revision_note",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastSavedAt",
+            "columnName": "last_saved_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "submission_id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_drafts_owner_uid",
+            "unique": false,
+            "columnNames": [
+              "owner_uid"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_drafts_owner_uid` ON `${TABLE_NAME}` (`owner_uid`)"
+          }
+        ]
+      },
+      {
+        "tableName": "observations",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`submission_id` TEXT NOT NULL, `event_id` TEXT NOT NULL, `owner_uid` TEXT NOT NULL, `site_id` TEXT NOT NULL, `current_revision_id` TEXT NOT NULL, `current_revision_no` INTEGER NOT NULL, `workflow_state` TEXT NOT NULL, `sync_state` TEXT NOT NULL, `correction_reason` TEXT, `updated_at` INTEGER NOT NULL, `validation_error_count` INTEGER, `validation_warning_count` INTEGER, `validation_info_count` INTEGER, `overall_quality_score` REAL, PRIMARY KEY(`submission_id`))",
+        "fields": [
+          {
+            "fieldPath": "submissionId",
+            "columnName": "submission_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "eventId",
+            "columnName": "event_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "ownerUid",
+            "columnName": "owner_uid",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "siteId",
+            "columnName": "site_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "currentRevisionId",
+            "columnName": "current_revision_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "currentRevisionNo",
+            "columnName": "current_revision_no",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "workflowState",
+            "columnName": "workflow_state",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "syncState",
+            "columnName": "sync_state",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "correctionReason",
+            "columnName": "correction_reason",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "updatedAt",
+            "columnName": "updated_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "validationErrorCount",
+            "columnName": "validation_error_count",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "validationWarningCount",
+            "columnName": "validation_warning_count",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "validationInfoCount",
+            "columnName": "validation_info_count",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "overallQualityScore",
+            "columnName": "overall_quality_score",
+            "affinity": "REAL"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "submission_id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_observations_owner_uid",
+            "unique": false,
+            "columnNames": [
+              "owner_uid"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_observations_owner_uid` ON `${TABLE_NAME}` (`owner_uid`)"
+          },
+          {
+            "name": "index_observations_sync_state",
+            "unique": false,
+            "columnNames": [
+              "sync_state"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_observations_sync_state` ON `${TABLE_NAME}` (`sync_state`)"
+          }
+        ]
+      },
+      {
+        "tableName": "revisions",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`revision_id` TEXT NOT NULL, `submission_id` TEXT NOT NULL, `event_id` TEXT NOT NULL, `revision_no` INTEGER NOT NULL, `owner_uid` TEXT NOT NULL, `site_id` TEXT NOT NULL, `created_at` INTEGER NOT NULL, `collected_at` INTEGER NOT NULL, `submitted_at` INTEGER NOT NULL, `collector` TEXT NOT NULL, `latitude` REAL NOT NULL, `longitude` REAL NOT NULL, `accuracy_m` REAL NOT NULL, `test_type` TEXT NOT NULL, `test_type_other` TEXT, `method` TEXT NOT NULL, `instrument` TEXT NOT NULL, `notes` TEXT, `temp_entered_value` REAL NOT NULL, `temp_entered_unit` TEXT NOT NULL, `temp_c` REAL NOT NULL, `temp_f` REAL NOT NULL, `workflow_state` TEXT NOT NULL, `revision_note` TEXT NOT NULL, `app_version` TEXT NOT NULL, PRIMARY KEY(`revision_id`))",
+        "fields": [
+          {
+            "fieldPath": "revisionId",
+            "columnName": "revision_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "submissionId",
+            "columnName": "submission_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "eventId",
+            "columnName": "event_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "revisionNo",
+            "columnName": "revision_no",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "ownerUid",
+            "columnName": "owner_uid",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "siteId",
+            "columnName": "site_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "created_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "collectedAt",
+            "columnName": "collected_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "submittedAt",
+            "columnName": "submitted_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "collector",
+            "columnName": "collector",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "latitude",
+            "columnName": "latitude",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "longitude",
+            "columnName": "longitude",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "accuracyM",
+            "columnName": "accuracy_m",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "testType",
+            "columnName": "test_type",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "testTypeOther",
+            "columnName": "test_type_other",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "method",
+            "columnName": "method",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "instrument",
+            "columnName": "instrument",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "notes",
+            "columnName": "notes",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "tempEnteredValue",
+            "columnName": "temp_entered_value",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "tempEnteredUnit",
+            "columnName": "temp_entered_unit",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "tempC",
+            "columnName": "temp_c",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "tempF",
+            "columnName": "temp_f",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "workflowState",
+            "columnName": "workflow_state",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "revisionNote",
+            "columnName": "revision_note",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "appVersion",
+            "columnName": "app_version",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "revision_id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_revisions_submission_id",
+            "unique": false,
+            "columnNames": [
+              "submission_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_revisions_submission_id` ON `${TABLE_NAME}` (`submission_id`)"
+          },
+          {
+            "name": "index_revisions_owner_uid",
+            "unique": false,
+            "columnNames": [
+              "owner_uid"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_revisions_owner_uid` ON `${TABLE_NAME}` (`owner_uid`)"
+          }
+        ]
+      },
+      {
+        "tableName": "measurements",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`revision_id` TEXT NOT NULL, `kind` TEXT NOT NULL, `measurement_id` TEXT NOT NULL, `owner_uid` TEXT NOT NULL, `parameter_code` TEXT, `raw_value` TEXT NOT NULL, `raw_unit_id` TEXT NOT NULL, `canonical_value` REAL, `canonical_unit` TEXT, PRIMARY KEY(`revision_id`, `kind`))",
+        "fields": [
+          {
+            "fieldPath": "revisionId",
+            "columnName": "revision_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "kind",
+            "columnName": "kind",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "measurementId",
+            "columnName": "measurement_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "ownerUid",
+            "columnName": "owner_uid",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "parameterCode",
+            "columnName": "parameter_code",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "rawValue",
+            "columnName": "raw_value",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "rawUnitId",
+            "columnName": "raw_unit_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "canonicalValue",
+            "columnName": "canonical_value",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "canonicalUnit",
+            "columnName": "canonical_unit",
+            "affinity": "TEXT"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "revision_id",
+            "kind"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_measurements_owner_uid",
+            "unique": false,
+            "columnNames": [
+              "owner_uid"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_measurements_owner_uid` ON `${TABLE_NAME}` (`owner_uid`)"
+          }
+        ]
+      },
+      {
+        "tableName": "attachments",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`attachment_id` TEXT NOT NULL, `owner_uid` TEXT NOT NULL, `submission_id` TEXT NOT NULL, `revision_id` TEXT NOT NULL, `local_path` TEXT NOT NULL, `content_type` TEXT NOT NULL, `size_bytes` INTEGER NOT NULL, `kind` TEXT NOT NULL, `caption` TEXT, `created_at` INTEGER NOT NULL, `transfer_state` TEXT NOT NULL, `remote_storage_path` TEXT, `last_error` TEXT, PRIMARY KEY(`attachment_id`))",
+        "fields": [
+          {
+            "fieldPath": "attachmentId",
+            "columnName": "attachment_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "ownerUid",
+            "columnName": "owner_uid",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "submissionId",
+            "columnName": "submission_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "revisionId",
+            "columnName": "revision_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "localPath",
+            "columnName": "local_path",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "contentType",
+            "columnName": "content_type",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sizeBytes",
+            "columnName": "size_bytes",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "kind",
+            "columnName": "kind",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "caption",
+            "columnName": "caption",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "created_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "transferState",
+            "columnName": "transfer_state",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "remoteStoragePath",
+            "columnName": "remote_storage_path",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "lastError",
+            "columnName": "last_error",
+            "affinity": "TEXT"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "attachment_id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_attachments_revision_id",
+            "unique": false,
+            "columnNames": [
+              "revision_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_attachments_revision_id` ON `${TABLE_NAME}` (`revision_id`)"
+          },
+          {
+            "name": "index_attachments_owner_uid",
+            "unique": false,
+            "columnNames": [
+              "owner_uid"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_attachments_owner_uid` ON `${TABLE_NAME}` (`owner_uid`)"
+          }
+        ]
+      },
+      {
+        "tableName": "sites",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`site_id` TEXT NOT NULL, `name` TEXT NOT NULL, `county` TEXT NOT NULL, `watershed` TEXT NOT NULL, `latitude` REAL NOT NULL, `longitude` REAL NOT NULL, `active` INTEGER NOT NULL, `updated_at` INTEGER NOT NULL, PRIMARY KEY(`site_id`))",
+        "fields": [
+          {
+            "fieldPath": "siteId",
+            "columnName": "site_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "county",
+            "columnName": "county",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "watershed",
+            "columnName": "watershed",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "latitude",
+            "columnName": "latitude",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "longitude",
+            "columnName": "longitude",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "active",
+            "columnName": "active",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedAt",
+            "columnName": "updated_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "site_id"
+          ]
+        }
+      },
+      {
+        "tableName": "sync_queue",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`submission_id` TEXT NOT NULL, `revision_id` TEXT NOT NULL, `owner_uid` TEXT NOT NULL, `state` TEXT NOT NULL, `attempts` INTEGER NOT NULL, `next_attempt_at` INTEGER NOT NULL, `last_error` TEXT, PRIMARY KEY(`submission_id`))",
+        "fields": [
+          {
+            "fieldPath": "submissionId",
+            "columnName": "submission_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "revisionId",
+            "columnName": "revision_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "ownerUid",
+            "columnName": "owner_uid",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "state",
+            "columnName": "state",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "attempts",
+            "columnName": "attempts",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "nextAttemptAt",
+            "columnName": "next_attempt_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastError",
+            "columnName": "last_error",
+            "affinity": "TEXT"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "submission_id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_sync_queue_owner_uid",
+            "unique": false,
+            "columnNames": [
+              "owner_uid"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_sync_queue_owner_uid` ON `${TABLE_NAME}` (`owner_uid`)"
+          },
+          {
+            "name": "index_sync_queue_state",
+            "unique": false,
+            "columnNames": [
+              "state"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_sync_queue_state` ON `${TABLE_NAME}` (`state`)"
+          }
+        ]
+      },
+      {
+        "tableName": "validation_flags",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`owner_uid` TEXT NOT NULL, `revision_id` TEXT NOT NULL, `flag_id` TEXT NOT NULL, `severity` TEXT NOT NULL, `rule_code` TEXT NOT NULL, `message` TEXT NOT NULL, PRIMARY KEY(`owner_uid`, `revision_id`, `flag_id`))",
+        "fields": [
+          {
+            "fieldPath": "ownerUid",
+            "columnName": "owner_uid",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "revisionId",
+            "columnName": "revision_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "flagId",
+            "columnName": "flag_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "severity",
+            "columnName": "severity",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "ruleCode",
+            "columnName": "rule_code",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "message",
+            "columnName": "message",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "owner_uid",
+            "revision_id",
+            "flag_id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_validation_flags_owner_uid",
+            "unique": false,
+            "columnNames": [
+              "owner_uid"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_validation_flags_owner_uid` ON `${TABLE_NAME}` (`owner_uid`)"
+          },
+          {
+            "name": "index_validation_flags_revision_id",
+            "unique": false,
+            "columnNames": [
+              "revision_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_validation_flags_revision_id` ON `${TABLE_NAME}` (`revision_id`)"
+          }
+        ]
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '842445f52cf34b13a575366f75fa87b4')"
+    ]
+  }
+}

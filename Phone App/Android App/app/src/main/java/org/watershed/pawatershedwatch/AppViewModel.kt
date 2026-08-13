@@ -1,78 +1,144 @@
 package org.watershed.pawatershedwatch
 
 import android.app.Application
+import android.net.Uri
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import kotlinx.coroutines.delay
+import com.google.firebase.auth.FirebaseAuthException
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import java.util.UUID
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
+import java.io.File
 
 class AppViewModel(application: Application) : AndroidViewModel(application) {
-    private val repository: ObservationRepository = MockObservationRepository(application)
+    private val graph = (application as PAWatershedApplication).graph
+    private val drafts: DraftRepository = graph.local
+    private val observations: ObservationRepository = graph.local
+    private val attachments: AttachmentRepository = graph.local
+    private val saveMutex = Mutex()
+    private var account: AuthAccount? = null
+    private var remoteListener: AutoCloseable? = null
+    private var preparingCorrection = false
+    private val connectivity = application.getSystemService(ConnectivityManager::class.java)
+    private val networkCallback = object : ConnectivityManager.NetworkCallback() {
+        override fun onAvailable(network: Network) = refreshConnection()
+        override fun onCapabilitiesChanged(network: Network, capabilities: NetworkCapabilities) = refreshConnection()
+        override fun onLost(network: Network) = refreshConnection()
+    }
 
     var isSignedIn by mutableStateOf(false)
         private set
-    var email by mutableStateOf("maya.chen@psu.edu")
-    var password by mutableStateOf("watershed")
+    var authLoading by mutableStateOf(true)
+        private set
+    var email by mutableStateOf("")
+    var password by mutableStateOf("")
     var authError by mutableStateOf<String?>(null)
         private set
     var connection by mutableStateOf(ConnectionState.Online)
         private set
-    var draft by mutableStateOf(repository.loadDraft())
+    var draft by mutableStateOf<ObservationDraft?>(null)
         private set
-    var records by mutableStateOf(repository.loadRecords())
+    var records by mutableStateOf<List<ObservationRecord>>(emptyList())
+        private set
+    var sites by mutableStateOf<List<Site>>(emptyList())
+        private set
+    var sitesLoading by mutableStateOf(false)
+        private set
+    var siteLoadError by mutableStateOf<String?>(null)
         private set
     var lastSubmittedId by mutableStateOf<String?>(null)
         private set
+    var localStoreError by mutableStateOf<String?>(null)
+        private set
+    var submitting by mutableStateOf(false)
+        private set
+    val signedInName: String get() = account?.displayName?.ifBlank { "Watershed researcher" } ?: "Watershed researcher"
+    val signedInEmail: String get() = account?.email.orEmpty()
 
-    val sites: List<Site> = PennsylvaniaSites
+    init {
+        connectivity.registerDefaultNetworkCallback(networkCallback)
+        refreshConnection()
+        viewModelScope.launch {
+            graph.auth.account.collectLatest { restored ->
+                account = restored
+                authLoading = false
+                isSignedIn = restored != null
+                if (restored == null) clearVisibleAccountData() else loadAccount(restored)
+            }
+        }
+    }
 
     fun signIn() {
-        if (email.trim().lowercase() == "maya.chen@psu.edu" && password == "watershed") {
-            isSignedIn = true
-            authError = null
-        } else {
-            authError = "We couldn't sign you in. Check your email and password, then try again."
+        if (email.isBlank() || password.isBlank()) {
+            authError = "Enter your institution email and password."
+            return
+        }
+        authLoading = true
+        authError = null
+        viewModelScope.launch {
+            graph.auth.signIn(email, password).onFailure { error ->
+                authLoading = false
+                authError = error.authMessage()
+            }
         }
     }
 
     fun signOut() {
-        isSignedIn = false
+        remoteListener?.close()
+        remoteListener = null
         password = ""
+        graph.auth.signOut()
     }
 
     fun startNewObservation() {
-        persistDraft(ObservationDraft())
+        val owner = account ?: return
+        val previous = draft
+        val next = ObservationDraft(ownerUid = owner.uid, collector = owner.displayName, gpsState = GpsState.Acquiring)
+        draft = next
+        viewModelScope.launch {
+            saveMutex.withLock {
+                previous?.let { drafts.deleteDraft(it.ownerUid, it.submissionId) }
+                runCatching { drafts.saveDraft(next) }.onFailure { localStoreError = it.message }
+            }
+        }
     }
 
     fun discardDraft() {
+        val current = draft ?: return
         draft = null
-        repository.clearDraft()
+        viewModelScope.launch { drafts.deleteDraft(current.ownerUid, current.submissionId) }
     }
 
     fun updateDraft(change: (ObservationDraft) -> ObservationDraft) {
         val current = draft ?: return
-        persistDraft(change(current).copy(lastSavedAt = System.currentTimeMillis()))
+        val next = change(current).copy(lastSavedAt = System.currentTimeMillis())
+        require(next.submissionId == current.submissionId && next.eventId == current.eventId && next.ownerUid == current.ownerUid)
+        draft = next
+        persistDraft(next)
     }
 
     fun setStep(step: Int) = updateDraft { it.copy(currentStep = step.coerceIn(1, 6)) }
-
     fun selectSite(site: Site) = updateDraft { it.copy(siteId = site.id) }
-
     fun selectedSite(): Site? = sites.firstOrNull { it.id == draft?.siteId }
 
     fun selectTestType(type: TestType) = updateDraft {
-        it.copy(testType = type, method = type.suggestedMethod, instrument = type.suggestedInstrument)
+        it.copy(testType = type, method = type.suggestedMethod, instrument = type.suggestedInstrument, testTypeOther = "")
     }
 
     fun setLocation(latitude: Double, longitude: Double, accuracy: Float, approximateOnly: Boolean) = updateDraft {
         it.copy(
             latitude = latitude,
             longitude = longitude,
-            accuracyMeters = accuracy,
+            accuracyMeters = accuracy.toDouble(),
             gpsState = when {
                 approximateOnly -> GpsState.Approximate
                 accuracy <= 20 -> GpsState.Good
@@ -83,12 +149,14 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setGpsState(state: GpsState) = updateDraft { it.copy(gpsState = state) }
 
-    fun setMeasurement(kind: MeasurementKind, value: String) = updateDraft {
-        it.copy(values = it.values + (kind to value))
+    fun setMeasurement(kind: MeasurementKind, value: String) {
+        if (ProductionMeasurementCatalog.spec(kind).support != ProductionSupport.FULLY_SUPPORTED) return
+        updateDraft { it.copy(values = it.values + (kind to value)) }
     }
 
     fun changeUnit(kind: MeasurementKind, newUnit: UnitSpec, clearIfNeeded: Boolean = false): Boolean {
         val current = draft ?: return false
+        if (ProductionMeasurementCatalog.spec(kind).support != ProductionSupport.FULLY_SUPPORTED) return false
         val oldUnit = current.selectedUnit(kind)
         if (oldUnit == newUnit) return true
         val raw = current.values[kind].orEmpty().trim()
@@ -98,178 +166,274 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             clearIfNeeded -> ""
             else -> return false
         }
-        persistDraft(
-            current.copy(
-                values = current.values + (kind to newValue),
-                unitIds = current.unitIds + (kind to newUnit.id),
-                lastSavedAt = System.currentTimeMillis(),
-            )
-        )
+        updateDraft { it.copy(values = it.values + (kind to newValue), unitIds = it.unitIds + (kind to newUnit.id)) }
         return true
+    }
+
+    fun addAttachment(value: ObservationAttachment) {
+        val current = draft ?: return
+        viewModelScope.launch {
+            runCatching {
+                require(value.ownerUid == current.ownerUid && value.submissionId == current.submissionId && value.revisionId == current.revisionId)
+                require(value.sizeBytes in 1..MAX_ATTACHMENT_BYTES)
+                saveMutex.withLock { attachments.add(draft?.takeIf { it.revisionId == current.revisionId } ?: current, value) }
+            }.onSuccess { draft = it }
+                .onFailure { localStoreError = it.message }
+        }
+    }
+
+    fun importPhotos(uris: List<Uri>) {
+        val initial = draft ?: return
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching {
+                saveMutex.withLock {
+                    var current = draft?.takeIf { it.revisionId == initial.revisionId } ?: return@withLock
+                    uris.take((5 - current.photoCount).coerceAtLeast(0)).forEach { uri ->
+                        val contentType = requireNotNull(
+                            getApplication<Application>().contentResolver.getType(uri)
+                                ?.lowercase()
+                                ?.takeIf(ALLOWED_IMAGE_TYPES::contains),
+                        ) { "That image format is not supported. Choose a JPEG, PNG, or HEIC photo." }
+                        val prepared = prepareAttachment(current, contentType, AttachmentKind.SITE_PHOTO)
+                        try {
+                            getApplication<Application>().contentResolver.openInputStream(uri).use { input ->
+                                requireNotNull(input) { "The selected photo could not be opened" }
+                                File(prepared.localPath).outputStream().use { output -> input.copyBoundedTo(output, MAX_ATTACHMENT_BYTES) }
+                            }
+                            current = attachments.add(current, prepared.copy(sizeBytes = File(prepared.localPath).length()))
+                        } catch (error: Exception) {
+                            File(prepared.localPath).delete()
+                            throw error
+                        }
+                    }
+                    withContext(Dispatchers.Main) { draft = current }
+                }
+            }.onFailure { withContext(Dispatchers.Main) { localStoreError = it.message } }
+        }
+    }
+
+    fun prepareCameraPhoto(): ObservationAttachment? = draft?.let { prepareAttachment(it, "image/jpeg", AttachmentKind.SITE_PHOTO) }
+
+    fun prepareAudioNote(): ObservationAttachment? = draft?.let { prepareAttachment(it, "audio/mp4", AttachmentKind.OTHER) }
+
+    fun completePreparedAttachment(value: ObservationAttachment) {
+        val size = File(value.localPath).length()
+        if (size !in 1..MAX_ATTACHMENT_BYTES) {
+            discardPreparedAttachment(value)
+            localStoreError = "The attachment is empty or larger than 50 MB."
+            return
+        }
+        addAttachment(value.copy(sizeBytes = size))
+    }
+
+    fun discardPreparedAttachment(value: ObservationAttachment?) {
+        value?.localPath?.let(::File)?.delete()
     }
 
     fun reviewIssues(): List<String> {
         val current = draft ?: return listOf("Start an observation")
         return buildList {
             if (current.siteId == null) add("Choose a sampling site")
-            if (current.collector.isBlank()) add("Enter a collector")
+            if (current.collector.isBlank()) add("Enter a collector display name")
             if (current.latitude == null || current.longitude == null || current.accuracyMeters == null) add("Capture a GPS location")
+            if (current.latitude == 0.0 && current.longitude == 0.0) add("Capture a valid GPS location")
             if (current.testType == null) add("Choose a test type")
+            if (current.testType == TestType.Other && current.testTypeOther.isBlank()) add("Describe the other test type")
             if (current.method.isBlank()) add("Enter a collection or measurement method")
+            if (current.instrument.isBlank()) add("Enter an instrument or laboratory")
             current.requiredMeasurements.filterNot(current::isComplete).forEach { add("Enter ${it.title}") }
-            current.values.forEach { (kind, value) -> measurementError(kind, value)?.let { add("${kind.title}: $it") } }
+            if (!current.profileMinimumComplete && current.requiredComplete) add("Enter at least one measured result for this test type")
+            current.values.forEach { (kind, value) ->
+                if (ProductionMeasurementCatalog.spec(kind).support != ProductionSupport.FULLY_SUPPORTED && value.isNotBlank()) add("${kind.title} is not enabled for production submission")
+                measurementError(kind, value)?.let { add("${kind.title}: $it") }
+            }
             if (current.isCorrection && current.revisionNote.isBlank()) add("Explain what was corrected")
         }
     }
 
-    fun submit(): String? {
-        val current = draft ?: return null
-        if (reviewIssues().isNotEmpty()) return null
-        val site = selectedSite() ?: return null
-        val testType = current.testType ?: return null
-        val measurements = current.measurementValues()
-        val now = System.currentTimeMillis()
-        val sync = transportStateForSubmission()
-        val record = ObservationRecord(
-            id = UUID.randomUUID().toString(),
-            site = site,
-            collectedAt = current.collectedAt,
-            collector = current.collector,
-            testType = testType,
-            method = current.method,
-            instrument = current.instrument,
-            measurements = measurements,
-            notes = current.notes,
-            photoCount = current.photoCount,
-            workflow = WorkflowState.Submitted,
-            sync = sync,
-            revision = 1,
-            revisions = listOf(Revision(1, now, WorkflowState.Submitted, "Original field submission", measurements)),
-            latitude = current.latitude,
-            longitude = current.longitude,
-            accuracyMeters = current.accuracyMeters,
-            hasAudio = current.hasAudio,
-            labResultsPending = current.labResultsPending,
-            requestedAnalytes = current.requestedAnalytes,
-        )
-        records = listOf(record) + records
-        saveRecords()
-        lastSubmittedId = record.id
-        draft = null
-        repository.clearDraft()
-        finishSyncIfOnline(record.id)
-        return record.id
-    }
-
-    fun startCorrection(recordId: String): Boolean {
-        val record = record(recordId) ?: return false
-        val values = record.measurements.associate { it.kind to it.value }
-        val units = record.measurements.associate { it.kind to it.unitId }
-        persistDraft(
-            ObservationDraft(
-                siteId = record.site.id,
-                collectedAt = record.collectedAt,
-                collector = record.collector,
-                latitude = record.latitude ?: record.site.latitude,
-                longitude = record.longitude ?: record.site.longitude,
-                accuracyMeters = record.accuracyMeters ?: 6f,
-                gpsState = GpsState.Good,
-                testType = record.testType,
-                method = record.method,
-                instrument = record.instrument,
-                labResultsPending = record.labResultsPending,
-                requestedAnalytes = record.requestedAnalytes,
-                values = values,
-                unitIds = units,
-                notes = record.notes,
-                photoCount = record.photoCount,
-                hasAudio = record.hasAudio,
-                currentStep = 4,
-                isCorrection = true,
-                sourceRecordId = record.id,
-                baseRevision = record.revision,
-                correctionReason = record.correctionReason,
-            )
-        )
-        return true
-    }
-
-    fun resubmitCorrection(): String? {
-        val current = draft ?: return null
-        if (!current.isCorrection || reviewIssues().isNotEmpty()) return null
-        val recordId = current.sourceRecordId ?: return null
-        val source = record(recordId) ?: return null
-        val nextRevision = source.revision + 1
-        val measurements = current.measurementValues()
-        val revision = Revision(nextRevision, System.currentTimeMillis(), WorkflowState.Resubmitted, current.revisionNote.trim(), measurements)
-        val updated = source.copy(
-            measurements = measurements,
-            notes = current.notes,
-            photoCount = current.photoCount,
-            hasAudio = current.hasAudio,
-            workflow = WorkflowState.Resubmitted,
-            sync = transportStateForSubmission(),
-            revision = nextRevision,
-            correctionReason = null,
-            revisions = source.revisions + revision,
-        )
-        records = records.map { if (it.id == recordId) updated else it }
-        saveRecords()
-        lastSubmittedId = recordId
-        draft = null
-        repository.clearDraft()
-        finishSyncIfOnline(recordId)
-        return recordId
-    }
-
-    fun record(id: String?): ObservationRecord? = records.firstOrNull { it.id == id }
-
-    fun retrySync(recordId: String) {
-        val target = record(recordId) ?: return
-        val next = when (connection) {
-            ConnectionState.Online -> SyncState.Syncing
-            ConnectionState.Offline -> SyncState.Waiting
-            ConnectionState.ServerUnavailable -> SyncState.Failed
-        }
-        replaceRecord(target.copy(sync = next))
-        if (next == SyncState.Syncing) finishSyncIfOnline(recordId)
-    }
-
-    fun updateConnection(state: ConnectionState) {
-        connection = state
-    }
-
-    private fun persistDraft(value: ObservationDraft) {
-        draft = value
-        repository.saveDraft(value)
-    }
-
-    private fun ObservationDraft.measurementValues(): List<MeasurementValue> =
-        MeasurementKind.entries.mapNotNull { kind ->
-            values[kind]?.trim()?.takeIf(String::isNotEmpty)?.let { MeasurementValue(kind, it, selectedUnit(kind).id) }
-        }
-
-    private fun transportStateForSubmission(): SyncState = when (connection) {
-        ConnectionState.Online -> SyncState.Syncing
-        ConnectionState.Offline -> SyncState.Waiting
-        ConnectionState.ServerUnavailable -> SyncState.Failed
-    }
-
-    private fun finishSyncIfOnline(recordId: String) {
-        if (connection != ConnectionState.Online) return
+    fun submit(onComplete: (String?) -> Unit) {
+        val current = draft ?: return onComplete(null)
+        if (submitting) return
+        if (reviewIssues().isNotEmpty()) return onComplete(null)
+        submitting = true
         viewModelScope.launch {
-            delay(1_200)
-            val current = record(recordId) ?: return@launch
-            if (current.sync == SyncState.Syncing && connection == ConnectionState.Online) {
-                replaceRecord(current.copy(sync = SyncState.Synced))
+            runCatching {
+                val workflow = if (current.isCorrection) WorkflowState.Resubmitted else WorkflowState.Submitted
+                val sync = if (connection == ConnectionState.ServerUnavailable) SyncState.Failed else SyncState.Waiting
+                observations.persistSubmission(current, workflow, sync, current.revisionNote.trim())
+            }.onSuccess { record ->
+                records = listOf(record) + records.filterNot { it.id == record.id }
+                lastSubmittedId = record.id
+                draft = null
+                submitting = false
+                onComplete(record.id)
+                if (connection != ConnectionState.ServerUnavailable) graph.sync.enqueue(record.ownerUid, SubmissionId(record.id), record.currentRevisionId)
+            }.onFailure { error ->
+                localStoreError = error.message
+                submitting = false
+                onComplete(null)
             }
         }
     }
 
-    private fun replaceRecord(updated: ObservationRecord) {
-        records = records.map { if (it.id == updated.id) updated else it }
-        saveRecords()
+    fun startCorrection(recordId: String, onReady: (Boolean) -> Unit) {
+        val record = record(recordId) ?: return onReady(false)
+        val owner = account ?: return onReady(false)
+        if (preparingCorrection || record.ownerUid != owner.uid || record.workflow != WorkflowState.NeedsCorrection) return onReady(false)
+        preparingCorrection = true
+        val nextRevision = RevisionId.new()
+        val base = ObservationDraft(
+            submissionId = SubmissionId(record.id), eventId = record.eventId, revisionId = nextRevision,
+            revisionNo = record.revision + 1, ownerUid = owner.uid, siteId = record.site.id, collectedAt = record.collectedAt,
+            collector = record.collector, latitude = record.latitude, longitude = record.longitude, accuracyMeters = record.accuracyMeters,
+            gpsState = when { record.accuracyMeters == null -> GpsState.Unavailable; record.accuracyMeters <= 20 -> GpsState.Good; else -> GpsState.Poor },
+            testType = record.testType, method = record.method, instrument = record.instrument,
+            values = record.measurements.associate { it.kind to it.value }, unitIds = record.measurements.associate { it.kind to it.unitId },
+            notes = record.notes,
+            currentStep = 4, isCorrection = true, sourceRecordId = record.id, baseRevision = record.revision,
+            correctionReason = record.correctionReason,
+        )
+        viewModelScope.launch {
+            runCatching { withContext(Dispatchers.IO) { copyCorrectionAttachments(record.attachments, base) } }
+                .onSuccess { copies ->
+                    val correction = base.copy(attachments = copies)
+                    draft = correction
+                    persistDraft(correction)
+                    onReady(true)
+                }
+                .onFailure {
+                    localStoreError = "Attached files could not be prepared for the correction revision."
+                    onReady(false)
+                }
+            preparingCorrection = false
+        }
     }
 
-    private fun saveRecords() = repository.saveRecords(records)
+    fun resubmitCorrection(onComplete: (String?) -> Unit) = submit(onComplete)
+    fun record(id: String?): ObservationRecord? = records.firstOrNull { it.id == id }
+
+    fun retrySync(recordId: String) {
+        val record = record(recordId) ?: return
+        viewModelScope.launch {
+            observations.updateRemoteState(record.ownerUid, SubmissionId(record.id), record.workflow, SyncState.Waiting, record.correctionReason)
+            records = observations.loadRecords(record.ownerUid)
+            graph.sync.enqueue(record.ownerUid, SubmissionId(record.id), record.currentRevisionId)
+        }
+    }
+
+    private fun persistDraft(value: ObservationDraft) {
+        viewModelScope.launch {
+            saveMutex.withLock {
+                val latest = draft
+                if (latest?.submissionId == value.submissionId && latest.lastSavedAt > value.lastSavedAt) return@withLock
+                runCatching { drafts.saveDraft(value) }.onFailure { localStoreError = it.message }
+            }
+        }
+    }
+
+    private suspend fun loadAccount(value: AuthAccount) {
+        remoteListener?.close()
+        sitesLoading = true
+        siteLoadError = null
+        runCatching {
+            draft = drafts.loadDraft(value.uid)
+            records = observations.loadRecords(value.uid)
+            sites = graph.sites.cached(value.uid)
+        }.onFailure { localStoreError = it.message }
+        graph.sites.refresh(value.uid)
+            .onSuccess { sites = it; siteLoadError = null }
+            .onFailure { siteLoadError = "Live sites are unavailable. Cached sites remain available." }
+        sitesLoading = false
+        remoteListener = graph.sync.observe(value.uid) { remote ->
+            viewModelScope.launch {
+                observations.updateRemoteState(
+                    value.uid, remote.submissionId, remote.workflow, SyncState.Synced,
+                    remote.correctionReason, remote.validation, remote.flags,
+                )
+                records = observations.loadRecords(value.uid)
+            }
+        }
+    }
+
+    private fun clearVisibleAccountData() {
+        remoteListener?.close()
+        remoteListener = null
+        draft = null
+        records = emptyList()
+        sites = emptyList()
+        lastSubmittedId = null
+        sitesLoading = false
+        siteLoadError = null
+    }
+
+    private fun refreshConnection() {
+        val capabilities = connectivity.getNetworkCapabilities(connectivity.activeNetwork)
+        val next = if (capabilities?.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) == true) ConnectionState.Online else ConnectionState.Offline
+        viewModelScope.launch(Dispatchers.Main) { connection = next }
+    }
+
+    override fun onCleared() {
+        remoteListener?.close()
+        connectivity.unregisterNetworkCallback(networkCallback)
+        super.onCleared()
+    }
+
+    private fun prepareAttachment(draft: ObservationDraft, contentType: String, kind: AttachmentKind): ObservationAttachment {
+        val id = AttachmentId.new()
+        val extension = when (contentType) {
+            "image/jpeg" -> "jpg"
+            "image/png" -> "png"
+            "image/heic" -> "heic"
+            "audio/mp4" -> "m4a"
+            else -> error("Unsupported attachment type")
+        }
+        val directory = File(getApplication<Application>().filesDir, "attachments/${draft.revisionId.value}").apply { mkdirs() }
+        val file = File(directory, "${id.value}.$extension").apply { createNewFile() }
+        return ObservationAttachment(
+            id = id, ownerUid = draft.ownerUid, submissionId = draft.submissionId, revisionId = draft.revisionId,
+            localPath = file.absolutePath, contentType = contentType, sizeBytes = 0, kind = kind,
+        )
+    }
+
+    private fun copyCorrectionAttachments(values: List<ObservationAttachment>, draft: ObservationDraft): List<ObservationAttachment> {
+        val targets = mutableListOf<File>()
+        return try {
+            values.map { source ->
+                val sourceFile = File(source.localPath)
+                require(sourceFile.isFile && sourceFile.length() == source.sizeBytes) { "Source attachment is unavailable" }
+                val prepared = prepareAttachment(draft, source.contentType, source.kind)
+                val target = File(prepared.localPath).also(targets::add)
+                sourceFile.inputStream().use { input -> target.outputStream().use { output -> input.copyBoundedTo(output, MAX_ATTACHMENT_BYTES) } }
+                require(target.length() == source.sizeBytes) { "Attachment copy is incomplete" }
+                prepared.copy(sizeBytes = target.length(), caption = source.caption, createdAt = System.currentTimeMillis())
+            }
+        } catch (error: Exception) {
+            targets.forEach(File::delete)
+            throw error
+        }
+    }
+
+    private fun Throwable.authMessage(): String = when ((this as? FirebaseAuthException)?.errorCode) {
+        "ERROR_USER_DISABLED" -> "This account is disabled. Contact your watershed program administrator."
+        "ERROR_INVALID_CREDENTIAL", "ERROR_WRONG_PASSWORD", "ERROR_USER_NOT_FOUND" -> "Email or password is incorrect."
+        "ERROR_NETWORK_REQUEST_FAILED" -> "A network connection is required for sign-in. Saved field records remain on this device."
+        else -> "We couldn't sign you in. Try again or contact your program administrator."
+    }
+
+    private companion object {
+        const val MAX_ATTACHMENT_BYTES = 50L * 1024 * 1024
+        val ALLOWED_IMAGE_TYPES = setOf("image/jpeg", "image/png", "image/heic")
+    }
+}
+
+private fun java.io.InputStream.copyBoundedTo(output: java.io.OutputStream, maximumBytes: Long) {
+    val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+    var total = 0L
+    while (true) {
+        val count = read(buffer)
+        if (count < 0) return
+        total += count
+        require(total <= maximumBytes) { "The selected photo is larger than 50 MB" }
+        output.write(buffer, 0, count)
+    }
 }

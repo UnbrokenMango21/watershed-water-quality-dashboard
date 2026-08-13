@@ -124,7 +124,7 @@ fun ObservationDetailScreen(model: AppViewModel, recordId: String, onBack: () ->
                 Surface(shadowElevation = 10.dp) {
                     Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
                         PrimaryAction("Create Correction Revision", onClick = {
-                            if (model.startCorrection(record.id)) onCorrection()
+                            model.startCorrection(record.id) { ready -> if (ready) onCorrection() }
                         })
                         Row(modifier = Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
                             Icon(Icons.Rounded.Lock, contentDescription = null, modifier = Modifier.size(16.dp))
@@ -148,6 +148,23 @@ fun ObservationDetailScreen(model: AppViewModel, recordId: String, onBack: () ->
             }
             record.correctionReason?.takeIf { record.workflow == WorkflowState.NeedsCorrection }?.let {
                 StatusPanel("Correction requested", it, Goldenrod, Icons.Rounded.ErrorOutline)
+            }
+            if (record.workflow == WorkflowState.Validating) {
+                StatusPanel("Validation in progress", "The archive confirmed this revision. Automated scientific checks are running.", Water, Icons.Rounded.Schedule)
+            }
+            record.validation?.let { validation ->
+                DetailSection("Validation") {
+                    KeyValueRow("Errors", validation.errorCount.toString())
+                    KeyValueRow("Warnings", validation.warningCount.toString())
+                    KeyValueRow("Information", validation.infoCount.toString())
+                    validation.overallQualityScore?.let { KeyValueRow("Data confidence score", String.format(Locale.US, "%.0f / 100", it)) }
+                    record.validationFlags.forEach { flag ->
+                        Column(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
+                            Text(flag.severity.replace('_', ' '), color = if (flag.severity == "ERROR") MaterialTheme.colorScheme.error else Goldenrod, style = MaterialTheme.typography.labelLarge)
+                            Text(flag.message)
+                        }
+                    }
+                }
             }
             if (record.sync == SyncState.Failed || record.sync == SyncState.Waiting) {
                 StatusPanel(
@@ -173,7 +190,7 @@ fun ObservationDetailScreen(model: AppViewModel, recordId: String, onBack: () ->
             DetailSection("Visit") {
                 val position = if (record.latitude != null && record.longitude != null) {
                     String.format(Locale.US, "%.5f, %.5f%s", record.latitude, record.longitude, record.accuracyMeters?.let { " · ±${it.toInt()} m" }.orEmpty())
-                } else record.site.position
+                } else "Not captured"
                 KeyValueRow("Position", position)
                 KeyValueRow("Collected", formatDateTime(record.collectedAt))
                 KeyValueRow("Collector", record.collector)
@@ -272,7 +289,7 @@ fun CorrectionRevisionScreen(model: AppViewModel, recordId: String, onBack: () -
             confirmButton = {
                 TextButton(onClick = {
                     confirm = false
-                    model.resubmitCorrection()?.let(onResubmitted)
+                    model.resubmitCorrection { id -> id?.let(onResubmitted) }
                 }) { Text("Resubmit") }
             },
             dismissButton = { TextButton(onClick = { confirm = false }) { Text("Keep Editing") } },

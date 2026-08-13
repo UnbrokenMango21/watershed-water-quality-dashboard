@@ -51,6 +51,7 @@ fun MeasurementEntry(
     draft: ObservationDraft,
     kind: MeasurementKind,
     required: Boolean,
+    enabled: Boolean = true,
     onValueChange: (String) -> Unit,
     onUnitChange: (UnitSpec, Boolean) -> Boolean,
 ) {
@@ -68,6 +69,7 @@ fun MeasurementEntry(
                 contentDescription = buildString {
                     append(kind.title)
                     append(if (required) ", required" else ", optional")
+                    if (!enabled) append(", unavailable in the current production data contract")
                     if (value.isNotBlank()) append(", $value ${unit.spokenName}, complete") else append(", not entered")
                 }
             },
@@ -86,7 +88,11 @@ fun MeasurementEntry(
                 Spacer(Modifier.width(10.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(kind.title, style = MaterialTheme.typography.titleMedium)
-                    Text(if (required) "Required" else "Optional", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelLarge)
+                    Text(
+                        when { required -> "Required"; enabled -> "Optional"; else -> "Optional · unavailable" },
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.labelLarge,
+                    )
                 }
                 CompletionDot(complete, required)
             }
@@ -101,11 +107,12 @@ fun MeasurementEntry(
                     placeholder = { Text("0.0", color = MaterialTheme.colorScheme.outline) },
                     textStyle = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Medium),
                     singleLine = true,
+                    enabled = enabled,
                     isError = error != null,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Done),
                     keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
                     suffix = {
-                        UnitPicker(kind, unit) { selected ->
+                        UnitPicker(kind, unit, enabled) { selected ->
                             if (!onUnitChange(selected, false)) pendingUnit = selected
                         }
                     },
@@ -128,6 +135,7 @@ fun MeasurementEntry(
             }
 
             when {
+                !enabled -> Text("Not enabled by the current production scientific contract.", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
                 error != null -> Text(error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
                 kind == MeasurementKind.Temperature && complete -> {
                     val other = if (unit == Units.Celsius) Units.Fahrenheit else Units.Celsius
@@ -155,13 +163,13 @@ fun MeasurementEntry(
 }
 
 @Composable
-private fun UnitPicker(kind: MeasurementKind, selected: UnitSpec, onSelect: (UnitSpec) -> Unit) {
+private fun UnitPicker(kind: MeasurementKind, selected: UnitSpec, enabled: Boolean, onSelect: (UnitSpec) -> Unit) {
     var expanded by remember { mutableStateOf(false) }
     Box {
         Surface(
             modifier = Modifier
                 .defaultMinSize(minWidth = 64.dp, minHeight = 48.dp)
-                .clickable(enabled = kind.units.size > 1) { expanded = true }
+                .clickable(enabled = enabled && kind.units.size > 1) { expanded = true }
                 .semantics { contentDescription = "Unit: ${selected.spokenName}. Double tap to change." },
             shape = RoundedCornerShape(12.dp),
             color = MaterialTheme.colorScheme.primaryContainer,
@@ -172,7 +180,7 @@ private fun UnitPicker(kind: MeasurementKind, selected: UnitSpec, onSelect: (Uni
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 UnitFraction(selected)
-                if (kind.units.size > 1) Icon(Icons.Rounded.ArrowDropDown, contentDescription = null, modifier = Modifier.size(18.dp))
+                if (enabled && kind.units.size > 1) Icon(Icons.Rounded.ArrowDropDown, contentDescription = null, modifier = Modifier.size(18.dp))
             }
         }
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {

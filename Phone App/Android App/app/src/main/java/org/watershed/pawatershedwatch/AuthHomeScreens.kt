@@ -70,7 +70,6 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
-import kotlinx.coroutines.delay
 
 @Composable
 fun SignInScreen(model: AppViewModel) {
@@ -221,8 +220,6 @@ private fun ObservationHomeRow(record: ObservationRecord, onClick: () -> Unit) {
 @Composable
 fun SelectSiteScreen(model: AppViewModel, onBack: () -> Unit, onNext: () -> Unit) {
     var search by remember { mutableStateOf("") }
-    var loading by remember { mutableStateOf(true) }
-    LaunchedEffect(model.connection) { loading = true; delay(450); loading = false }
     val visible = model.sites.filter { site ->
         (model.connection != ConnectionState.Offline || site.cached) &&
             (search.isBlank() || site.name.contains(search, true) || site.county.contains(search, true) || site.watershed.contains(search, true))
@@ -252,7 +249,7 @@ fun SelectSiteScreen(model: AppViewModel, onBack: () -> Unit, onNext: () -> Unit
                 shape = RoundedCornerShape(16.dp),
             )
             when {
-                loading -> Box(Modifier.fillMaxWidth().padding(48.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+                model.sitesLoading && visible.isEmpty() -> Box(Modifier.fillMaxWidth().padding(48.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
                 visible.isEmpty() -> StatusPanel("No sites found", "Try another name or reconnect to load uncached sites.", Water, Icons.Rounded.Search)
                 else -> Column(modifier = Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     visible.forEach { site ->
@@ -294,10 +291,10 @@ fun AccountScreen(model: AppViewModel) {
         modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp).padding(bottom = 32.dp),
         verticalArrangement = Arrangement.spacedBy(20.dp),
     ) {
-        ScreenIntro("Account", "Maya Chen", "Penn State Extension · Watershed Research")
+        ScreenIntro("Account", model.signedInName, "PA Watershed Watch field account")
         FieldSurface {
             Column {
-                KeyValueRow("Signed in as", model.email)
+                KeyValueRow("Signed in as", model.signedInEmail)
                 KeyValueRow("Local field work", "${model.records.count { it.sync != SyncState.Synced }} waiting on this phone")
                 TextButton(onClick = model::signOut) {
                     Icon(Icons.AutoMirrored.Rounded.Logout, contentDescription = null)
@@ -307,29 +304,13 @@ fun AccountScreen(model: AppViewModel) {
             }
         }
         SectionHeading("Connection", "Workflow state stays separate from sync state")
-        FieldSurface {
-            Column {
-                ConnectionState.entries.forEach { state ->
-                    Row(
-                        modifier = Modifier.fillMaxWidth().clickable { model.updateConnection(state) }.padding(vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        RadioButton(selected = model.connection == state, onClick = { model.updateConnection(state) })
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(state.label, style = MaterialTheme.typography.titleMedium)
-                            Text(
-                                when (state) {
-                                    ConnectionState.Online -> "New submissions can sync"
-                                    ConnectionState.Offline -> "Use cached sites and save on this phone"
-                                    ConnectionState.ServerUnavailable -> "Internet may work, but the archive cannot respond"
-                                },
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                    }
-                }
-            }
-        }
+        StatusPanel(
+            model.connection.label,
+            if (model.connection == ConnectionState.Online) "New submissions can sync when the archive is available."
+            else "Cached sites and unfinished field work remain available on this phone.",
+            if (model.connection == ConnectionState.Online) Fern else Goldenrod,
+            if (model.connection == ConnectionState.Online) Icons.Rounded.Check else Icons.Rounded.CloudOff,
+        )
         SectionHeading("Device access")
         FieldSurface {
             Column {
@@ -343,6 +324,6 @@ fun AccountScreen(model: AppViewModel) {
                 }
             }
         }
-        Text("PA Watershed Watch · Frontend field prototype", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("PA Watershed Watch · Native field application", color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }

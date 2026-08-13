@@ -3,6 +3,8 @@ package org.watershed.pawatershedwatch
 import android.Manifest
 import android.app.DatePickerDialog
 import android.app.TimePickerDialog
+import android.media.MediaRecorder
+import android.os.Build
 import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
@@ -60,6 +62,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -76,7 +79,8 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
-import java.util.Calendar
+import androidx.core.content.FileProvider
+import java.io.File
 import java.util.Locale
 
 @Composable
@@ -187,40 +191,36 @@ private fun GpsPanel(draft: ObservationDraft, onReacquire: () -> Unit, onSetting
 @Composable
 private fun DateTimeControls(epoch: Long, onChange: (Long) -> Unit) {
     val context = LocalContext.current
-    val calendar = remember(epoch) { Calendar.getInstance().apply { timeInMillis = epoch } }
+    val eastern = remember(epoch) { EasternTime.display(epoch) }
+    val dateText = remember(epoch) {
+        java.text.DateFormat.getDateInstance(java.text.DateFormat.MEDIUM).apply {
+            timeZone = java.util.TimeZone.getTimeZone(EasternTime.zone)
+        }.format(java.util.Date(epoch))
+    }
     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         OutlinedButton(
             modifier = Modifier.weight(1f).height(56.dp),
             onClick = {
                 DatePickerDialog(context, { _, year, month, day ->
-                    val updated = Calendar.getInstance().apply {
-                        timeInMillis = epoch
-                        set(year, month, day)
-                    }
-                    onChange(updated.timeInMillis)
-                }, calendar.get(Calendar.YEAR), calendar.get(Calendar.MONTH), calendar.get(Calendar.DAY_OF_MONTH)).show()
+                    onChange(EasternTime.replaceDate(epoch, year, month + 1, day))
+                }, eastern.year, eastern.monthValue - 1, eastern.dayOfMonth).show()
             },
         ) {
             Icon(Icons.Rounded.CalendarMonth, contentDescription = null)
             Spacer(Modifier.width(8.dp))
-            Text(java.text.DateFormat.getDateInstance(java.text.DateFormat.MEDIUM).format(calendar.time))
+            Text(dateText)
         }
         OutlinedButton(
             modifier = Modifier.weight(1f).height(56.dp),
             onClick = {
                 TimePickerDialog(context, { _, hour, minute ->
-                    val updated = Calendar.getInstance().apply {
-                        timeInMillis = epoch
-                        set(Calendar.HOUR_OF_DAY, hour)
-                        set(Calendar.MINUTE, minute)
-                    }
-                    onChange(updated.timeInMillis)
-                }, calendar.get(Calendar.HOUR_OF_DAY), calendar.get(Calendar.MINUTE), false).show()
+                    onChange(EasternTime.replaceTime(epoch, hour, minute))
+                }, eastern.hour, eastern.minute, false).show()
             },
         ) {
             Icon(Icons.Rounded.Schedule, contentDescription = null)
             Spacer(Modifier.width(8.dp))
-            Text(java.text.DateFormat.getTimeInstance(java.text.DateFormat.SHORT).format(calendar.time))
+            Text(eastern.format(java.time.format.DateTimeFormatter.ofPattern("h:mm a", Locale.US)))
         }
     }
 }
@@ -229,7 +229,8 @@ private fun DateTimeControls(epoch: Long, onChange: (Long) -> Unit) {
 fun TestMethodScreen(model: AppViewModel, onBack: () -> Unit, onNext: () -> Unit) {
     val draft = model.draft ?: return
     val focus = LocalFocusManager.current
-    val canContinue = draft.testType != null && draft.method.isNotBlank()
+    val canContinue = draft.testType != null && draft.method.isNotBlank() && draft.instrument.isNotBlank() &&
+        (draft.testType != TestType.Other || draft.testTypeOther.isNotBlank())
     Scaffold(
         topBar = { FieldTopBar("Test and Method", onBack) },
         bottomBar = { WorkflowFooter(3, "Enter Measurements", canContinue) { focus.clearFocus(); model.setStep(4); onNext() } },
@@ -254,6 +255,17 @@ fun TestMethodScreen(model: AppViewModel, onBack: () -> Unit, onNext: () -> Unit
                 }
             }
             draft.testType?.let { type ->
+                if (type == TestType.Other) {
+                    OutlinedTextField(
+                        value = draft.testTypeOther,
+                        onValueChange = { value -> model.updateDraft { it.copy(testTypeOther = value) } },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Describe test type · Required") },
+                        singleLine = false,
+                        maxLines = 3,
+                        shape = RoundedCornerShape(16.dp),
+                    )
+                }
                 OutlinedTextField(
                     value = draft.method,
                     onValueChange = { value -> model.updateDraft { it.copy(method = value) } },
@@ -349,10 +361,12 @@ fun MeasurementsScreen(model: AppViewModel, onBack: () -> Unit, onNext: () -> Un
             }
             item { SectionHeading("Optional Measurements", "Always available when the field protocol calls for them") }
             items(draft.optionalMeasurements, key = { "optional-${it.name}" }) { kind ->
+                val supported = ProductionMeasurementCatalog.spec(kind).support == ProductionSupport.FULLY_SUPPORTED
                 MeasurementEntry(
                     draft,
                     kind,
                     required = false,
+                    enabled = supported,
                     onValueChange = { model.setMeasurement(kind, it) },
                     onUnitChange = { unit, clear -> model.changeUnit(kind, unit, clear) },
                 )
@@ -367,18 +381,73 @@ fun NotesMediaScreen(model: AppViewModel, onBack: () -> Unit, onNext: () -> Unit
     val draft = model.draft ?: return
     val context = LocalContext.current
     var permissionMessage by remember { mutableStateOf<String?>(null) }
-    var recording by remember { mutableStateOf(false) }
+    var pendingCamera by remember { mutableStateOf<ObservationAttachment?>(null) }
+    var pendingAudio by remember { mutableStateOf<ObservationAttachment?>(null) }
+    var recorder by remember { mutableStateOf<MediaRecorder?>(null) }
     val photoPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(5)) { uris ->
-        if (uris.isNotEmpty()) model.updateDraft { it.copy(photoCount = it.photoCount + uris.size) }
+        if (uris.isNotEmpty()) model.importPhotos(uris)
     }
-    val camera = rememberLauncherForActivityResult(ActivityResultContracts.TakePicturePreview()) { bitmap ->
-        if (bitmap != null) model.updateDraft { it.copy(photoCount = it.photoCount + 1) }
+    val camera = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { captured ->
+        val attachment = pendingCamera
+        pendingCamera = null
+        if (captured && attachment != null) model.completePreparedAttachment(attachment)
+        else model.discardPreparedAttachment(attachment)
+    }
+    val launchCamera = {
+        model.prepareCameraPhoto()?.let { attachment ->
+            pendingCamera = attachment
+            camera.launch(FileProvider.getUriForFile(context, "${context.packageName}.files", File(attachment.localPath)))
+        }
     }
     val cameraPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        if (granted) camera.launch(null) else permissionMessage = "Allow camera access in Settings to take a field photo. You can still choose existing photos without this permission."
+        if (granted) launchCamera() else permissionMessage = "Allow camera access in Settings to take a field photo. You can still choose existing photos without this permission."
+    }
+    val startRecording = {
+        val attachment = model.prepareAudioNote()
+        if (attachment != null) {
+            try {
+                @Suppress("DEPRECATION")
+                val active = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) MediaRecorder(context) else MediaRecorder()
+                active.setAudioSource(MediaRecorder.AudioSource.MIC)
+                active.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
+                active.setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
+                active.setAudioSamplingRate(44_100)
+                active.setAudioEncodingBitRate(128_000)
+                active.setOutputFile(attachment.localPath)
+                active.prepare()
+                active.start()
+                pendingAudio = attachment
+                recorder = active
+            } catch (_: Exception) {
+                model.discardPreparedAttachment(attachment)
+                permissionMessage = "The audio note could not start. Check microphone access and available storage."
+            }
+        }
     }
     val micPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        if (granted) recording = true else permissionMessage = "Allow microphone access in Settings to record an audio field note."
+        if (granted) startRecording() else permissionMessage = "Allow microphone access in Settings to record an audio field note."
+    }
+    val stopRecording = {
+        val active = recorder
+        val attachment = pendingAudio
+        recorder = null
+        pendingAudio = null
+        try {
+            active?.stop()
+            active?.release()
+            if (attachment != null) model.completePreparedAttachment(attachment)
+        } catch (_: Exception) {
+            active?.release()
+            model.discardPreparedAttachment(attachment)
+            permissionMessage = "The audio note was too short or could not be saved. Please record it again."
+        }
+    }
+    DisposableEffect(Unit) {
+        onDispose {
+            recorder?.release()
+            model.discardPreparedAttachment(pendingCamera)
+            model.discardPreparedAttachment(pendingAudio)
+        }
     }
     Scaffold(
         topBar = { FieldTopBar("Notes and Media", onBack) },
@@ -410,7 +479,7 @@ fun NotesMediaScreen(model: AppViewModel, onBack: () -> Unit, onNext: () -> Unit
                 }
                 OutlinedButton(
                     onClick = {
-                        if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) camera.launch(null)
+                        if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) launchCamera()
                         else cameraPermission.launch(Manifest.permission.CAMERA)
                     },
                     modifier = Modifier.weight(1f).height(56.dp),
@@ -431,7 +500,7 @@ fun NotesMediaScreen(model: AppViewModel, onBack: () -> Unit, onNext: () -> Unit
             }
             SectionHeading("Audio note", "Optional · one recording")
             when {
-                recording -> Button(onClick = { recording = false; model.updateDraft { it.copy(hasAudio = true) } }, modifier = Modifier.fillMaxWidth().height(56.dp)) {
+                recorder != null -> Button(onClick = stopRecording, modifier = Modifier.fillMaxWidth().height(56.dp)) {
                     Icon(Icons.Rounded.StopCircle, contentDescription = null)
                     Spacer(Modifier.width(8.dp))
                     Text("Stop and Save Recording")
@@ -439,7 +508,7 @@ fun NotesMediaScreen(model: AppViewModel, onBack: () -> Unit, onNext: () -> Unit
                 draft.hasAudio -> StatusPanel("Audio note saved", "The recording is stored with this local draft.", Fern, Icons.Rounded.Mic)
                 else -> OutlinedButton(
                     onClick = {
-                        if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) recording = true
+                        if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) startRecording()
                         else micPermission.launch(Manifest.permission.RECORD_AUDIO)
                     },
                     modifier = Modifier.fillMaxWidth().height(56.dp),
@@ -531,7 +600,7 @@ fun ReviewScreen(model: AppViewModel, onBack: () -> Unit, onSubmitted: (String) 
             confirmButton = {
                 TextButton(onClick = {
                     confirm = false
-                    model.submit()?.let(onSubmitted)
+                    model.submit { id -> id?.let(onSubmitted) }
                 }) { Text("Submit") }
             },
             dismissButton = { TextButton(onClick = { confirm = false }) { Text("Keep Reviewing") } },
