@@ -154,9 +154,9 @@ The implementation stays intentionally small:
 - Compose UI screens and reusable field components
 - One activity and one app-level state holder/ViewModel
 - Domain data classes for sites, drafts, measurements, records, revisions, and state enums
-- Repository contracts for observations, media, location, and sync boundaries
-- Local mock implementations only
-- Android platform launchers for location permission, photo picker/camera, and microphone permission
+- A repository contract with a local mock implementation for observation persistence
+- Android platform adapters and launchers for location, photo picker/camera, and microphone access
+- A replaceable mock transport state machine in the app state holder
 - Draft persistence using app-private preferences so aggressive auto-save survives activity and process recreation
 
 No Firebase SDK, service locator, dependency injection framework, database, networking layer, or speculative multi-module architecture is added in this phase.

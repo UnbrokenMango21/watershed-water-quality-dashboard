@@ -141,3 +141,11 @@ vite.config.ts.timestamp-*
 # Firebase native client configs - local environment
 mobile/google-services.json
 mobile/GoogleService-Info.plist
+
+# Native Android local/build state
+Phone App/Android App/.gradle/
+Phone App/Android App/.idea/
+Phone App/Android App/**/build/
+Phone App/Android App/local.properties
+Phone App/Android App/captures/
+Phone App/Android App/*.iml
