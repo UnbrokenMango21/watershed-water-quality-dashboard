@@ -77,7 +77,8 @@ The Web SDK configuration names
 HTTP 404 and no Cloud Storage rules release exists. The real project currently
 has only `firebaseapphosting-sources-652403958133-us-central1`, a regional
 `STANDARD` App Hosting source bucket in `US-CENTRAL1`. At inspection it held 4
-objects totaling 21,962,005 bytes. No media feature or storage bucket was added.
+objects totaling 27,444,685 bytes after the final source rollout. No media
+feature or Storage for Firebase bucket was added.
 
 ## Automated gates
 
