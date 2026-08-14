@@ -1,12 +1,12 @@
 # QC Console Live Verification Record
 
-**Executed:** 2026-08-14T18:18:31Z
+**Executed:** 2026-08-14T23:20:15Z
 
 **Project:** `central-pa-watershed-dev`
 
 **Branch:** `codex/qc-console-production-v1`
 
-**Connected deployment SHA:** `18f5d7b807a4b88c82f3d7531742313607e6fce7`
+**Verified application deployment SHA:** `da70670a7af0e109eb55f83060e4831cdd759fe6`
 
 **App Hosting:** `qc-console-dev`, `us-central1`, Node.js 22, root `web`
 
@@ -22,7 +22,7 @@
 | Test users | PASS | Test Collector 01/02 (`COLLECTOR`), Test QC Reviewer (`QC_REVIEWER`), and Test Admin (`ADMIN`) were enabled with exact display names, claims, and active `users/{uid}` mirrors. Provisioning was repeated without resetting passwords. |
 | Sites | PASS | 18 `TEST-*` sites across 8 counties and 11 watersheds, including similar and long names. |
 | Firestore indexes | PASS | `submissions(status ASC, updated_at ASC)` reached READY; the queue then loaded oldest first. |
-| App Hosting rollout | PASS | Source-upload rollout `build-2026-08-14-004` completed before the live action run. The final branch-connected rollout is recorded by the SHA above. |
+| App Hosting rollout | PASS | Initial GitHub-backed `build-2026-08-14-006` reached `READY` and its rollout reached `SUCCEEDED` from the exact application SHA above. Backend `qc-console-dev` is linked only to `UnbrokenMango21/watershed-water-quality-dashboard`, branch `codex/qc-console-production-v1`, root `web`. |
 | Runtime IAM | PASS | `firebase-app-hosting-compute@central-pa-watershed-dev.iam.gserviceaccount.com` has `roles/datastore.user` and `roles/firebaseauth.viewer`; no Owner or Editor grant was added. |
 
 ## Seeded live action scenarios

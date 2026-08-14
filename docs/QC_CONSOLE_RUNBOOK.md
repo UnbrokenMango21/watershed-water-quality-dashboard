@@ -155,8 +155,13 @@ The live dev backend is:
 - runtime: Node.js 22
 - root: `web`
 - URL: `https://qc-console-dev--central-pa-watershed-dev.us-central1.hosted.app`
+- repository: `UnbrokenMango21/watershed-water-quality-dashboard`
 - live branch: `codex/qc-console-production-v1`
 - runtime service account: `firebase-app-hosting-compute@central-pa-watershed-dev.iam.gserviceaccount.com`
+
+Initial connected verification used build and rollout `build-2026-08-14-006` at
+SHA `da70670a7af0e109eb55f83060e4831cdd759fe6`; the build reached `READY` and
+the rollout reached `SUCCEEDED`.
 
 Create it once only if it does not already exist:
 

@@ -6,7 +6,7 @@
 
 **Phase 11 baseline:** `d6900c2f45d39a00277a5df39a0af06adb28e2b4`
 
-**Connected deployment SHA:** `18f5d7b807a4b88c82f3d7531742313607e6fce7`
+**Verified application deployment SHA:** `da70670a7af0e109eb55f83060e4831cdd759fe6`
 
 **Verification date:** 2026-08-14
 
@@ -36,6 +36,7 @@ current QC-console release blockers.
 | Runtime IAM | PASS | App Hosting service account has only `roles/datastore.user` and `roles/firebaseauth.viewer`; no Owner/Editor grant. |
 | Storage | PASS inspected | Only the App Hosting source bucket exists; the configured Firebase Storage bucket is not provisioned. Media remains deferred and no storage resource was created. |
 | Real deployment/browser | PASS | HTTPS login, queue, detail, all three decisions, denial, stale conflict, idempotency, and presentation screenshots completed. |
+| GitHub deployment connection | PASS | The single `qc-console-dev` backend is linked to `UnbrokenMango21/watershed-water-quality-dashboard`, live branch `codex/qc-console-production-v1`, root `web`; initial connected rollout `build-2026-08-14-006` succeeded from the verified application SHA. |
 
 ## Final automated results
 

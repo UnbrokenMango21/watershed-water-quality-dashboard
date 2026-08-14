@@ -7,7 +7,9 @@ the single `qc-console-dev` App Hosting backend, and verified through the live
 HTTPS reviewer workflow. Blaze, ADC, Web SDK configuration, dev identities,
 fixtures, runtime IAM, queue indexing, review actions, audit, stale conflict,
 idempotency, immutable science, responsive layout, and security denials all
-passed.
+passed. The backend is also connected only to
+`UnbrokenMango21/watershed-water-quality-dashboard`, live branch
+`codex/qc-console-production-v1`, root `web`.
 
 ## Known limitations and intentionally deferred work
 
