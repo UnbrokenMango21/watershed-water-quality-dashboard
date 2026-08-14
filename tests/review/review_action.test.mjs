@@ -73,6 +73,7 @@ test('APPROVE transitions PENDING_REVIEW to APPROVED, writes one audit event, an
   assert.equal(submissionSnap.data().status, 'APPROVED');
   assert.equal(submissionSnap.data().review_decision, 'APPROVE');
   assert.equal(submissionSnap.data().reviewer_user_id, 'reviewer-1');
+  assert.equal(submissionSnap.data().reviewed_revision_id, seeded.revisionId);
   assert.ok(submissionSnap.data().reviewed_at);
 
   const revisionSnap = await seeded.revisionRef.get();
