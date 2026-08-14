@@ -92,6 +92,20 @@ export default function ReviewActions({
         });
         return;
       }
+      if (response.status === 401) {
+        setOutcome({
+          kind: 'error',
+          message: `Your sign-in has expired. Sign out, sign in again, and retry. (${message})`,
+        });
+        return;
+      }
+      if (response.status === 403) {
+        setOutcome({
+          kind: 'error',
+          message: `This account is not currently authorized to review. Sign out and ask an administrator to verify the account role. (${message})`,
+        });
+        return;
+      }
       if (!response.ok) {
         setOutcome({ kind: 'error', message });
         return;
@@ -99,7 +113,7 @@ export default function ReviewActions({
 
       setOutcome({ kind: 'done', result: payload as ReviewResult });
       // The submission has left PENDING_REVIEW, so it drops out of the queue.
-      router.push('/review');
+      router.push(`/review?reviewed=${encodeURIComponent((payload as ReviewResult).decision)}`);
       router.refresh();
     } catch (error) {
       setOutcome({

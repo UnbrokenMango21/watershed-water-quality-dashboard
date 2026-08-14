@@ -513,6 +513,39 @@ test('QC reviewer has read-only access and cannot update science workflow envelo
   }));
 });
 
+test('collector cannot forge any review decision fields', async () => {
+  await seed(`submissions/${submissionId}`, draftSubmission());
+  const db = env.authenticatedContext('collector-a').firestore();
+
+  for (const forged of [
+    { status: 'APPROVED', review_decision: 'APPROVE' },
+    { status: 'NEEDS_CORRECTION', review_decision: 'NEEDS_CORRECTION' },
+    { status: 'REJECTED', review_decision: 'REJECT' },
+    { reviewed_at: serverTimestamp(), reviewer_user_id: 'collector-a' },
+  ]) {
+    await assertFails(updateDoc(doc(db, `submissions/${submissionId}`), forged));
+  }
+});
+
+test('QC reviewer browser cannot edit science, create audit, or escalate role', async () => {
+  await seed(`submissions/${submissionId}`, draftSubmission({ status: 'PENDING_REVIEW' }));
+  await seed(`submissions/${submissionId}/revisions/${revisionId}`, draftRevision({ revision_status: 'SUBMITTED' }));
+  await seed(`submissions/${submissionId}/revisions/${revisionId}/measurements/m-1`, measurement());
+  await seed('users/reviewer-1', { display_name: 'Reviewer One', role: 'QC_REVIEWER', active: true });
+  const db = env.authenticatedContext('reviewer-1', { role: 'QC_REVIEWER' }).firestore();
+
+  await assertFails(updateDoc(doc(db, `submissions/${submissionId}/revisions/${revisionId}`), { temp_c: 99 }));
+  await assertFails(updateDoc(doc(db, `submissions/${submissionId}/revisions/${revisionId}/measurements/m-1`), { value: 9.9 }));
+  await assertFails(setDoc(doc(db, `submissions/${submissionId}/audit/forged`), { event_type: 'REVIEW_APPROVED' }));
+  await assertFails(updateDoc(doc(db, 'users/reviewer-1'), { role: 'ADMIN' }));
+});
+
+test('ADMIN browser also uses the server review path and cannot write workflow directly', async () => {
+  await seed(`submissions/${submissionId}`, draftSubmission({ status: 'PENDING_REVIEW' }));
+  const db = env.authenticatedContext('admin-1', { role: 'ADMIN' }).firestore();
+  await assertFails(updateDoc(doc(db, `submissions/${submissionId}`), { status: 'APPROVED' }));
+});
+
 test('collector can create a correction revision only when parent is NEEDS_CORRECTION', async () => {
   await seed(`submissions/${submissionId}`, draftSubmission({ status: 'NEEDS_CORRECTION' }));
   const db = env.authenticatedContext('collector-a').firestore();

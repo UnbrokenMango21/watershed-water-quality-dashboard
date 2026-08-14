@@ -11,8 +11,8 @@
  * the server-side API route.
  */
 import { getApp, getApps, initializeApp, type FirebaseApp } from 'firebase/app';
-import { getAuth, type Auth } from 'firebase/auth';
-import { getFirestore, type Firestore } from 'firebase/firestore';
+import { connectAuthEmulator, getAuth, type Auth } from 'firebase/auth';
+import { connectFirestoreEmulator, getFirestore, type Firestore } from 'firebase/firestore';
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -40,10 +40,22 @@ function clientApp(): FirebaseApp {
   return getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 }
 
+function connectLocalEmulators(app: FirebaseApp): void {
+  const state = globalThis as typeof globalThis & { __watershedFirebaseEmulatorsConnected?: boolean };
+  if (process.env.NEXT_PUBLIC_USE_FIREBASE_EMULATORS !== 'true' || state.__watershedFirebaseEmulatorsConnected) return;
+  connectAuthEmulator(getAuth(app), 'http://127.0.0.1:9099', { disableWarnings: true });
+  connectFirestoreEmulator(getFirestore(app), '127.0.0.1', 8080);
+  state.__watershedFirebaseEmulatorsConnected = true;
+}
+
 export function clientAuth(): Auth {
-  return getAuth(clientApp());
+  const app = clientApp();
+  connectLocalEmulators(app);
+  return getAuth(app);
 }
 
 export function clientDb(): Firestore {
-  return getFirestore(clientApp());
+  const app = clientApp();
+  connectLocalEmulators(app);
+  return getFirestore(app);
 }

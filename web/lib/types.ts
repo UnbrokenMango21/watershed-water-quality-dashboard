@@ -170,6 +170,8 @@ export interface SiteDoc {
   site_id: string;
   site_code: Nullable<string>;
   site_name_display: Nullable<string>;
+  county: Nullable<string>;
+  watershed_name: Nullable<string>;
   latitude: Nullable<number>;
   longitude: Nullable<number>;
   site_tolerance_m: Nullable<number>;

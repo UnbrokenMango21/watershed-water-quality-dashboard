@@ -4,8 +4,8 @@
   "environmentStrategy": {
     "developmentProject": "central-pa-watershed-dev",
     "developmentDatabase": "(default)",
-    "developmentLocation": "nam5",
-    "developmentLocationDescription": "United States (Central) multi-region",
+    "developmentLocation": "nam7",
+    "developmentLocationDescription": "United States (Central and East) multi-region",
     "productionProjectReserved": "central-pa-watershed-prod",
     "productionDataAllowedInDev": false
   },
@@ -250,7 +250,7 @@
       "transactional: read-check-write inside db.runTransaction",
       "revision-aware: the request must name the submission's current_revision_id; a mismatch is rejected",
       "race-safe: Firestore transaction read-then-write plus the revision/status check prevents two concurrent reviewers from double-applying a decision",
-      "idempotent: a repeated identical request (same submissionId, revisionId, decision) after it already applied returns the same result without writing a second audit event",
+      "idempotent: a repeated identical request (same submissionId, revisionId, decision, reviewer UID, and normalized reason/comment) after it already applied returns the same result without writing a second audit event",
       "stale: a request naming a revision or status that no longer matches current server state is rejected with HTTP 409",
       "immutable revision: the review path never writes to submissions/{id}/revisions/{id} or its measurements subcollection"
     ]

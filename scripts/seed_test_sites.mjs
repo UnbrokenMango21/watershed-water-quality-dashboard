@@ -47,6 +47,8 @@ const TEST_SITES = [
 
 const apply = process.argv.includes('--apply');
 
+console.log(`Target project: ${DEV_PROJECT_ID}${apply ? ' (APPLY)' : ' (dry run)'}`);
+
 const app = initializeApp({ projectId: DEV_PROJECT_ID });
 const usingEmulator = Boolean(process.env.FIRESTORE_EMULATOR_HOST);
 

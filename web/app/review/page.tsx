@@ -8,7 +8,7 @@ import { useCallback, useEffect, useState } from 'react';
 
 import AuthGate from '@/components/AuthGate';
 import { fetchQueue } from '@/lib/data';
-import { EMPTY, formatEastern, formatElapsed, formatText } from '@/lib/format';
+import { EMPTY, formatEastern, formatElapsed, formatNumber, formatText } from '@/lib/format';
 import type { QueueRow } from '@/lib/types';
 
 function siteLabel(row: QueueRow): string {
@@ -22,6 +22,7 @@ function QueueTable() {
   const router = useRouter();
   const [rows, setRows] = useState<QueueRow[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [reviewed, setReviewed] = useState<string | null>(null);
   const [reloading, setReloading] = useState(false);
   // Captured once per load so every row's age is measured against one clock.
   const [now, setNow] = useState<number | null>(null);
@@ -41,6 +42,11 @@ function QueueTable() {
   }, []);
 
   useEffect(() => {
+    const decision = new URLSearchParams(window.location.search).get('reviewed');
+    if (decision) {
+      setReviewed(decision);
+      window.history.replaceState(null, '', '/review');
+    }
     void load();
   }, [load]);
 
@@ -55,6 +61,11 @@ function QueueTable() {
       </div>
 
       {error ? <div className="notice notice-error">{error}</div> : null}
+      {reviewed ? (
+        <div className="notice notice-ok">
+          Review recorded ({reviewed}). The refreshed queue now excludes that submission.
+        </div>
+      ) : null}
 
       <div className="card">
         <div className="button-row" style={{ justifyContent: 'space-between', marginBottom: 12 }}>
@@ -77,10 +88,13 @@ function QueueTable() {
                 <tr>
                   <th scope="col">Site</th>
                   <th scope="col">Collected</th>
+                  <th scope="col">Collector</th>
                   <th scope="col">Rev</th>
                   <th scope="col">Test type</th>
+                  <th scope="col">Errors</th>
                   <th scope="col">Warnings</th>
-                  <th scope="col">Info</th>
+                  <th scope="col">Alerts / info</th>
+                  <th scope="col">Quality</th>
                   <th scope="col">Status</th>
                   <th scope="col">Waiting</th>
                 </tr>
@@ -107,10 +121,24 @@ function QueueTable() {
                         <div className="mono muted">{row.submission.submission_id}</div>
                       </td>
                       <td>{formatEastern(row.currentRevision?.collected_at)}</td>
+                      <td>
+                        <span className="mono">{formatText(row.submission.collector_user_id)}</span>
+                        <div className="muted">{formatText(row.currentRevision?.data_collected_by)}</div>
+                      </td>
                       <td className="count-pill">{row.submission.current_revision_no ?? EMPTY}</td>
                       <td>{formatText(row.currentRevision?.test_type)}</td>
+                      <td className="count-pill">{row.submission.error_flag_count ?? 0}</td>
                       <td className="count-pill">{row.submission.warning_flag_count ?? 0}</td>
-                      <td className="count-pill">{row.submission.info_flag_count ?? 0}</td>
+                      <td className="count-pill">
+                        {row.currentRevision?.validation?.environmental_alert_count ?? 0} /{' '}
+                        {row.submission.info_flag_count ?? 0}
+                      </td>
+                      <td className="count-pill">
+                        {formatNumber(
+                          row.currentRevision?.validation?.overall_quality_score ??
+                            row.submission.overall_quality_score,
+                        )}
+                      </td>
                       <td>
                         <span className="badge badge-alert">{row.submission.status}</span>
                       </td>

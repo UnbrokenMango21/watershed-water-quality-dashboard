@@ -59,23 +59,19 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
   );
 }
 
-/** "Entered: 7.2 pH" plus a canonical line only when it actually differs. */
+/** Always show entered provenance and the canonical value stored for validation. */
 function MeasurementValue({ measurement }: { measurement: MeasurementDoc }) {
   const enteredUnit = formatUnit(measurement.entered_unit_code);
   const canonicalUnit = formatUnit(measurement.unit_code);
-  const differs =
-    measurement.entered_value !== measurement.value || enteredUnit !== canonicalUnit;
   return (
     <>
       <div>
         Entered: <strong>{formatNumber(measurement.entered_value)}</strong>{' '}
         {enteredUnit}
       </div>
-      {differs ? (
-        <div className="muted">
-          Canonical: <strong>{formatNumber(measurement.value)}</strong> {canonicalUnit}
-        </div>
-      ) : null}
+      <div className="muted">
+        Canonical: <strong>{formatNumber(measurement.value)}</strong> {canonicalUnit}
+      </div>
     </>
   );
 }
@@ -214,6 +210,8 @@ function Detail({ detail, session }: { detail: SubmissionDetail; session: { user
             <Field label="Site ID">
               <span className="mono">{formatText(submission.site_id)}</span>
             </Field>
+            <Field label="County">{formatText(site?.county)}</Field>
+            <Field label="Watershed">{formatText(site?.watershed_name)}</Field>
             <Field label="Collected at">{formatEastern(currentRevision?.collected_at)}</Field>
             <Field label="Time known">{formatBoolean(currentRevision?.time_known)}</Field>
             <Field label="Time imputed">{formatBoolean(currentRevision?.time_imputed)}</Field>

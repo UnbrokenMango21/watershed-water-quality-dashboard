@@ -12,7 +12,7 @@
 //
 // Usage:
 //   node scripts/provision_test_users.mjs                # dry run
-//   node scripts/provision_test_users.mjs --apply         # actually create/update users
+//   QC_DEV_TEST_PASSWORD='temporary secret' node scripts/provision_test_users.mjs --apply
 //
 // Requires Application Default Credentials for the central-pa-watershed-dev project
 // (e.g. `gcloud auth application-default login` or GOOGLE_APPLICATION_CREDENTIALS),
@@ -32,6 +32,23 @@ const TEST_USERS = [
 ];
 
 const apply = process.argv.includes('--apply');
+const temporaryPassword = process.env.QC_DEV_TEST_PASSWORD;
+
+console.log(`Target project: ${DEV_PROJECT_ID}${apply ? ' (APPLY)' : ' (dry run)'}`);
+
+if (!apply) {
+  for (const { email, displayName, role } of TEST_USERS) {
+    console.log(`[dry-run] ensure ${email} -> displayName="${displayName}" role=${role}`);
+  }
+  console.log('\nDry run only — no credentials were loaded and no changes were made.');
+  console.log('Set QC_DEV_TEST_PASSWORD (minimum 6 characters) and re-run with --apply.');
+  process.exit(0);
+}
+
+if (!temporaryPassword || temporaryPassword.length < 6) {
+  console.error('QC_DEV_TEST_PASSWORD must be set to at least 6 characters for --apply. It is never stored in source.');
+  process.exit(1);
+}
 
 const app = initializeApp({ projectId: DEV_PROJECT_ID });
 const usingEmulator = Boolean(process.env.FIREBASE_AUTH_EMULATOR_HOST || process.env.FIRESTORE_EMULATOR_HOST);
@@ -55,21 +72,28 @@ async function upsertUser({ email, displayName, role }) {
 
   const plan = { email, displayName, role, action: userRecord ? 'update' : 'create', uid: userRecord?.uid ?? '(new)' };
   console.log(`[${apply ? 'apply' : 'dry-run'}] ${plan.action} ${email} -> displayName="${displayName}" role=${role} uid=${plan.uid}`);
-  if (!apply) return plan;
 
   if (!userRecord) {
-    userRecord = await auth.createUser({ email, emailVerified: true, displayName, disabled: false });
+    userRecord = await auth.createUser({
+      email,
+      password: temporaryPassword,
+      emailVerified: true,
+      displayName,
+      disabled: false,
+    });
   } else if (userRecord.displayName !== displayName) {
     await auth.updateUser(userRecord.uid, { displayName });
   }
 
   await auth.setCustomUserClaims(userRecord.uid, { role });
 
-  await db.collection('users').doc(userRecord.uid).set({
+  const userRef = db.collection('users').doc(userRecord.uid);
+  const userDoc = await userRef.get();
+  await userRef.set({
     display_name: displayName,
     role,
     active: true,
-    created_at: FieldValue.serverTimestamp(),
+    ...(userDoc.exists ? {} : { created_at: FieldValue.serverTimestamp() }),
     updated_at: FieldValue.serverTimestamp(),
   }, { merge: true });
 
@@ -81,7 +105,4 @@ for (const user of TEST_USERS) {
   results.push(await upsertUser(user));
 }
 
-if (!apply) {
-  console.log('\nDry run only — no changes made. Re-run with --apply to provision these accounts.');
-  console.log('Passwords are not set here: use the Firebase Console or `auth.generatePasswordResetLink()` to issue credentials out of band.');
-}
+console.log(`Provisioned ${results.length} dev accounts. Existing account passwords were not changed.`);

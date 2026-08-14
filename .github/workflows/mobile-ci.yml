@@ -18,6 +18,7 @@ on:
     branches:
       - codex/mobile-production-integration-v1
       - codex/qc-trusted-web-v1
+      - codex/qc-console-production-v1
     paths:
       - 'Phone App/**'
       - 'mobile/**'
