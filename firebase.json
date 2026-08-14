@@ -1,4 +1,10 @@
 {
+  "apphosting": [
+    {
+      "backendId": "qc-console-dev",
+      "rootDir": "web"
+    }
+  ],
   "firestore": {
     "database": "(default)",
     "location": "nam7",

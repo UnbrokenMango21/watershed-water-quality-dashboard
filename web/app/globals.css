@@ -1,4 +1,4 @@
-/* QC Trusted Web — a deliberately plain, dense, scientific reviewer interface. */
+/* Watershed Watch QC Console — restrained, dense, scientific review UI. */
 
 :root {
   --bg: #f4f6f8;
@@ -58,8 +58,8 @@ a {
 .topbar {
   background: var(--accent-dark);
   color: #fff;
-  padding: 10px 20px;
-  margin-bottom: 24px;
+  padding: 14px 20px;
+  margin-bottom: 28px;
 }
 
 .topbar-inner {
@@ -74,6 +74,7 @@ a {
 
 .topbar-brand {
   font-weight: 600;
+  font-size: 16px;
   letter-spacing: 0.02em;
 }
 
@@ -91,6 +92,10 @@ a {
   align-items: center;
   gap: 12px;
   font-size: 13px;
+}
+
+.topbar-user > span {
+  overflow-wrap: anywhere;
 }
 
 .topbar-user code {
@@ -133,6 +138,22 @@ h3 {
   border-radius: var(--radius);
   padding: 16px 18px;
   margin-bottom: 18px;
+}
+
+.priority-card {
+  border-left: 4px solid var(--ok);
+}
+
+.priority-card.priority-blocking {
+  border-left-color: var(--error);
+}
+
+.status-summary {
+  margin: 0 0 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
 }
 
 .grid-2 {
@@ -374,6 +395,7 @@ button {
   background: var(--surface);
   color: var(--text);
   cursor: pointer;
+  min-height: 40px;
 }
 
 button:hover:not(:disabled) {
@@ -434,6 +456,25 @@ button.link {
   color: #fff;
 }
 
+.decision-tabs button {
+  min-height: 44px;
+}
+
+.decision-tabs button[data-decision="NEEDS_CORRECTION"][aria-pressed="true"] {
+  background: var(--warning);
+  border-color: var(--warning);
+}
+
+.decision-tabs button[data-decision="REJECT"][aria-pressed="true"] {
+  background: var(--error);
+  border-color: var(--error);
+}
+
+.decision-context {
+  margin: -4px 0 14px;
+  color: var(--text-muted);
+}
+
 /* --------------------------------------------------------------- notices */
 
 .notice {
@@ -467,6 +508,37 @@ button.link {
 .auth-panel {
   max-width: 420px;
   margin: 72px auto;
+  border-top: 4px solid var(--accent);
+  padding: 24px 26px;
+  box-shadow: 0 8px 28px rgba(14, 61, 77, 0.08);
+}
+
+.auth-kicker {
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  margin-bottom: 6px;
+  text-transform: uppercase;
+}
+
+.auth-panel h1 {
+  font-size: 26px;
+  margin-bottom: 8px;
+}
+
+.auth-panel form {
+  margin-top: 20px;
+}
+
+.auth-panel form > button {
+  width: 100%;
+}
+
+.auth-footnote {
+  color: var(--text-muted);
+  font-size: 12px;
+  margin: 12px 0 0;
 }
 
 .centered-state {
@@ -477,6 +549,65 @@ button.link {
 
 /* ------------------------------------------------------------- responsive */
 
+@media (max-width: 760px) {
+  .queue-table,
+  .queue-table tbody,
+  .queue-table tr,
+  .queue-table td {
+    display: block;
+    width: 100%;
+  }
+
+  .queue-table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  .queue-table tr.row-link {
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    margin-bottom: 12px;
+    overflow: hidden;
+  }
+
+  .queue-table td {
+    display: grid;
+    grid-template-columns: minmax(92px, 0.42fr) 1fr;
+    gap: 10px;
+    padding: 8px 10px;
+  }
+
+  .queue-table td::before {
+    content: attr(data-label);
+    color: var(--text-muted);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+
+  .queue-table td:first-child {
+    display: block;
+    background: #f7f9fa;
+    padding: 12px 10px;
+  }
+
+  .queue-table td:first-child::before {
+    display: none;
+  }
+
+  .table-scroll:has(.queue-table) {
+    overflow-x: visible;
+  }
+}
+
 @media (max-width: 480px) {
   .shell {
     padding: 0 12px 48px;
@@ -484,6 +615,13 @@ button.link {
 
   .topbar {
     padding: 10px 12px;
+  }
+
+  .topbar-user {
+    width: 100%;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    gap: 8px;
   }
 
   h1 {
@@ -506,5 +644,13 @@ button.link {
   .auth-panel,
   .centered-state {
     margin: 32px auto;
+  }
+
+  .auth-panel {
+    padding: 20px 18px;
+  }
+
+  .decision-tabs button {
+    flex: 1 1 100%;
   }
 }

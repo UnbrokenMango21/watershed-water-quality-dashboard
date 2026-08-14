@@ -88,21 +88,21 @@ export default function ReviewActions({
       if (response.status === 409) {
         setOutcome({
           kind: 'conflict',
-          message: `This submission changed while you were reviewing it — someone else may have already decided, or the collector filed a new revision. Refresh before deciding again. (${message})`,
+          message: 'This submission changed while you were reviewing it. It may already be reviewed, or the collector may have filed a new revision. Refresh before deciding again.',
         });
         return;
       }
       if (response.status === 401) {
         setOutcome({
           kind: 'error',
-          message: `Your sign-in has expired. Sign out, sign in again, and retry. (${message})`,
+          message: 'Your sign-in has expired. Sign out, sign in again, and retry.',
         });
         return;
       }
       if (response.status === 403) {
         setOutcome({
           kind: 'error',
-          message: `This account is not currently authorized to review. Sign out and ask an administrator to verify the account role. (${message})`,
+          message: 'This account is not currently authorized to review. Sign out and ask an administrator to verify access.',
         });
         return;
       }
@@ -115,10 +115,10 @@ export default function ReviewActions({
       // The submission has left PENDING_REVIEW, so it drops out of the queue.
       router.push(`/review?reviewed=${encodeURIComponent((payload as ReviewResult).decision)}`);
       router.refresh();
-    } catch (error) {
+    } catch {
       setOutcome({
         kind: 'error',
-        message: error instanceof Error ? error.message : 'The review decision could not be submitted.',
+        message: 'The review decision could not be submitted. Check your connection and try again.',
       });
     } finally {
       setSubmitting(false);
@@ -128,22 +128,25 @@ export default function ReviewActions({
   return (
     <div className="card">
       <h2>Review decision</h2>
+      <p className="decision-context">
+        Acting on revision <code className="mono">{expectedRevisionId ?? '—'}</code>
+      </p>
 
       {!reviewable ? (
-        <div className="notice notice-conflict">
+        <div className="notice notice-conflict" role="status">
           This submission is in <strong>{currentStatus}</strong>, not PENDING_REVIEW, so no decision can be applied.
         </div>
       ) : null}
 
       {!expectedRevisionId ? (
-        <div className="notice notice-error">
+        <div className="notice notice-error" role="alert">
           This submission has no current revision id, so a revision-safe decision cannot be made.
         </div>
       ) : null}
 
-      {outcome.kind === 'error' ? <div className="notice notice-error">{outcome.message}</div> : null}
+      {outcome.kind === 'error' ? <div className="notice notice-error" role="alert">{outcome.message}</div> : null}
       {outcome.kind === 'conflict' ? (
-        <div className="notice notice-conflict">
+        <div className="notice notice-conflict" role="alert">
           {outcome.message}{' '}
           <button type="button" className="link" onClick={() => window.location.reload()}>
             Refresh now
@@ -151,7 +154,7 @@ export default function ReviewActions({
         </div>
       ) : null}
       {outcome.kind === 'done' ? (
-        <div className="notice notice-ok">
+        <div className="notice notice-ok" role="status">
           Recorded {outcome.result.decision} — submission is now {outcome.result.status}
           {outcome.result.idempotent ? ' (already applied; no duplicate audit event written)' : ''}. Returning to the
           queue…
@@ -163,6 +166,7 @@ export default function ReviewActions({
           <button
             key={entry.value}
             type="button"
+            data-decision={entry.value}
             aria-pressed={decision === entry.value}
             disabled={disabled}
             onClick={() => {
@@ -180,6 +184,7 @@ export default function ReviewActions({
       </p>
 
       <form
+        aria-busy={submitting}
         onSubmit={(event) => {
           event.preventDefault();
           void submit();
@@ -208,13 +213,12 @@ export default function ReviewActions({
           >
             {submitting ? 'Submitting…' : `Submit ${spec.label.toLowerCase()}`}
           </button>
-          {reasonMissing && !blocked ? <span className="muted">A reason is required for this decision.</span> : null}
+          {reasonMissing && !blocked ? <span className="muted" role="status">A reason is required for this decision.</span> : null}
         </div>
       </form>
 
       <p className="muted" style={{ marginBottom: 0, marginTop: 12, fontSize: 12 }}>
-        Deciding against revision <code className="mono">{expectedRevisionId ?? '—'}</code>. Reviewers can never edit
-        scientific data; the decision only changes workflow state and writes one audit event.
+        Reviewers cannot edit scientific data. A decision changes workflow state and adds one audit event.
       </p>
     </div>
   );

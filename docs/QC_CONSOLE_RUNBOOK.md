@@ -8,7 +8,7 @@ Email/Password and read Firestore through the browser SDK under
 Request Correction, and Reject writes go through
 `POST /api/submissions/{submissionId}/review`, which verifies the ID token,
 checks the current Auth user and custom claim, and calls
-`review/reviewSubmission.mjs`. That module owns the single Firestore transaction
+`web/lib/reviewSubmission.mjs`. That module owns the single Firestore transaction
 and immutable audit event.
 
 Development resources are confined to `central-pa-watershed-dev`, Firestore
@@ -148,8 +148,17 @@ with a Node API route. Static Firebase Hosting alone cannot execute the review
 API. App Hosting requires Blaze; see the
 [Firebase App Hosting cost documentation](https://firebase.google.com/docs/app-hosting/costs).
 
-After the dev project is upgraded, create one dev backend connected to this
-repository and branch:
+The live dev backend is:
+
+- backend: `qc-console-dev`
+- region: `us-central1`
+- runtime: Node.js 22
+- root: `web`
+- URL: `https://qc-console-dev--central-pa-watershed-dev.us-central1.hosted.app`
+- live branch: `codex/qc-console-production-v1`
+- runtime service account: `firebase-app-hosting-compute@central-pa-watershed-dev.iam.gserviceaccount.com`
+
+Create it once only if it does not already exist:
 
 ```bash
 firebase apphosting:backends:create \
@@ -163,9 +172,9 @@ firebase apphosting:backends:create \
 ```
 
 Set the six `NEXT_PUBLIC_FIREBASE_*` variables on that backend from
-`firebase apps:sdkconfig`; grant the backend service account only the Firestore
-data access and Firebase Auth user-read permissions required by the API. Create
-a rollout from the pushed branch:
+`firebase apps:sdkconfig`. The runtime service account has only
+`roles/datastore.user` and `roles/firebaseauth.viewer` for the review API. Do
+not grant Owner or Editor. Create a rollout from the pushed branch:
 
 ```bash
 firebase apphosting:rollouts:create qc-console-dev \
@@ -174,6 +183,16 @@ firebase apphosting:rollouts:create qc-console-dev \
 ```
 
 Then run every item in `docs/QC_CONSOLE_LIVE_TEST.md` against the HTTPS URL.
+
+## Storage state
+
+The registered Web SDK names `central-pa-watershed-dev.firebasestorage.app`, but
+the Cloud Storage JSON API currently returns 404 for that bucket and there is no
+Cloud Storage for Firebase rules release. The only real bucket is the regional
+App Hosting source bucket
+`firebaseapphosting-sources-652403958133-us-central1` (`STANDARD`,
+`US-CENTRAL1`). This is not a QC-console blocker: the console does not upload
+media, and mobile photo/audio capture remains intentionally deferred.
 
 ## Troubleshooting
 

@@ -44,9 +44,9 @@ function friendlyAuthError(error: unknown): string {
     case 'auth/too-many-requests':
       return 'Too many attempts. Wait a few minutes and try again.';
     case 'auth/network-request-failed':
-      return 'Could not reach Firebase. Check your network connection.';
+      return 'Could not reach the sign-in service. Check your network connection.';
     default:
-      return error instanceof Error ? error.message : 'Sign-in failed.';
+      return 'Sign-in failed. Try again or contact an administrator.';
   }
 }
 
@@ -56,9 +56,9 @@ function Topbar({ session }: { session: ReviewerSession | null }) {
       <div className="topbar-inner">
         <div className="topbar-brand">
           <Link href="/review" style={{ color: 'inherit', textDecoration: 'none' }}>
-            QC Trusted Web
+            Watershed Watch QC Console
           </Link>
-          <small>Central PA Watershed — submission review</small>
+          <small>Central Pennsylvania · scientific submission review</small>
         </div>
         {session ? (
           <div className="topbar-user">
@@ -129,7 +129,7 @@ export default function AuthGate({ children }: { children: (session: ReviewerSes
       <>
         <Topbar session={null} />
         <main className="shell">
-          <p className="muted">Loading…</p>
+          <p className="muted" role="status" aria-live="polite">Loading reviewer workspace…</p>
         </main>
       </>
     );
@@ -155,12 +155,14 @@ export default function AuthGate({ children }: { children: (session: ReviewerSes
         <Topbar session={null} />
         <main className="shell">
           <div className="card auth-panel">
+            <div className="auth-kicker">Scientific review workspace</div>
             <h1>Reviewer sign-in</h1>
             <p className="muted" style={{ marginTop: 0 }}>
-              Reviewer accounts are provisioned by an administrator. There is no self-registration.
+              Review submitted watershed observations, validation results, and revision history. Access is limited to
+              administrator-provisioned reviewers.
             </p>
-            {formError ? <div className="notice notice-error">{formError}</div> : null}
-            <form onSubmit={handleSignIn}>
+            {formError ? <div className="notice notice-error" role="alert">{formError}</div> : null}
+            <form onSubmit={handleSignIn} aria-busy={signingIn}>
               <label className="field">
                 <span>Email</span>
                 <input
@@ -186,6 +188,7 @@ export default function AuthGate({ children }: { children: (session: ReviewerSes
               <button type="submit" className="primary" disabled={signingIn || !email.trim() || !password}>
                 {signingIn ? 'Signing in…' : 'Sign in'}
               </button>
+              <p className="auth-footnote">No public sign-up. Credentials are managed by the watershed program.</p>
             </form>
           </div>
         </main>
@@ -200,11 +203,10 @@ export default function AuthGate({ children }: { children: (session: ReviewerSes
         <main className="shell">
           <div className="card centered-state">
             <h1>Not authorized</h1>
-            <p>Your account is not authorized to review submissions.</p>
+            <p>Your account does not have reviewer access.</p>
             <p className="muted">
-              Signed in as {state.user.email ?? state.user.uid} with role <code className="mono">{state.role}</code>.
-              Reviewing requires <code className="mono">QC_REVIEWER</code> or <code className="mono">ADMIN</code>. Ask an
-              administrator to provision the role, then sign out and back in so a fresh token is issued.
+              Signed in as {state.user.email ?? state.user.uid}. Ask an administrator to verify your access, then sign
+              out and back in.
             </p>
             <button type="button" onClick={() => void signOut(clientAuth())}>
               Sign out

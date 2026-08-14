@@ -50,9 +50,9 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-function Section({ title, children }: { title: string; children: ReactNode }) {
+function Section({ title, children, className = '' }: { title: string; children: ReactNode; className?: string }) {
   return (
-    <section className="card">
+    <section className={`card ${className}`.trim()}>
       <h2>{title}</h2>
       {children}
     </section>
@@ -166,6 +166,24 @@ function Detail({ detail, session }: { detail: SubmissionDetail; session: { user
         </p>
       </div>
 
+      <Section title="Review status" className={validation?.blocking ? 'priority-card priority-blocking' : 'priority-card'}>
+        <p className="status-summary">
+          <span className={validation?.blocking ? 'badge badge-error' : 'badge badge-ok'}>
+            {validation?.blocking == null ? 'Blocking: unknown' : validation.blocking ? 'Blocking' : 'Reviewable'}
+          </span>{' '}
+          <span className="badge badge-error">{submission.error_flag_count ?? 0} errors</span>{' '}
+          <span className="badge badge-warning">{submission.warning_flag_count ?? 0} warnings</span>{' '}
+          <span className="badge">{submission.info_flag_count ?? 0} info</span>{' '}
+          {validation?.environmental_alert_count != null ? (
+            <span className="badge badge-alert">{validation.environmental_alert_count} environmental alerts</span>
+          ) : null}{' '}
+          <span className="muted">validated {formatEastern(validation?.validated_at)}</span>
+        </p>
+        <dl className="fields">
+          <Score label="Overall quality" value={validation?.overall_quality_score ?? submission.overall_quality_score} />
+        </dl>
+      </Section>
+
       <div className="grid-2">
         <Section title="Submission">
           <dl className="fields">
@@ -245,53 +263,7 @@ function Detail({ detail, session }: { detail: SubmissionDetail; session: { user
           </dl>
         </Section>
 
-        <Section title="Provenance">
-          <dl className="fields">
-            <Field label="Schema version">{formatText(currentRevision?.schema_version ?? submission.schema_version)}</Field>
-            <Field label="Mobile app version">
-              {formatText(currentRevision?.mobile_app_version ?? submission.mobile_app_version)}
-            </Field>
-            <Field label="Data collected by">{formatText(currentRevision?.data_collected_by)}</Field>
-            <Field label="Validation rules">
-              {formatText(validation?.validation_rules_version ?? submission.validation_rules_version)}
-            </Field>
-            <Field label="Quality algorithm">
-              {formatText(validation?.quality_algorithm_version ?? submission.quality_algorithm_version)}
-            </Field>
-            <Field label="Revision status">{formatText(currentRevision?.revision_status)}</Field>
-          </dl>
-        </Section>
       </div>
-
-      <Section title="Validation outcome">
-        <p style={{ marginTop: 0 }}>
-          <span className={validation?.blocking ? 'badge badge-error' : 'badge badge-ok'}>
-            {validation?.blocking == null ? 'Blocking: unknown' : validation.blocking ? 'Blocking' : 'Not blocking'}
-          </span>{' '}
-          <span className="badge badge-error">{submission.error_flag_count ?? 0} errors</span>{' '}
-          <span className="badge badge-warning">{submission.warning_flag_count ?? 0} warnings</span>{' '}
-          <span className="badge">{submission.info_flag_count ?? 0} info</span>{' '}
-          {validation?.environmental_alert_count != null ? (
-            <span className="badge badge-alert">{validation.environmental_alert_count} environmental alerts</span>
-          ) : null}{' '}
-          <span className="muted">validated {formatEastern(validation?.validated_at)}</span>
-        </p>
-        <dl className="fields">
-          <Score label="Overall quality" value={validation?.overall_quality_score ?? submission.overall_quality_score} />
-          <Score label="Anomaly" value={validation?.anomaly_score ?? submission.anomaly_score} />
-          <Score label="Completeness" value={validation?.completeness_score} />
-          <Score label="Location quality" value={validation?.location_quality_score} />
-          <Score label="Method quality" value={validation?.method_quality_score} />
-          <Score label="Validation quality" value={validation?.validation_quality_score} />
-          <Score label="Temporal quality" value={validation?.temporal_quality_score} />
-          <Score label="Historical quality" value={validation?.historical_quality_score} />
-          <Score label="Historical weight" value={validation?.historical_effective_weight} />
-        </dl>
-      </Section>
-
-      <Section title="Validation flags">
-        <FlagList flags={flags} />
-      </Section>
 
       <Section title="Temperature">
         <Temperature revision={currentRevision} />
@@ -337,6 +309,31 @@ function Detail({ detail, session }: { detail: SubmissionDetail; session: { user
         )}
       </Section>
 
+      <Section title="Validation flags">
+        <FlagList flags={flags} />
+      </Section>
+
+      <Section title="Validation metrics">
+        <dl className="fields">
+          <Score label="Anomaly" value={validation?.anomaly_score ?? submission.anomaly_score} />
+          <Score label="Completeness" value={validation?.completeness_score} />
+          <Score label="Location quality" value={validation?.location_quality_score} />
+          <Score label="Method quality" value={validation?.method_quality_score} />
+          <Score label="Validation quality" value={validation?.validation_quality_score} />
+          <Score label="Temporal quality" value={validation?.temporal_quality_score} />
+          <Score label="Historical quality" value={validation?.historical_quality_score} />
+          <Score label="Historical weight" value={validation?.historical_effective_weight} />
+        </dl>
+      </Section>
+
+      <ReviewActions
+        user={session.user}
+        submissionId={submission.submission_id}
+        expectedRevisionId={submission.current_revision_id ?? null}
+        reviewable={submission.status === 'PENDING_REVIEW'}
+        currentStatus={submission.status}
+      />
+
       <Section title="Collector notes">
         {currentRevision?.field_notes_original ? (
           <p style={{ margin: 0, whiteSpace: 'pre-wrap' }}>{currentRevision.field_notes_original}</p>
@@ -347,7 +344,24 @@ function Detail({ detail, session }: { detail: SubmissionDetail; session: { user
         )}
       </Section>
 
-      <Section title="Attachments">
+      <Section title="Provenance">
+        <dl className="fields">
+          <Field label="Schema version">{formatText(currentRevision?.schema_version ?? submission.schema_version)}</Field>
+          <Field label="Mobile app version">
+            {formatText(currentRevision?.mobile_app_version ?? submission.mobile_app_version)}
+          </Field>
+          <Field label="Data collected by">{formatText(currentRevision?.data_collected_by)}</Field>
+          <Field label="Validation rules">
+            {formatText(validation?.validation_rules_version ?? submission.validation_rules_version)}
+          </Field>
+          <Field label="Quality algorithm">
+            {formatText(validation?.quality_algorithm_version ?? submission.quality_algorithm_version)}
+          </Field>
+          <Field label="Revision status">{formatText(currentRevision?.revision_status)}</Field>
+        </dl>
+      </Section>
+
+      <Section title="Historical attachments">
         {attachments.length === 0 ? (
           <p className="muted">No attachments on this revision.</p>
         ) : (
@@ -385,7 +399,7 @@ function Detail({ detail, session }: { detail: SubmissionDetail; session: { user
         </p>
       </Section>
 
-      <Section title="Revisions">
+      <Section title="Revision history">
         <div className="table-scroll">
           <table>
             <thead>
@@ -430,7 +444,7 @@ function Detail({ detail, session }: { detail: SubmissionDetail; session: { user
         </div>
       </Section>
 
-      <Section title="History (audit trail)">
+      <Section title="Audit history">
         {audit.length === 0 ? (
           <p className="muted">No audit events recorded.</p>
         ) : (
@@ -453,13 +467,6 @@ function Detail({ detail, session }: { detail: SubmissionDetail; session: { user
         )}
       </Section>
 
-      <ReviewActions
-        user={session.user}
-        submissionId={submission.submission_id}
-        expectedRevisionId={submission.current_revision_id ?? null}
-        reviewable={submission.status === 'PENDING_REVIEW'}
-        currentStatus={submission.status}
-      />
     </>
   );
 }

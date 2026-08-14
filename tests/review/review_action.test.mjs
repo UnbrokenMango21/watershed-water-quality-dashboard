@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { initializeApp, deleteApp } from 'firebase-admin/app';
 import { getFirestore, Timestamp } from 'firebase-admin/firestore';
 
-import { applyReviewDecision, ReviewConflictError, ReviewValidationError } from '../../review/reviewSubmission.mjs';
+import { applyReviewDecision, ReviewConflictError, ReviewValidationError } from '../../web/lib/reviewSubmission.mjs';
 
 if (!process.env.FIRESTORE_EMULATOR_HOST) {
   throw new Error('FIRESTORE_EMULATOR_HOST is not set. Refusing to run review tests against a non-emulator Firestore instance.');

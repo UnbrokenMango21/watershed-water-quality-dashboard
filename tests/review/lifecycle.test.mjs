@@ -5,7 +5,7 @@ import { initializeApp, deleteApp } from 'firebase-admin/app';
 import { getFirestore, Timestamp } from 'firebase-admin/firestore';
 
 import { runValidationForSubmission } from '../../validation/orchestrator.mjs';
-import { applyReviewDecision, ReviewConflictError } from '../../review/reviewSubmission.mjs';
+import { applyReviewDecision, ReviewConflictError } from '../../web/lib/reviewSubmission.mjs';
 
 if (!process.env.FIRESTORE_EMULATOR_HOST) {
   throw new Error('FIRESTORE_EMULATOR_HOST is not set. Refusing to run lifecycle tests against a non-emulator Firestore instance.');

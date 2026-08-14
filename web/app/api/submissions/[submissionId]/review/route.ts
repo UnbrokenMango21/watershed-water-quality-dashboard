@@ -19,13 +19,11 @@
  */
 import { NextResponse } from 'next/server';
 
-// review/ lives above web/; next.config.ts widens the bundler + tracing root to
-// the repository root so this resolves.
 import {
   applyReviewDecision as applyReviewDecisionUntyped,
   ReviewConflictError,
   ReviewValidationError,
-} from '../../../../../../review/reviewSubmission.mjs';
+} from '@/lib/reviewSubmission.mjs';
 import { adminAuth, adminDb, Timestamp } from '@/lib/firebase-admin';
 import type { ReviewResult } from '@/lib/types';
 

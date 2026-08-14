@@ -34,8 +34,8 @@ function QueueTable() {
       const result = await fetchQueue();
       setRows(result);
       setNow(Date.now());
-    } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : 'Could not load the review queue.');
+    } catch {
+      setError('The review queue could not be loaded. Refresh the page or try again in a moment.');
     } finally {
       setReloading(false);
     }
@@ -60,14 +60,14 @@ function QueueTable() {
         </p>
       </div>
 
-      {error ? <div className="notice notice-error">{error}</div> : null}
+      {error ? <div className="notice notice-error" role="alert">{error}</div> : null}
       {reviewed ? (
-        <div className="notice notice-ok">
+        <div className="notice notice-ok" role="status">
           Review recorded ({reviewed}). The refreshed queue now excludes that submission.
         </div>
       ) : null}
 
-      <div className="card">
+      <div className="card" aria-busy={reloading}>
         <div className="button-row" style={{ justifyContent: 'space-between', marginBottom: 12 }}>
           <h2 style={{ margin: 0 }}>Pending review</h2>
           <button type="button" onClick={() => void load()} disabled={reloading}>
@@ -75,7 +75,7 @@ function QueueTable() {
           </button>
         </div>
 
-        {rows === null && !error ? <p className="muted">Loading queue…</p> : null}
+        {rows === null && !error ? <p className="muted" role="status">Loading queue…</p> : null}
 
         {rows !== null && rows.length === 0 ? (
           <p className="muted">Nothing is waiting for review right now.</p>
@@ -83,7 +83,7 @@ function QueueTable() {
 
         {rows !== null && rows.length > 0 ? (
           <div className="table-scroll">
-            <table>
+            <table className="queue-table">
               <thead>
                 <tr>
                   <th scope="col">Site</th>
@@ -116,33 +116,35 @@ function QueueTable() {
                         }
                       }}
                     >
-                      <td>
+                      <td data-label="Site">
                         <strong>{siteLabel(row)}</strong>
                         <div className="mono muted">{row.submission.submission_id}</div>
                       </td>
-                      <td>{formatEastern(row.currentRevision?.collected_at)}</td>
-                      <td>
-                        <span className="mono">{formatText(row.submission.collector_user_id)}</span>
-                        <div className="muted">{formatText(row.currentRevision?.data_collected_by)}</div>
+                      <td data-label="Collected">{formatEastern(row.currentRevision?.collected_at)}</td>
+                      <td data-label="Collector">
+                        <div>
+                          <strong>{formatText(row.currentRevision?.data_collected_by)}</strong>
+                          <div className="mono muted">{formatText(row.submission.collector_user_id)}</div>
+                        </div>
                       </td>
-                      <td className="count-pill">{row.submission.current_revision_no ?? EMPTY}</td>
-                      <td>{formatText(row.currentRevision?.test_type)}</td>
-                      <td className="count-pill">{row.submission.error_flag_count ?? 0}</td>
-                      <td className="count-pill">{row.submission.warning_flag_count ?? 0}</td>
-                      <td className="count-pill">
+                      <td data-label="Revision" className="count-pill">{row.submission.current_revision_no ?? EMPTY}</td>
+                      <td data-label="Test type">{formatText(row.currentRevision?.test_type)}</td>
+                      <td data-label="Errors" className="count-pill">{row.submission.error_flag_count ?? 0}</td>
+                      <td data-label="Warnings" className="count-pill">{row.submission.warning_flag_count ?? 0}</td>
+                      <td data-label="Alerts / info" className="count-pill">
                         {row.currentRevision?.validation?.environmental_alert_count ?? 0} /{' '}
                         {row.submission.info_flag_count ?? 0}
                       </td>
-                      <td className="count-pill">
+                      <td data-label="Quality" className="count-pill">
                         {formatNumber(
                           row.currentRevision?.validation?.overall_quality_score ??
                             row.submission.overall_quality_score,
                         )}
                       </td>
-                      <td>
+                      <td data-label="Status">
                         <span className="badge badge-alert">{row.submission.status}</span>
                       </td>
-                      <td>{now === null ? EMPTY : formatElapsed(row.submission.updated_at, now)}</td>
+                      <td data-label="Waiting">{now === null ? EMPTY : formatElapsed(row.submission.updated_at, now)}</td>
                     </tr>
                   );
                 })}

@@ -1,55 +1,43 @@
 # QC Trusted Web Readiness
 
+**Project:** `central-pa-watershed-dev`
+
 **Branch:** `codex/qc-console-production-v1`
 
 **Phase 11 baseline:** `d6900c2f45d39a00277a5df39a0af06adb28e2b4`
 
+**Connected deployment SHA:** `PENDING_APPLICATION_CHECKPOINT`
+
 **Verification date:** 2026-08-14
+
+**Live URL:** `https://qc-console-dev--central-pa-watershed-dev.us-central1.hosted.app/review`
 
 ## Current result
 
-The QC implementation is source-complete and passes local production build,
-backend/emulator, browser-emulator, and Phase 11 regression verification. It is
-**not release-complete** because the real dev project cannot currently host the
-dynamic Next.js API on Spark and no Admin SDK ADC or role-correct live reviewer
-credential is available. Live deployment and real-project browser actions remain
-explicitly BLOCKED in `docs/QC_CONSOLE_REMAINING_WORK.md`.
+The DEV QC console is release-ready. It is connected to real Firebase Auth and
+Firestore, deployed on the single `qc-console-dev` App Hosting backend, and
+verified through the deployed reviewer and collector workflows. There are no
+current QC-console release blockers.
 
 ## Acceptance status
 
 | Area | Result | Evidence |
 |---|---|---|
-| Exact roles and no public signup | PASS | `COLLECTOR`, `QC_REVIEWER`, `ADMIN`; AuthGate has sign-in/sign-out only. |
-| Current server authorization | PASS | Revoked-token check, current Auth user fetch, disabled check, current custom-claim authorization. Emulator HTTP probes return 401/403 correctly. |
-| Queue | PASS | Direct `status == PENDING_REVIEW`, oldest first; complete requested columns, Eastern time, loading/empty/error/refresh/clickable behavior. Browser run showed exactly three pending fixtures and excluded blocking/rejected fixtures. |
-| Scientific detail | PASS | IDs, collector, county/watershed/GPS, collection, entered and canonical values/units, scores/versions, grouped flags, original notes, revisions, audit, and read-only historical attachment metadata. |
-| No science editing | PASS | Detail fields are display-only; hostile rules tests deny reviewer/admin direct workflow, revision, measurement, audit, and role writes. |
-| Approve / Correction / Reject | PASS locally | Exactly three controls; expected revision always sent; reasons enforced; server transaction and browser emulator actions pass. Live is BLOCKED. |
-| Race/stale/idempotency | PASS | Concurrent domain tests and a two-browser-session run prove one winner/409 loser. Exact retry includes reviewer and normalized reason and writes no duplicate audit. |
-| Audit and immutability | PASS | One review audit in the transaction; correction lifecycle asserts revision 1 byte-for-byte unchanged. Browser verification confirmed both revisions remained submitted. |
-| Development identities/sites/data | PASS locally / BLOCKED live | Credential-free dry runs and emulator apply/reapply pass. Real apply needs ADC. |
-| Real Firebase browser config | PASS | Registered dev Web app and ignored local env configured from `firebase apps:sdkconfig`; Email/Password provider probe passed. |
-| Real dev deployment/browser | BLOCKED | App Hosting requires Blaze; no live role-correct reviewer or Admin ADC. |
-| CI definition | PASS | Workflow runs web, backend/rules/validation/review, Android, iOS, legacy Expo, and hygiene on this branch. Final remote run is reported after push. |
+| Blaze / ADC / target project | PASS | Blaze shown in Firebase; ADC Admin Auth and Firestore reads succeeded only against `central-pa-watershed-dev`. |
+| Exact roles and no public signup | PASS | Two collectors, one QC reviewer, and one admin have exact enabled claims and active user mirrors; login has no signup. |
+| Current server authorization | PASS | Token verification includes revocation, current Auth user lookup, disabled-state check, and current custom claim. |
+| Queue | PASS | Real READY index; only `PENDING_REVIEW`, oldest first, useful scientific counts/context, loading/error/empty/refresh states. |
+| Scientific detail | PASS | Review status first; site/collection/location, entered/canonical values, grouped flags, metrics/versions, notes, revisions, audit, and historical attachment metadata. |
+| Review actions | PASS | Exactly Approve, Request Correction, Reject; required reasons, disabled/loading state, revision context, success and conflict feedback. |
+| Race / stale / idempotency | PASS | Two live tabs produced one winner and clear HTTP 409 loser; exact replay returned idempotent 200; changed replay returned 409. |
+| Audit and immutable science | PASS | Each live decision added one audit record; three before/after revision-plus-measurement hashes matched exactly. |
+| Security | PASS | Collector UI and API denied; real rules returned 403 for collector parent/science/audit and reviewer science writes. |
+| Responsive / accessibility | PASS | Desktop and 390 px browser passes; no document overflow; labels, keyboard targets, focus, contrast, and non-color status text verified. |
+| Runtime IAM | PASS | App Hosting service account has only `roles/datastore.user` and `roles/firebaseauth.viewer`; no Owner/Editor grant. |
+| Storage | PASS inspected | Only the App Hosting source bucket exists; the configured Firebase Storage bucket is not provisioned. Media remains deferred and no storage resource was created. |
+| Real deployment/browser | PASS | HTTPS login, queue, detail, all three decisions, denial, stale conflict, idempotency, and presentation screenshots completed. |
 
-## Verification commands
-
-Run from repository root:
-
-```bash
-git diff --check
-npm run test:contracts
-firebase emulators:exec --project central-pa-watershed-dev --only firestore,storage \
-  "node tests/firestore-rules/run-tests.cjs && node tests/firestore-rules/run-storage-tests.cjs && node tests/validation-firestore/run-tests.cjs"
-firebase emulators:exec --project central-pa-watershed-dev --only firestore,functions \
-  "npm run test:trigger"
-firebase emulators:exec --project central-pa-watershed-dev --only firestore \
-  "npm run test:review"
-npm --prefix web run typecheck
-npm --prefix web run build
-```
-
-## Final local results
+## Final automated results
 
 | Gate | Result |
 |---|---|
@@ -61,10 +49,7 @@ npm --prefix web run build
 | Review action/lifecycle | 16/16 PASS |
 | Backend total | 102/102 PASS |
 | Web typecheck / production build | PASS / PASS |
-| Android unit, lint, debug, minified release, instrumentation APK | PASS |
-| iOS simulator tests / unsigned release archive | 11/11 PASS / PASS |
-| Legacy Expo contracts, typecheck, lint, privacy, iOS/Android export, doctor | PASS (doctor 21/21) |
 
-The complete environment and browser evidence is in
-`docs/QC_CONSOLE_LIVE_TEST.md`; operation/deployment commands are in
+The full cloud, live-browser, scenario, IAM, Storage, and immutability evidence
+is in `docs/QC_CONSOLE_LIVE_TEST.md`; operational commands are in
 `docs/QC_CONSOLE_RUNBOOK.md`.

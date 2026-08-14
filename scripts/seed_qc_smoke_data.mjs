@@ -9,7 +9,7 @@ import { initializeApp } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
 import { getFirestore, GeoPoint, Timestamp } from 'firebase-admin/firestore';
 
-import { applyReviewDecision } from '../review/reviewSubmission.mjs';
+import { applyReviewDecision } from '../web/lib/reviewSubmission.mjs';
 import { runValidationForSubmission } from '../validation/orchestrator.mjs';
 
 const DEV_PROJECT_ID = 'central-pa-watershed-dev';
