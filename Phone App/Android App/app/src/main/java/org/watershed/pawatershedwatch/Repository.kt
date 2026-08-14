@@ -35,11 +35,6 @@ interface ObservationRepository {
     )
 }
 
-interface AttachmentRepository {
-    suspend fun add(draft: ObservationDraft, attachment: ObservationAttachment): ObservationDraft
-    suspend fun remove(draft: ObservationDraft, attachmentId: AttachmentId): ObservationDraft
-}
-
 interface SyncRepository {
     suspend fun enqueue(ownerUid: String, submissionId: SubmissionId, revisionId: RevisionId)
     suspend fun sync(ownerUid: String, submissionId: SubmissionId): SyncAttempt

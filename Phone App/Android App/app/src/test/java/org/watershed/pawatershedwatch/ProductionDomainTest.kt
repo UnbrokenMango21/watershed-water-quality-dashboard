@@ -144,9 +144,9 @@ class ProductionDomainTest {
     @Test
     fun numericBoundaryDistinguishesBlankZeroLocaleAndNegativeOrp() {
         val valid = validDraft()
-        assertThrows(IllegalArgumentException::class.java) {
-            valid.copy(values = valid.values + (MeasurementKind.Ph to "")).toCanonicalSnapshot("owner-a", "1.0.0")
-        }
+        // pH is optional: blanking it is skipped, not rejected.
+        val blankPh = valid.copy(values = valid.values + (MeasurementKind.Ph to "")).toCanonicalSnapshot("owner-a", "1.0.0")
+        assertTrue(blankPh.measurements.none { it.parameterCode == "PH" })
         val snapshot = valid.copy(
             values = valid.values + (MeasurementKind.Ph to "0") + (MeasurementKind.Orp to "-.5"),
         ).toCanonicalSnapshot("owner-a", "1.0.0")
@@ -161,19 +161,53 @@ class ProductionDomainTest {
     }
 
     @Test
-    fun labProfileBlocksTemperatureOnlySubmissionsAndAcceptsOneResult() {
+    fun labProfileAcceptsTemperatureOnlySubmissionAndStillCarriesOptionalResults() {
         val labDraft = ObservationDraft(
             ownerUid = "owner-a", siteId = "SITE-1", collector = "Collector", latitude = 40.0, longitude = -77.0,
             accuracyMeters = 5.0, gpsState = GpsState.Good, testType = TestType.PennStateLab,
             method = "Grab sample", instrument = "Penn State Agricultural Analytical Services Laboratory",
             values = mapOf(MeasurementKind.Temperature to "18"),
         )
-        assertThrows(IllegalArgumentException::class.java) { labDraft.toCanonicalSnapshot("owner-a", "1.0.0") }
+        val temperatureOnly = labDraft.toCanonicalSnapshot("owner-a", "1.0.0")
+        assertTrue(temperatureOnly.measurements.isEmpty())
+        assertEquals(18.0, temperatureOnly.tempC, 0.0)
 
         val complete = labDraft.copy(values = labDraft.values + (MeasurementKind.Nitrate to "1.2"))
         val snapshot = complete.toCanonicalSnapshot("owner-a", "1.0.0")
         assertEquals(listOf("NITRATE_MG_L"), snapshot.measurements.map(CanonicalMeasurement::parameterCode))
         assertEquals(18.0, snapshot.tempC, 0.0)
+    }
+
+    @Test
+    fun temperatureOnlySucceedsForEveryTestType() {
+        TestType.entries.forEach { type ->
+            val draft = ObservationDraft(
+                ownerUid = "owner-a", siteId = "SITE-1", collector = "Collector", latitude = 40.0, longitude = -77.0,
+                accuracyMeters = 5.0, gpsState = GpsState.Good, testType = type,
+                testTypeOther = if (type == TestType.Other) "Custom protocol" else "",
+                method = "Method", instrument = "Instrument",
+                values = mapOf(MeasurementKind.Temperature to "20"),
+            )
+            val snapshot = draft.toCanonicalSnapshot("owner-a", "1.0.0")
+            assertTrue("$type should not require any measurement beyond temperature", snapshot.measurements.isEmpty())
+            assertEquals(20.0, snapshot.tempC, 0.0)
+        }
+    }
+
+    @Test
+    fun optionalMeasurementsAreValidatedWhenPresentButNeverBlockWhenBlank() {
+        val base = ObservationDraft(
+            ownerUid = "owner-a", siteId = "SITE-1", collector = "Collector", latitude = 40.0, longitude = -77.0,
+            accuracyMeters = 5.0, gpsState = GpsState.Good, testType = TestType.FieldInstrument,
+            method = "Method", instrument = "Instrument",
+            values = mapOf(MeasurementKind.Temperature to "20"),
+        )
+        // Every optional measurement is blank; submission still succeeds.
+        assertTrue(base.toCanonicalSnapshot("owner-a", "1.0.0").measurements.isEmpty())
+        // A populated optional measurement outside its hard range still throws.
+        assertThrows(IllegalArgumentException::class.java) {
+            base.copy(values = base.values + (MeasurementKind.Ph to "15")).toCanonicalSnapshot("owner-a", "1.0.0")
+        }
     }
 
     @Test

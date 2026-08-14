@@ -154,7 +154,7 @@ fun ObservationDraft.toCanonicalSnapshot(ownerUid: String, appVersion: String, s
     require(collector.isNotBlank()) { "Collector display name is required" }
     require(method.isNotBlank()) { "Measurement method is required" }
     require(instrument.isNotBlank()) { "Instrument or laboratory is required" }
-    require(profileMinimumComplete) { "Measurements do not meet the production validation profile" }
+    require(requiredComplete) { "Measurements do not meet the production validation profile" }
     attachments.forEach { attachment ->
         require(attachment.ownerUid == ownerUid && attachment.submissionId == submissionId && attachment.revisionId == revisionId) { "Attachment identity does not match this revision" }
         require(attachment.sizeBytes in 1..50L * 1024 * 1024) { "Attachment size is invalid" }

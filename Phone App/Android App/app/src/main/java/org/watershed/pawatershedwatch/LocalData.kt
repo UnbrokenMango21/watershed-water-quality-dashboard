@@ -257,7 +257,7 @@ abstract class WatershedDatabase : RoomDatabase() {
 
 class LocalStoreUnavailableException(cause: Throwable) : IllegalStateException("Local scientific records are unavailable; no data was deleted.", cause)
 
-class RoomMobileRepository(private val db: WatershedDatabase) : DraftRepository, ObservationRepository, AttachmentRepository {
+class RoomMobileRepository(private val db: WatershedDatabase) : DraftRepository, ObservationRepository {
     private val dao = db.dao()
 
     override suspend fun loadDraft(ownerUid: String): ObservationDraft? {
@@ -369,16 +369,6 @@ class RoomMobileRepository(private val db: WatershedDatabase) : DraftRepository,
         }
     }
 
-    override suspend fun add(draft: ObservationDraft, attachment: ObservationAttachment): ObservationDraft =
-        draft.copy(attachments = draft.attachments + attachment).also { saveDraft(it) }
-
-    override suspend fun remove(draft: ObservationDraft, attachmentId: AttachmentId): ObservationDraft {
-        val attachment = draft.attachments.firstOrNull { it.id == attachmentId }
-        val updated = draft.copy(attachments = draft.attachments.filterNot { it.id == attachmentId })
-        saveDraft(updated)
-        attachment?.localPath?.let { java.io.File(it) }?.takeIf { it.exists() }?.delete()
-        return updated
-    }
 }
 
 private fun DraftEntity.toDomain(measurements: List<LocalMeasurementEntity>, attachments: List<LocalAttachmentEntity>) = ObservationDraft(

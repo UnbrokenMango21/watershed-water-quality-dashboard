@@ -59,6 +59,7 @@ export async function applyReviewDecision({
   }
 
   const occurredAt = Timestamp.fromDate(asDate(now));
+  const reasonValue = reason != null && nonBlank(reason) ? reason.trim() : null;
   const submissionRef = db.collection('submissions').doc(submissionId);
   const auditId = `review-${expectedRevisionId}-${decision}`;
   const auditRef = submissionRef.collection('audit').doc(auditId);
@@ -70,10 +71,17 @@ export async function applyReviewDecision({
 
     const auditSnap = await tx.get(auditRef);
     if (auditSnap.exists) {
-      const alreadyApplied = submission.current_revision_id === expectedRevisionId
+      // A replay is idempotent ONLY when the full decision identity matches - not just
+      // the revision, resulting status and decision. A different reviewer, or the same
+      // reviewer retrying with a different reason, is a genuinely different request that
+      // happens to collide on the same audit id (same revision + same decision keyword)
+      // and must be rejected as a conflict, never silently accepted as "already done."
+      const identicalReplay = submission.current_revision_id === expectedRevisionId
         && submission.status === spec.nextStatus
-        && submission.review_decision === decision;
-      if (alreadyApplied) {
+        && submission.review_decision === decision
+        && submission.reviewer_user_id === reviewerUid
+        && (submission.review_comment ?? null) === reasonValue;
+      if (identicalReplay) {
         return {
           idempotent: true,
           submission_id: submissionId,
@@ -84,7 +92,7 @@ export async function applyReviewDecision({
         };
       }
       throw new ReviewConflictError(
-        `Review decision '${decision}' was already recorded for revision '${expectedRevisionId}', but current submission state no longer matches`,
+        `Review decision '${decision}' was already recorded for revision '${expectedRevisionId}' with a different reviewer, reason, or resulting state; this request is not an identical replay`,
       );
     }
 
@@ -98,7 +106,6 @@ export async function applyReviewDecision({
     }
 
     const previousStatus = submission.status;
-    const reasonValue = reason != null && nonBlank(reason) ? reason.trim() : null;
 
     tx.update(submissionRef, {
       status: spec.nextStatus,

@@ -5,6 +5,8 @@ on:
     paths:
       - 'Phone App/**'
       - 'mobile/**'
+      - 'web/**'
+      - 'review/**'
       - 'config/**'
       - 'firebase/**'
       - 'functions/**'
@@ -15,9 +17,12 @@ on:
   push:
     branches:
       - codex/mobile-production-integration-v1
+      - codex/qc-trusted-web-v1
     paths:
       - 'Phone App/**'
       - 'mobile/**'
+      - 'web/**'
+      - 'review/**'
       - 'config/**'
       - 'firebase/**'
       - 'functions/**'
@@ -63,6 +68,23 @@ jobs:
         run: npx firebase emulators:exec --project central-pa-watershed-dev --only firestore,functions "npm run test:trigger"
       - name: QC reviewer action and lifecycle integration
         run: npx firebase emulators:exec --project central-pa-watershed-dev --only firestore "npm run test:review"
+
+  web:
+    name: QC reviewer web app
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run build
 
   android:
     name: Android native
@@ -138,5 +160,24 @@ jobs:
           if [ -n "$tracked" ]; then
             echo "Unexpected generated or local files are tracked:"
             echo "$tracked"
+            exit 1
+          fi
+      - name: Media capture is deferred - production code must not reintroduce it
+        shell: bash
+        run: |
+          # Phase 11 interim decision (docs/DEFERRED_MEDIA_FEATURE.md): active camera/photo/
+          # audio capture is removed from the shipping apps until it is separately redesigned
+          # and tested. This only scans production source under src/main (iOS: the app target,
+          # excluding the test target) for concrete API usage - not docs, not test code, not
+          # generic English words - so it fails on a real reintroduction, not on prose.
+          ios_hits="$(git ls-files 'Phone App/iPhone App/PAWatershedWatch/PAWatershedWatch/*.swift' \
+            | xargs -I{} grep -lE 'AVAudioRecorder|AVCaptureSession|PHPickerViewController|PhotosPicker\(|UIImagePickerController|NSCameraUsageDescription|NSMicrophoneUsageDescription' {} 2>/dev/null || true)"
+          android_hits="$(git ls-files 'Phone App/Android App/app/src/main/**/*.kt' 'Phone App/Android App/app/src/main/**/*.xml' 'Phone App/Android App/app/src/main/AndroidManifest.xml' \
+            | xargs -I{} grep -lE 'MediaRecorder|androidx\.camera|PickVisualMedia|android\.permission\.CAMERA|android\.permission\.RECORD_AUDIO' {} 2>/dev/null || true)"
+          if [ -n "$ios_hits" ] || [ -n "$android_hits" ]; then
+            echo "Active camera/audio capture code was found in production source, but media capture is intentionally deferred for this phase (see docs/DEFERRED_MEDIA_FEATURE.md)."
+            echo "$ios_hits"
+            echo "$android_hits"
+            echo "If reintroducing media capture is an intentional, reviewed future-phase change, update this check accordingly."
             exit 1
           fi

@@ -195,10 +195,8 @@ fun ObservationDetailScreen(model: AppViewModel, recordId: String, onBack: () ->
                 KeyValueRow("Collected", formatDateTime(record.collectedAt))
                 KeyValueRow("Collector", record.collector)
             }
-            DetailSection("Notes and media") {
+            DetailSection("Notes") {
                 KeyValueRow("Notes", record.notes.ifBlank { "None" })
-                KeyValueRow("Photos", record.photoCount.toString())
-                KeyValueRow("Audio note", if (record.hasAudio) "Attached" else "None")
             }
             DetailSection("Revision history") {
                 record.revisions.asReversed().forEach { revision ->

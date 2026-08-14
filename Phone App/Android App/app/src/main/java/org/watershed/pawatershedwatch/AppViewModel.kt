@@ -1,7 +1,6 @@
 package org.watershed.pawatershedwatch
 
 import android.app.Application
-import android.net.Uri
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
@@ -23,7 +22,6 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     private val graph = (application as PAWatershedApplication).graph
     private val drafts: DraftRepository = graph.local
     private val observations: ObservationRepository = graph.local
-    private val attachments: AttachmentRepository = graph.local
     private val saveMutex = Mutex()
     private var account: AuthAccount? = null
     private var remoteListener: AutoCloseable? = null
@@ -172,66 +170,6 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         return true
     }
 
-    fun addAttachment(value: ObservationAttachment) {
-        val current = draft ?: return
-        viewModelScope.launch {
-            runCatching {
-                require(value.ownerUid == current.ownerUid && value.submissionId == current.submissionId && value.revisionId == current.revisionId)
-                require(value.sizeBytes in 1..MAX_ATTACHMENT_BYTES)
-                saveMutex.withLock { attachments.add(draft?.takeIf { it.revisionId == current.revisionId } ?: current, value) }
-            }.onSuccess { draft = it }
-                .onFailure { localStoreError = it.message }
-        }
-    }
-
-    fun importPhotos(uris: List<Uri>) {
-        val initial = draft ?: return
-        viewModelScope.launch(Dispatchers.IO) {
-            runCatching {
-                saveMutex.withLock {
-                    var current = draft?.takeIf { it.revisionId == initial.revisionId } ?: return@withLock
-                    uris.take((5 - current.photoCount).coerceAtLeast(0)).forEach { uri ->
-                        val contentType = requireNotNull(
-                            getApplication<Application>().contentResolver.getType(uri)
-                                ?.lowercase()
-                                ?.takeIf(ALLOWED_IMAGE_TYPES::contains),
-                        ) { "That image format is not supported. Choose a JPEG, PNG, or HEIC photo." }
-                        val prepared = prepareAttachment(current, contentType, AttachmentKind.SITE_PHOTO)
-                        try {
-                            getApplication<Application>().contentResolver.openInputStream(uri).use { input ->
-                                requireNotNull(input) { "The selected photo could not be opened" }
-                                File(prepared.localPath).outputStream().use { output -> input.copyBoundedTo(output, MAX_ATTACHMENT_BYTES) }
-                            }
-                            current = attachments.add(current, prepared.copy(sizeBytes = File(prepared.localPath).length()))
-                        } catch (error: Exception) {
-                            File(prepared.localPath).delete()
-                            throw error
-                        }
-                    }
-                    withContext(Dispatchers.Main) { draft = current }
-                }
-            }.onFailure { withContext(Dispatchers.Main) { localStoreError = it.message } }
-        }
-    }
-
-    fun prepareCameraPhoto(): ObservationAttachment? = draft?.let { prepareAttachment(it, "image/jpeg", AttachmentKind.SITE_PHOTO) }
-
-    fun prepareAudioNote(): ObservationAttachment? = draft?.let { prepareAttachment(it, "audio/mp4", AttachmentKind.OTHER) }
-
-    fun completePreparedAttachment(value: ObservationAttachment) {
-        val size = File(value.localPath).length()
-        if (size !in 1..MAX_ATTACHMENT_BYTES) {
-            discardPreparedAttachment(value)
-            localStoreError = "The attachment is empty or larger than 50 MB."
-            return
-        }
-        addAttachment(value.copy(sizeBytes = size))
-    }
-
-    fun discardPreparedAttachment(value: ObservationAttachment?) {
-        value?.localPath?.let(::File)?.delete()
-    }
-
     fun reviewIssues(): List<ReviewIssue> {
         val current = draft ?: return listOf(ReviewIssue("Start an observation", WorkflowStep.Site))
         return buildList {
@@ -245,9 +183,6 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             if (current.method.isBlank()) issue("Enter a collection or measurement method", WorkflowStep.TestMethod)
             if (current.instrument.isBlank()) issue("Enter an instrument or laboratory", WorkflowStep.TestMethod)
             current.requiredMeasurements.filterNot(current::isComplete).forEach { issue("Enter ${it.title}", WorkflowStep.Measurements, it) }
-            if (!current.profileMinimumComplete && current.requiredComplete) {
-                issue("Enter at least one measured result for this test type", WorkflowStep.Measurements)
-            }
             current.values.forEach { (kind, value) ->
                 if (ProductionMeasurementCatalog.spec(kind).support != ProductionSupport.FULLY_SUPPORTED && value.isNotBlank()) {
                     issue("${kind.title} is not enabled for production submission", WorkflowStep.Measurements, kind)
@@ -438,7 +373,6 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     private companion object {
         const val MAX_ATTACHMENT_BYTES = 50L * 1024 * 1024
-        val ALLOWED_IMAGE_TYPES = setOf("image/jpeg", "image/png", "image/heic")
     }
 }
 

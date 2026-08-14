@@ -3,11 +3,8 @@ package org.watershed.pawatershedwatch
 import android.Manifest
 import android.app.DatePickerDialog
 import android.app.TimePickerDialog
-import android.media.MediaRecorder
-import android.os.Build
 import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -34,21 +31,15 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowForward
-import androidx.compose.material.icons.rounded.AddAPhoto
 import androidx.compose.material.icons.rounded.CalendarMonth
-import androidx.compose.material.icons.rounded.CameraAlt
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.ErrorOutline
-import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material.icons.rounded.LocationOff
 import androidx.compose.material.icons.rounded.LocationOn
-import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.MyLocation
 import androidx.compose.material.icons.rounded.Schedule
 import androidx.compose.material.icons.rounded.Science
-import androidx.compose.material.icons.rounded.StopCircle
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
@@ -63,7 +54,6 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -82,8 +72,6 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
-import androidx.core.content.FileProvider
-import java.io.File
 import java.util.Locale
 
 @Composable
@@ -332,10 +320,7 @@ fun MeasurementsScreen(model: AppViewModel, onBack: () -> Unit, onNext: () -> Un
     val required = draft.requiredMeasurements
     val optional = draft.optionalMeasurements
     val invalid = draft.values.any { (kind, value) -> measurementError(kind, value, draft.selectedUnit(kind)) != null }
-    // The Review screen enforces the test-type profile minimum, so this screen has to enforce it too;
-    // otherwise the requirement stays hidden until three screens later.
-    val canContinue = draft.requiredComplete && draft.profileMinimumComplete && !invalid
-    val needsResult = draft.requiresAdditionalResult && !draft.hasAdditionalResult
+    val canContinue = draft.requiredComplete && !invalid
     val ordered = remember(required, optional) { required + optional }
     val focusChain = rememberMeasurementFocusChain(ordered)
     val listState = rememberLazyListState()
@@ -362,7 +347,7 @@ fun MeasurementsScreen(model: AppViewModel, onBack: () -> Unit, onNext: () -> Un
 
     Scaffold(
         topBar = { FieldTopBar("Measurements", onBack) },
-        bottomBar = { WorkflowFooter(4, "Notes and Media", canContinue) { model.setStep(5); onNext() } },
+        bottomBar = { WorkflowFooter(4, "Notes", canContinue) { model.setStep(5); onNext() } },
     ) { padding ->
         LazyColumn(
             state = listState,
@@ -374,8 +359,7 @@ fun MeasurementsScreen(model: AppViewModel, onBack: () -> Unit, onNext: () -> Un
                 ScreenIntro(
                     "Step 4",
                     "Enter readings",
-                    "${draft.completedRequiredCount} of ${required.size} required complete" +
-                        if (needsResult) " · 1 more result needed below" else " · tap any unit to change it",
+                    "${draft.completedRequiredCount} of ${required.size} required complete · tap any unit to change it",
                 )
             }
             item { SectionHeading("Required Measurements", "Complete these for ${draft.testType?.label ?: "this test"}") }
@@ -395,19 +379,7 @@ fun MeasurementsScreen(model: AppViewModel, onBack: () -> Unit, onNext: () -> Un
                     onUnitChange = { unit, clear -> model.changeUnit(kind, unit, clear) },
                 )
             }
-            item {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    SectionHeading("Optional Measurements", "Always available when the field protocol calls for them")
-                    if (needsResult) {
-                        StatusPanel(
-                            "One result is still required",
-                            "At least one result below is required for ${draft.testType?.label ?: "this test type"}. Water temperature alone is not enough.",
-                            Goldenrod,
-                            Icons.Rounded.ErrorOutline,
-                        )
-                    }
-                }
-            }
+            item { SectionHeading("Optional Measurements", "Always available when the field protocol calls for them") }
             items(optional, key = { "optional-${it.name}" }) { kind ->
                 MeasurementEntry(
                     draft,
@@ -426,80 +398,10 @@ fun MeasurementsScreen(model: AppViewModel, onBack: () -> Unit, onNext: () -> Un
 }
 
 @Composable
-fun NotesMediaScreen(model: AppViewModel, onBack: () -> Unit, onNext: () -> Unit) {
+fun NotesScreen(model: AppViewModel, onBack: () -> Unit, onNext: () -> Unit) {
     val draft = model.draft ?: return
-    val context = LocalContext.current
-    var permissionMessage by remember { mutableStateOf<String?>(null) }
-    var pendingCamera by remember { mutableStateOf<ObservationAttachment?>(null) }
-    var pendingAudio by remember { mutableStateOf<ObservationAttachment?>(null) }
-    var recorder by remember { mutableStateOf<MediaRecorder?>(null) }
-    val photoPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(5)) { uris ->
-        if (uris.isNotEmpty()) model.importPhotos(uris)
-    }
-    val camera = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { captured ->
-        val attachment = pendingCamera
-        pendingCamera = null
-        if (captured && attachment != null) model.completePreparedAttachment(attachment)
-        else model.discardPreparedAttachment(attachment)
-    }
-    val launchCamera = {
-        model.prepareCameraPhoto()?.let { attachment ->
-            pendingCamera = attachment
-            camera.launch(FileProvider.getUriForFile(context, "${context.packageName}.files", File(attachment.localPath)))
-        }
-    }
-    val cameraPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        if (granted) launchCamera() else permissionMessage = "Allow camera access in Settings to take a field photo. You can still choose existing photos without this permission."
-    }
-    val startRecording = {
-        val attachment = model.prepareAudioNote()
-        if (attachment != null) {
-            try {
-                @Suppress("DEPRECATION")
-                val active = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) MediaRecorder(context) else MediaRecorder()
-                active.setAudioSource(MediaRecorder.AudioSource.MIC)
-                active.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
-                active.setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
-                active.setAudioSamplingRate(44_100)
-                active.setAudioEncodingBitRate(128_000)
-                active.setOutputFile(attachment.localPath)
-                active.prepare()
-                active.start()
-                pendingAudio = attachment
-                recorder = active
-            } catch (_: Exception) {
-                model.discardPreparedAttachment(attachment)
-                permissionMessage = "The audio note could not start. Check microphone access and available storage."
-            }
-        }
-    }
-    val micPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        if (granted) startRecording() else permissionMessage = "Allow microphone access in Settings to record an audio field note."
-    }
-    val stopRecording = {
-        val active = recorder
-        val attachment = pendingAudio
-        recorder = null
-        pendingAudio = null
-        try {
-            active?.stop()
-            active?.release()
-            if (attachment != null) model.completePreparedAttachment(attachment)
-        } catch (_: Exception) {
-            active?.release()
-            model.discardPreparedAttachment(attachment)
-            permissionMessage = "The audio note was too short or could not be saved. Please record it again."
-        }
-    }
-    DisposableEffect(Unit) {
-        onDispose {
-            recorder?.release()
-            model.discardPreparedAttachment(pendingCamera)
-            model.discardPreparedAttachment(pendingAudio)
-        }
-    }
     Scaffold(
-        topBar = { FieldTopBar("Notes and Media", onBack) },
+        topBar = { FieldTopBar("Notes", onBack) },
         bottomBar = { WorkflowFooter(5, "Review Observation") { model.setStep(6); onNext() } },
     ) { padding ->
         Column(
@@ -516,68 +418,8 @@ fun NotesMediaScreen(model: AppViewModel, onBack: () -> Unit, onNext: () -> Unit
                 minLines = 5,
                 shape = RoundedCornerShape(16.dp),
             )
-            SectionHeading("Photos", if (draft.photoCount == 0) "Optional" else "${draft.photoCount} attached")
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                OutlinedButton(
-                    onClick = { photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
-                    modifier = Modifier.weight(1f).height(56.dp),
-                ) {
-                    Icon(Icons.Rounded.Image, contentDescription = null)
-                    Spacer(Modifier.width(8.dp))
-                    Text("Choose Photos")
-                }
-                OutlinedButton(
-                    onClick = {
-                        if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) launchCamera()
-                        else cameraPermission.launch(Manifest.permission.CAMERA)
-                    },
-                    modifier = Modifier.weight(1f).height(56.dp),
-                ) {
-                    Icon(Icons.Rounded.CameraAlt, contentDescription = null)
-                    Spacer(Modifier.width(8.dp))
-                    Text("Take Photo")
-                }
-            }
-            if (draft.photoCount > 0) {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    repeat(draft.photoCount.coerceAtMost(4)) {
-                        Box(Modifier.size(66.dp).background(MaterialTheme.colorScheme.secondaryContainer, RoundedCornerShape(12.dp)), contentAlignment = Alignment.Center) {
-                            Icon(Icons.Rounded.Image, contentDescription = "Field photo ${it + 1}", tint = MaterialTheme.colorScheme.secondary)
-                        }
-                    }
-                }
-            }
-            SectionHeading("Audio note", "Optional · one recording")
-            when {
-                recorder != null -> Button(onClick = stopRecording, modifier = Modifier.fillMaxWidth().height(56.dp)) {
-                    Icon(Icons.Rounded.StopCircle, contentDescription = null)
-                    Spacer(Modifier.width(8.dp))
-                    Text("Stop and Save Recording")
-                }
-                draft.hasAudio -> StatusPanel("Audio note saved", "The recording is stored with this local draft.", Fern, Icons.Rounded.Mic)
-                else -> OutlinedButton(
-                    onClick = {
-                        if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) startRecording()
-                        else micPermission.launch(Manifest.permission.RECORD_AUDIO)
-                    },
-                    modifier = Modifier.fillMaxWidth().height(56.dp),
-                ) {
-                    Icon(Icons.Rounded.Mic, contentDescription = null)
-                    Spacer(Modifier.width(8.dp))
-                    Text("Record Audio Note")
-                }
-            }
             Spacer(Modifier.height(120.dp))
         }
-    }
-    permissionMessage?.let { message ->
-        AlertDialog(
-            onDismissRequest = { permissionMessage = null },
-            title = { Text("Permission needed") },
-            text = { Text(message) },
-            confirmButton = { TextButton(onClick = { permissionMessage = null; openAppSettings(context) }) { Text("Open Settings") } },
-            dismissButton = { TextButton(onClick = { permissionMessage = null }) { Text("Not Now") } },
-        )
     }
 }
 
@@ -627,10 +469,8 @@ fun ReviewScreen(model: AppViewModel, onBack: () -> Unit, onFix: (ReviewIssue) -
                 }
                 if (draft.values.values.none { it.isNotBlank() }) Text("No measurements entered", color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            ReviewSection("Notes and media") {
+            ReviewSection("Notes") {
                 KeyValueRow("Field notes", draft.notes.ifBlank { "None" })
-                KeyValueRow("Photos", draft.photoCount.toString())
-                KeyValueRow("Audio note", if (draft.hasAudio) "Attached" else "None")
             }
             Spacer(Modifier.height(120.dp))
         }

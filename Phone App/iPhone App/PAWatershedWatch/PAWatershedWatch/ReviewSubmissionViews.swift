@@ -56,10 +56,8 @@ struct ReviewContent: View {
                         KeyValueRow(label: "Collector", value: draft.collector)
                     }
                 }
-                ReviewSummarySection(title: "Notes and Media", edit: { model.homePath.append(.media) }) {
+                ReviewSummarySection(title: "Notes", edit: { model.homePath.append(.media) }) {
                     KeyValueRow(label: "Notes", value: draft.notes.isEmpty ? "None" : draft.notes)
-                    KeyValueRow(label: "Photos", value: "\(draft.photoCount)")
-                    KeyValueRow(label: "Audio Note", value: draft.hasAudio ? "Recorded" : "None")
                 }
             }
             .padding(.horizontal, FieldTheme.m)

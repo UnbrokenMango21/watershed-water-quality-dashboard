@@ -1,8 +1,6 @@
-import AVFoundation
 import CryptoKit
 @preconcurrency import FirebaseAuth
 @preconcurrency import FirebaseFirestore
-@preconcurrency import FirebaseStorage
 import Foundation
 import SwiftData
 
@@ -155,7 +153,7 @@ extension ObservationDraft {
     }
 
     /// Why this entry cannot be recorded, or nil when it is blank or acceptable. Blank is never a problem
-    /// here — requiredness is reported by `productionProfileComplete`. Shared by the inline field error on
+    /// here — requiredness is reported by `requiredMeasurements`. Shared by the inline field error on
     /// the Measurements screen and by `canonicalSnapshot()`, so both say exactly the same thing.
     func measurementProblem(for kind: MeasurementKind) -> String? {
         let raw = values[kind, default: ""].trimmingCharacters(in: .whitespacesAndNewlines)
@@ -197,12 +195,8 @@ extension ObservationDraft {
         }
         guard let enteredTemperature = Double(values[.temperature, default: ""]), enteredTemperature.isFinite
         else { throw CanonicalizationError.invalid("\(String(localized: MeasurementKind.temperature.title)) is required.", section: .measurements, measurement: .temperature) }
-        guard productionProfileComplete else {
-            let missing = firstIncompleteRequirement
-            let message = missing.map { "\(String(localized: $0.title)) is required." }
-                ?? "Enter at least one measurement result in addition to temperature. This test type requires it."
-            throw CanonicalizationError.invalid(message, section: .measurements, measurement: missing)
-        }
+        // Water Temperature is `requiredMeasurements`' only entry, and it is already confirmed present
+        // above, so there is no further "profile minimum" to check here.
         let temperatureUnit = selectedUnit(for: .temperature)
         let tempC = temperatureUnit.convert(enteredTemperature, to: .celsius)
         let tempF = MeasurementUnit.celsius.convert(tempC, to: .fahrenheit)
@@ -448,7 +442,6 @@ private struct DraftPayload: Codable {
     func snapshot(ownerUID: String, submissionID: UUID) throws -> CanonicalSnapshot?
     func loadRecords(ownerUID: String) throws -> [ObservationRecord]
     func deleteDraft(ownerUID: String, submissionID: UUID) throws
-    func updateAttachment(ownerUID: String, attachmentID: UUID, state: AttachmentTransferState, remotePath: String?, error: String?) throws
     func updateRemoteState(ownerUID: String, submissionID: UUID, workflow: WorkflowState, sync: SyncState, correctionReason: String?, validation: ValidationSummary?, flags: [ValidationFlag]) throws
     func queue(ownerUID: String) throws -> [LocalSyncQueueEntity]
     func markQueue(_ item: LocalSyncQueueEntity, state: String, error: String?) throws
@@ -608,13 +601,6 @@ private struct DraftPayload: Codable {
         try context.save()
     }
 
-    func updateAttachment(ownerUID: String, attachmentID: UUID, state: AttachmentTransferState, remotePath: String? = nil, error: String? = nil) throws {
-        let key = attachmentID.uuidString.lowercased()
-        guard let value = try context.fetch(FetchDescriptor<LocalAttachmentEntity>()).first(where: { $0.ownerUID == ownerUID && $0.attachmentID == key }) else { return }
-        value.transferState = state.rawValue; value.remoteStoragePath = remotePath; value.lastError = error
-        try context.save()
-    }
-
     func updateRemoteState(ownerUID: String, submissionID: UUID, workflow: WorkflowState, sync: SyncState, correctionReason: String?, validation: ValidationSummary?, flags: [ValidationFlag]) throws {
         let key = submissionID.uuidString.lowercased()
         guard let observation = try context.fetch(FetchDescriptor<LocalObservationEntity>()).first(where: { $0.ownerUID == ownerUID && $0.submissionID == key }) else { return }
@@ -642,30 +628,16 @@ private struct DraftPayload: Codable {
     }
 }
 
-/// The scientific record reached the archive but some media did not. This never reports a failed
-/// submission: the workflow the server acknowledged travels with it so callers can record the truth.
-struct AttachmentSyncFailure: LocalizedError {
-    let workflow: WorkflowState
-    let count: Int
-
-    var errorDescription: String? {
-        count == 1
-            ? "The observation reached the archive. One attachment could not be sent and stays on this phone."
-            : "The observation reached the archive. \(count) attachments could not be sent and stay on this phone."
-    }
-}
-
 @MainActor protocol RemoteMobileRepository: AnyObject {
     func signIn(email: String, password: String) async throws -> User
     func signOut() throws
     func fetchSites() async throws -> [Site]
-    func sync(_ snapshot: CanonicalSnapshot, onAttachmentTransfer: @escaping @MainActor (UUID, AttachmentTransferState, String?, String?) -> Void) async throws -> WorkflowState
+    func sync(_ snapshot: CanonicalSnapshot) async throws -> WorkflowState
     func listen(ownerUID: String, onChange: @escaping @MainActor (UUID, WorkflowState, String?, ValidationSummary?, [ValidationFlag]) -> Void) -> ListenerRegistration
 }
 
 @MainActor final class FirebaseMobileService: RemoteMobileRepository {
     private let firestore = Firestore.firestore()
-    private let storage = Storage.storage()
 
     func signIn(email: String, password: String) async throws -> User { try await Auth.auth().signIn(withEmail: email.trimmingCharacters(in: .whitespacesAndNewlines), password: password).user }
     func signOut() throws { try Auth.auth().signOut() }
@@ -684,10 +656,11 @@ struct AttachmentSyncFailure: LocalizedError {
         }
     }
 
-    func sync(
-        _ snapshot: CanonicalSnapshot,
-        onAttachmentTransfer: @escaping @MainActor (UUID, AttachmentTransferState, String?, String?) -> Void = { _, _, _, _ in }
-    ) async throws -> WorkflowState {
+    /// Media capture is deferred for this release, so `snapshot.attachments` is always empty for a new
+    /// submission and there is nothing here to upload to Storage — that dependency is intentionally not
+    /// linked. A back-compat `attachments` subcollection may still exist from historical data, but this
+    /// path never writes to it.
+    func sync(_ snapshot: CanonicalSnapshot) async throws -> WorkflowState {
         guard Auth.auth().currentUser?.uid == snapshot.ownerUID else { throw CanonicalizationError.invalid("Authenticated account does not own this record") }
         let submission = firestore.collection("submissions").document(snapshot.submissionID.uuidString.lowercased())
         let revision = submission.collection("revisions").document(snapshot.revisionID.uuidString.lowercased())
@@ -706,7 +679,6 @@ struct AttachmentSyncFailure: LocalizedError {
         let existingRevision = try await revision.getDocument(source: .server)
         let revisionStatus = existingRevision.get("revision_status") as? String
         if !existingRevision.exists { try await revision.setData(FirebaseMapper.revision(snapshot, status: "DRAFT")) }
-        var failedAttachments = 0
         if revisionStatus != "SUBMITTED" {
             guard revisionStatus == nil || revisionStatus == "DRAFT" else { throw CanonicalizationError.invalid("Remote revision is immutable") }
             for measurement in snapshot.measurements {
@@ -715,17 +687,6 @@ struct AttachmentSyncFailure: LocalizedError {
             let remoteMeasurements = try await revision.collection("measurements").getDocuments(source: .server)
             guard Set(remoteMeasurements.documents.map(\.documentID)) == Set(snapshot.measurements.map { $0.id.uuidString.lowercased() })
             else { throw CanonicalizationError.invalid("Server draft is incomplete") }
-            // Media is best effort and each attachment is isolated. Storage and Firestore rules only accept
-            // attachments while this revision is still DRAFT, so the loop has to run before the transition
-            // below, but a failure here is recorded against that one attachment and never blocks the
-            // scientific record from committing. Local files are always kept.
-            for attachment in snapshot.attachments {
-                do { try await upload(attachment, snapshot: snapshot, revision: revision, onAttachmentTransfer: onAttachmentTransfer) }
-                catch {
-                    failedAttachments += 1
-                    onAttachmentTransfer(attachment.id, .failed, nil, error.localizedDescription)
-                }
-            }
             try await revision.updateData(["revision_status": "SUBMITTED", "submitted_at": FieldValue.serverTimestamp()])
         }
         let target = snapshot.correction ? "RESUBMITTED" : "SUBMITTED"
@@ -735,34 +696,7 @@ struct AttachmentSyncFailure: LocalizedError {
         ])
         let acknowledgement = try await submission.getDocument(source: .server)
         guard let status = acknowledgement.get("status") as? String, Self.acknowledged.contains(status), let workflow = WorkflowState.backend(status) else { throw CanonicalizationError.invalid("Server did not acknowledge submission") }
-        guard failedAttachments == 0 else { throw AttachmentSyncFailure(workflow: workflow, count: failedAttachments) }
         return workflow
-    }
-
-    /// Uploads one attachment and writes its metadata document. Retry and idempotency behaviour is
-    /// unchanged: an object that already matches is reused, and a missing object is uploaded.
-    private func upload(
-        _ attachment: AttachmentRecord,
-        snapshot: CanonicalSnapshot,
-        revision: DocumentReference,
-        onAttachmentTransfer: @MainActor (UUID, AttachmentTransferState, String?, String?) -> Void
-    ) async throws {
-        let path = storagePath(attachment, snapshot: snapshot)
-        let reference = storage.reference(withPath: path)
-        onAttachmentTransfer(attachment.id, .uploading, nil, nil)
-        let expected = ["ownerUid": snapshot.ownerUID, "submissionId": snapshot.submissionID.uuidString.lowercased(), "revisionId": snapshot.revisionID.uuidString.lowercased(), "attachmentId": attachment.id.uuidString.lowercased()]
-        do {
-            let remote = try await reference.getMetadata()
-            guard remote.customMetadata == expected, remote.contentType == attachment.contentType, remote.size == attachment.sizeBytes
-            else { throw CanonicalizationError.invalid("Remote attachment identity does not match the queued file") }
-        } catch where StorageErrorCode(rawValue: (error as NSError).code) == .objectNotFound {
-            let attributes = try FileManager.default.attributesOfItem(atPath: attachment.localURL.path)
-            guard (attributes[.size] as? NSNumber)?.int64Value == attachment.sizeBytes else { throw CanonicalizationError.invalid("An attachment file is missing or changed") }
-            let metadata = StorageMetadata(); metadata.contentType = attachment.contentType; metadata.customMetadata = expected
-            _ = try await reference.putFileAsync(from: attachment.localURL, metadata: metadata)
-        }
-        try await revision.collection("attachments").document(attachment.id.uuidString.lowercased()).setData(FirebaseMapper.attachment(attachment, in: snapshot, storagePath: path))
-        onAttachmentTransfer(attachment.id, .uploaded, path, nil)
     }
 
     func listen(ownerUID: String, onChange: @escaping @MainActor (UUID, WorkflowState, String?, ValidationSummary?, [ValidationFlag]) -> Void) -> ListenerRegistration {
@@ -792,11 +726,6 @@ struct AttachmentSyncFailure: LocalizedError {
         }
     }
 
-    private func storagePath(_ attachment: AttachmentRecord, snapshot: CanonicalSnapshot) -> String {
-        let ext = switch attachment.contentType { case "image/jpeg": "jpg"; case "image/png": "png"; case "image/heic": "heic"; case "application/pdf": "pdf"; default: "m4a" }
-        return "users/\(snapshot.ownerUID)/submissions/\(snapshot.submissionID.uuidString.lowercased())/revisions/\(snapshot.revisionID.uuidString.lowercased())/\(attachment.id.uuidString.lowercased()).\(ext)"
-    }
-
     private static let acknowledged: Set<String> = ["SUBMITTED", "VALIDATING", "PENDING_REVIEW", "NEEDS_CORRECTION", "RESUBMITTED", "APPROVED", "REJECTED", "PUBLISHING", "PUBLISH_FAILED", "PUBLISHED"]
 }
 
@@ -808,36 +737,4 @@ extension WorkflowState {
         case "PUBLISHING": .publishing; case "PUBLISH_FAILED": .publishFailed; case "PUBLISHED": .published; default: nil
         }
     }
-}
-
-@MainActor final class AudioNoteRecorder {
-    private var recorder: AVAudioRecorder?
-    private(set) var attachment: AttachmentRecord?
-    func start(for draft: ObservationDraft) throws {
-        guard recorder == nil else { throw CanonicalizationError.invalid("An audio note is already recording") }
-        let session = AVAudioSession.sharedInstance()
-        try session.setCategory(.record, mode: .spokenAudio)
-        try session.setActive(true)
-        let id = UUID(), url = try attachmentURL(revisionID: draft.revisionID, id: id, extension: "m4a")
-        recorder = try AVAudioRecorder(url: url, settings: [
-            AVFormatIDKey: Int(kAudioFormatMPEG4AAC), AVSampleRateKey: 44_100, AVNumberOfChannelsKey: 1, AVEncoderBitRateKey: 128_000,
-        ])
-        guard recorder?.record() == true else { throw CanonicalizationError.invalid("Audio recording could not start") }
-        attachment = AttachmentRecord(id: id, ownerUID: draft.ownerUID, submissionID: draft.id, revisionID: draft.revisionID, localURL: url, contentType: "audio/mp4", sizeBytes: 0, kind: .other, createdAt: .now, transferState: .localOnly)
-    }
-    func stop() throws -> AttachmentRecord {
-        recorder?.stop(); recorder = nil
-        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
-        guard let value = attachment else { throw CanonicalizationError.invalid("No audio note is recording") }
-        let size = try FileManager.default.attributesOfItem(atPath: value.localURL.path)[.size] as? NSNumber
-        guard let count = size?.int64Value, count > 0, count <= 50 * 1024 * 1024 else { throw CanonicalizationError.invalid("The audio note is empty or larger than 50 MB") }
-        attachment = nil
-        return AttachmentRecord(id: value.id, ownerUID: value.ownerUID, submissionID: value.submissionID, revisionID: value.revisionID, localURL: value.localURL, contentType: value.contentType, sizeBytes: count, kind: value.kind, caption: value.caption, createdAt: value.createdAt, transferState: .localOnly)
-    }
-}
-
-func attachmentURL(revisionID: UUID, id: UUID, extension ext: String) throws -> URL {
-    let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appending(path: "Attachments/\(revisionID.uuidString.lowercased())", directoryHint: .isDirectory)
-    try FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
-    return base.appending(path: "\(id.uuidString.lowercased()).\(ext)")
 }

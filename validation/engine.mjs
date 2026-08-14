@@ -182,7 +182,7 @@ function validateCompleteness(revision, measurements, rules, flags) {
   const mMap = parameterMap(measurements);
   const profile = rules.testTypeProfiles?.[revision?.test_type]
     || rules.testTypeProfiles?.Other
-    || { requiredMeasurements: [], minimumMeasurementCount: 1 };
+    || { requiredMeasurements: [], minimumMeasurementCount: 0 };
 
   for (const code of profile.requiredMeasurements || []) {
     requiredTotal += 1;

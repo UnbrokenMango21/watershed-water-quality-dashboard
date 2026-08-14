@@ -21,7 +21,6 @@
 		AA0000000000000000000021 /* FirebaseCore in Frameworks */ = {isa = PBXBuildFile; productRef = AA0000000000000000000011 /* FirebaseCore */; };
 		AA0000000000000000000022 /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = AA0000000000000000000012 /* FirebaseAuth */; };
 		AA0000000000000000000023 /* FirebaseFirestore in Frameworks */ = {isa = PBXBuildFile; productRef = AA0000000000000000000013 /* FirebaseFirestore */; };
-		AA0000000000000000000024 /* FirebaseStorage in Frameworks */ = {isa = PBXBuildFile; productRef = AA0000000000000000000014 /* FirebaseStorage */; };
 		AA0000000000000000000025 /* FirebaseAppCheck in Frameworks */ = {isa = PBXBuildFile; productRef = AA0000000000000000000015 /* FirebaseAppCheck */; };
 /* End PBXBuildFile section */
 
@@ -67,7 +66,6 @@
 				AA0000000000000000000021 /* FirebaseCore in Frameworks */,
 				AA0000000000000000000022 /* FirebaseAuth in Frameworks */,
 				AA0000000000000000000023 /* FirebaseFirestore in Frameworks */,
-				AA0000000000000000000024 /* FirebaseStorage in Frameworks */,
 				AA0000000000000000000025 /* FirebaseAppCheck in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -157,7 +155,6 @@
 				AA0000000000000000000011 /* FirebaseCore */,
 				AA0000000000000000000012 /* FirebaseAuth */,
 				AA0000000000000000000013 /* FirebaseFirestore */,
-				AA0000000000000000000014 /* FirebaseStorage */,
 				AA0000000000000000000015 /* FirebaseAppCheck */,
 			);
 			productName = PAWatershedWatch;
@@ -336,9 +333,7 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "PA Watershed Watch";
-				INFOPLIST_KEY_NSCameraUsageDescription = "Attach photographs of sampling sites and field conditions to an observation.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Capture the sampling position and GPS accuracy for a field observation.";
-				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Record optional audio notes while collecting a field observation.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -460,9 +455,7 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "PA Watershed Watch";
-				INFOPLIST_KEY_NSCameraUsageDescription = "Attach photographs of sampling sites and field conditions to an observation.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Capture the sampling position and GPS accuracy for a field observation.";
-				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Record optional audio notes while collecting a field observation.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -526,7 +519,6 @@
 		AA0000000000000000000011 /* FirebaseCore */ = {isa = XCSwiftPackageProductDependency; package = AA0000000000000000000010 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */; productName = FirebaseCore; };
 		AA0000000000000000000012 /* FirebaseAuth */ = {isa = XCSwiftPackageProductDependency; package = AA0000000000000000000010 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */; productName = FirebaseAuth; };
 		AA0000000000000000000013 /* FirebaseFirestore */ = {isa = XCSwiftPackageProductDependency; package = AA0000000000000000000010 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */; productName = FirebaseFirestore; };
-		AA0000000000000000000014 /* FirebaseStorage */ = {isa = XCSwiftPackageProductDependency; package = AA0000000000000000000010 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */; productName = FirebaseStorage; };
 		AA0000000000000000000015 /* FirebaseAppCheck */ = {isa = XCSwiftPackageProductDependency; package = AA0000000000000000000010 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */; productName = FirebaseAppCheck; };
 /* End XCSwiftPackageProductDependency section */
 	};

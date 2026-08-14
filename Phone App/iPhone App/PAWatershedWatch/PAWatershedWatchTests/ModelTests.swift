@@ -33,7 +33,8 @@ final class ModelTests: XCTestCase {
     func testNumericBoundaryDistinguishesBlankZeroLocaleAndNegativeORP() throws {
         let draft = completeDraft()
         draft[valueFor: .ph] = ""
-        XCTAssertThrowsError(try draft.canonicalSnapshot())
+        // pH is optional for every test type — a blank optional measurement never blocks submission.
+        XCTAssertNoThrow(try draft.canonicalSnapshot())
         draft[valueFor: .ph] = "0"
         draft[valueFor: .orp] = "-.5"
         let snapshot = try draft.canonicalSnapshot()
@@ -223,6 +224,66 @@ final class ModelTests: XCTestCase {
         XCTAssertEqual(snapshots[0].measurements.first { $0.parameterCode == "DO_MG_L" }?.value, 9)
         XCTAssertEqual(snapshots[1].measurements.first { $0.parameterCode == "DO_MG_L" }?.value, 9.1)
         XCTAssertTrue(try store.loadRecords(ownerUID: "collector-b").isEmpty)
+    }
+
+    /// Water Temperature is the only required measurement, for every test type, without exception —
+    /// see docs/PHASE_11_SUPERVISOR_DECISIONS.md. This supersedes the prior session's four-measurement
+    /// requirement for "In-situ / Field Instrument", "Continuous Sensor / Sonde", and "Mixed In-situ +
+    /// Lab", and the hidden "one more result" minimum for every other test type.
+    @MainActor
+    func testRequiredMeasurementsIsTemperatureOnlyForEveryTestType() {
+        for testType in TestType.allCases {
+            let draft = ObservationDraft()
+            draft.testType = testType
+            XCTAssertEqual(draft.requiredMeasurements, [.temperature], "\(testType.contractValue) must require only Water Temperature")
+            XCTAssertEqual(Set(draft.optionalMeasurements), Set(MeasurementKind.allCases.filter { $0 != .temperature }))
+        }
+    }
+
+    /// A draft with only temperature filled must pass for every test type — including "In-situ / Field
+    /// Instrument", which previously also required pH, Dissolved Oxygen, and Conductivity.
+    @MainActor
+    func testTemperatureOnlyDraftPassesCanonicalSnapshotForEveryTestType() throws {
+        for testType in TestType.allCases {
+            let draft = temperatureOnlyDraft(testType: testType)
+            XCTAssertNoThrow(try draft.canonicalSnapshot(), "\(testType.contractValue) should pass with only Water Temperature filled")
+        }
+    }
+
+    @MainActor
+    func testBlankOptionalMeasurementsNeverBlockSubmission() throws {
+        let draft = temperatureOnlyDraft(testType: .fieldInstrument)
+        for kind in draft.optionalMeasurements where kind.productionSpec.support == .fullySupported {
+            XCTAssertEqual(draft[valueFor: kind], "")
+        }
+        XCTAssertNoThrow(try draft.canonicalSnapshot())
+    }
+
+    @MainActor
+    func testOutOfRangeOptionalMeasurementStillThrows() {
+        let draft = temperatureOnlyDraft(testType: .fieldInstrument)
+        draft[valueFor: .ph] = "15"
+        XCTAssertThrowsError(try draft.canonicalSnapshot())
+        draft[valueFor: .ph] = ""
+        draft[valueFor: .dissolvedOxygen] = "-1"
+        XCTAssertThrowsError(try draft.canonicalSnapshot())
+    }
+
+    /// A minimal valid draft with Water Temperature as the only measurement filled in — the shape every
+    /// test type must now accept.
+    @MainActor
+    private func temperatureOnlyDraft(testType: TestType) -> ObservationDraft {
+        let draft = ObservationDraft(ownerUID: "collector-a")
+        draft.site = Site(id: "SITE-TEST-001", name: "Spring Creek at Houserville Road Bridge", county: "Centre County", watershed: "Spring Creek", latitude: 40.79, longitude: -77.86, cached: true, distance: "")
+        draft.date = Date(timeIntervalSince1970: 1_754_684_200)
+        draft.collector = "Maya Chen"
+        draft.latitude = 40.7934; draft.longitude = -77.86; draft.accuracyMeters = 4.2; draft.gpsState = .good
+        draft.testType = testType
+        if testType == .other { draft.testTypeOther = "Custom protocol" }
+        draft.method = testType.suggestedMethod
+        draft.instrument = testType.suggestedInstrument.isEmpty ? "Field notebook" : testType.suggestedInstrument
+        draft[valueFor: .temperature] = "20"
+        return draft
     }
 
     @MainActor

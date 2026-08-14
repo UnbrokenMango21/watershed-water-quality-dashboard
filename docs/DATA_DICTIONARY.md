@@ -108,7 +108,7 @@ The dashboard and any public hosted feature-layer view must **not expose** `site
 | `site_distance_m` | double | No | No | Calculated distance from registered site |
 | `weather_condition` | string(50) | No | Yes | Current spreadsheet field |
 | `field_notes_original` | string(4000) | No | No by default | Immutable collector notes |
-| `photo_count` | integer | Yes for app | No | Derived from attachments |
+| `photo_count` | integer | **Deferred in Phase 11** | No | Photo/audio capture is intentionally deferred for the first release — see `docs/DEFERRED_MEDIA_FEATURE.md`. No mobile client currently creates attachments, so this field is not populated by any Phase 11 submission. |
 
 ### 5.3 Workflow and quality
 
@@ -297,7 +297,12 @@ Required audit attributes include:
 
 Step 4 remains open. We still need to decide:
 
-1. Mandatory vs optional measurement parameters for each sampling protocol.
+1. Mandatory vs optional measurement parameters for each sampling protocol. **Interim
+   Phase 11 rule in effect** (see `docs/PHASE_11_SUPERVISOR_DECISIONS.md`): Water
+   Temperature is the only required measurement for every test type; every other
+   supported parameter is optional but still validated when entered. This is an
+   engineering default pending the supervisor's authoritative requirement matrix, not
+   a final answer to this item.
 2. Test-type controlled vocabulary beyond `In-situ/Penn State Lab`.
 3. Whether instrument/method information is required for future submissions.
 4. Error vs warning thresholds and instrument limits.

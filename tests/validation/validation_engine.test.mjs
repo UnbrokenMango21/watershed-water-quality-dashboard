@@ -63,16 +63,32 @@ test('clean observation is review-ready with excellent confidence', () => {
   assert.ok(result.scores.overall_quality_score >= 90);
 });
 
-test('missing required core measurement blocks review', () => {
+test('Phase 11 interim contract: temperature-only submission never blocks review for any test type', () => {
+  // Only water temperature is required for now; every non-temperature measurement is
+  // optional until the supervisor provides an authoritative requirement matrix (see
+  // docs/PHASE_11_SUPERVISOR_DECISIONS.md). Zero measurement records, for any test
+  // type, must not block review or reduce completeness.
+  for (const testType of [
+    'In-situ / Field Instrument', 'Continuous Sensor / Sonde', 'Mixed In-situ + Lab',
+    'Penn State Lab', 'External Lab', 'Field Kit / Colorimetric', 'Other',
+  ]) {
+    const overrides = testType === 'Other' ? { test_type: testType, test_type_other: 'Custom protocol' } : { test_type: testType };
+    const result = validateObservation({ revision: revision(overrides), measurements: [], site, now: NOW });
+    assert.equal(result.blocking, false, `${testType} must not block on zero non-temperature measurements`);
+    assert.equal(result.scores.completeness_score, 100, `${testType} completeness must not be reduced by missing optional measurements`);
+    assert.ok(!result.flags.some((f) => f.rule_code === 'REQ_MEASUREMENT_MISSING' || f.rule_code === 'MIN_MEASUREMENT_COUNT'));
+  }
+});
+
+test('a partially-entered optional measurement set still does not block review', () => {
   const result = validateObservation({
     revision: revision(),
     measurements: [measurement('PH', 7.2), measurement('CONDUCTIVITY_US_CM', 300)],
     site,
     now: NOW,
   });
-  assert.equal(result.blocking, true);
-  assert.equal(result.scores.overall_quality_score, null);
-  assert.ok(result.flags.some((f) => f.rule_code === 'REQ_MEASUREMENT_MISSING' && f.parameter_code === 'DO_MG_L'));
+  assert.equal(result.blocking, false);
+  assert.ok(result.scores.overall_quality_score > 0);
 });
 
 test('pH outside 0-14 is ERROR', () => {
@@ -134,7 +150,7 @@ test('missing optional measurements do not reduce completeness', () => {
   assert.equal(result.scores.completeness_score, 100);
 });
 
-test('lab-only test type requires a measurement but not the in-situ core', () => {
+test('lab test type accepts a single non-core measurement without requiring the in-situ core', () => {
   const result = validateObservation({
     revision: revision({ test_type: 'Penn State Lab' }),
     measurements: [measurement('NITRATE_MG_L', 2, 'mg/L')],

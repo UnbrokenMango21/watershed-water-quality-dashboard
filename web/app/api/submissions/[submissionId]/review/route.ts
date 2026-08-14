@@ -5,8 +5,12 @@
  * write access at all (firebase/firestore.rules denies it), so every review
  * decision goes through here:
  *
- *   1. verify the caller's Firebase ID token with the Admin SDK,
- *   2. re-check the `role` custom claim server-side (the browser gate is UX only),
+ *   1. verify the caller's Firebase ID token with the Admin SDK, checking the
+ *      server's revocation list (not just the token's own signature/expiry),
+ *   2. re-fetch the CURRENT user record and read its CURRENT custom claims and
+ *      disabled state - never authorize off the role claim embedded in the
+ *      token, which can be stale until the client refreshes it (the browser
+ *      gate in AuthGate.tsx is UX only and proves nothing on its own),
  *   3. hand off to the already-tested domain module review/reviewSubmission.mjs,
  *      which owns atomicity, idempotency, revision-awareness and auditing.
  *
@@ -65,13 +69,29 @@ export async function POST(request: Request, context: { params: Promise<{ submis
 
   let decodedToken;
   try {
-    decodedToken = await adminAuth().verifyIdToken(bearer[1]);
+    // checkRevoked=true rejects a token whose refresh tokens were revoked (e.g. a
+    // disabled/deprovisioned reviewer) even if the token itself has not yet expired.
+    decodedToken = await adminAuth().verifyIdToken(bearer[1], true);
   } catch {
     // Deliberately opaque: never tell an unauthenticated caller why.
     return jsonError('Invalid or expired credentials.', 401);
   }
 
-  const reviewerRole = typeof decodedToken.role === 'string' ? decodedToken.role : 'COLLECTOR';
+  let userRecord;
+  try {
+    // The role on `decodedToken` is whatever was baked into the ID token at its last
+    // refresh and can be stale (e.g. an admin just revoked the role). Authorization
+    // must be decided from the live user record, not the token's own claims.
+    userRecord = await adminAuth().getUser(decodedToken.uid);
+  } catch {
+    return jsonError('Invalid or expired credentials.', 401);
+  }
+
+  if (userRecord.disabled) {
+    return jsonError('Your account is not authorized to review submissions.', 403);
+  }
+
+  const reviewerRole = typeof userRecord.customClaims?.role === 'string' ? userRecord.customClaims.role : 'COLLECTOR';
   if (!REVIEWER_ROLES.has(reviewerRole)) {
     return jsonError('Your account is not authorized to review submissions.', 403);
   }

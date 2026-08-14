@@ -239,19 +239,10 @@ data class ObservationDraft(
     val lastSavedAt: Long = System.currentTimeMillis(),
 ) {
     val id: String get() = submissionId.value
-    val photoCount: Int get() = attachments.count(ObservationAttachment::isPhoto)
-    val hasAudio: Boolean get() = attachments.any(ObservationAttachment::isAudio)
+
+    /** Water Temperature is the only required measurement, for every test type, with no exceptions. */
     val requiredMeasurements: List<MeasurementKind>
-        get() = when (testType) {
-            TestType.FieldInstrument, TestType.Sonde, TestType.Mixed -> listOf(
-                MeasurementKind.Temperature,
-                MeasurementKind.Ph,
-                MeasurementKind.DissolvedOxygen,
-                MeasurementKind.Conductivity,
-            )
-            TestType.FieldKit, TestType.PennStateLab, TestType.ExternalLab -> listOf(MeasurementKind.Temperature)
-            TestType.Other, null -> listOf(MeasurementKind.Temperature)
-        }
+        get() = listOf(MeasurementKind.Temperature)
 
     val optionalMeasurements: List<MeasurementKind>
         get() = MeasurementKind.entries.filterNot(requiredMeasurements::contains)
@@ -263,26 +254,6 @@ data class ObservationDraft(
 
     val completedRequiredCount: Int get() = requiredMeasurements.count(::isComplete)
     val requiredComplete: Boolean get() = completedRequiredCount == requiredMeasurements.size
-
-    /**
-     * Lab and kit profiles in config/validation_rules.json need at least one entry in the measurements
-     * subcollection. Water temperature is stored on the revision, so it never counts toward that minimum.
-     */
-    val requiresAdditionalResult: Boolean
-        get() = when (testType) {
-            TestType.FieldInstrument, TestType.Sonde, TestType.Mixed, null -> false
-            else -> true
-        }
-
-    val hasAdditionalResult: Boolean
-        get() = values.any { (kind, value) -> kind != MeasurementKind.Temperature && value.toDoubleOrNull() != null }
-
-    val profileMinimumComplete: Boolean
-        get() = when {
-            testType == null -> false
-            requiresAdditionalResult -> requiredComplete && hasAdditionalResult
-            else -> requiredComplete
-        }
 }
 
 data class MeasurementValue(val kind: MeasurementKind, val value: String, val unitId: String)
@@ -331,10 +302,6 @@ data class ObservationRecord(
     val validation: ValidationSummary? = null,
     val validationFlags: List<ValidationFlag> = emptyList(),
 )
-{
-    val photoCount: Int get() = attachments.count(ObservationAttachment::isPhoto)
-    val hasAudio: Boolean get() = attachments.any(ObservationAttachment::isAudio)
-}
 
 fun formatEntry(value: Double): String {
     if (!value.isFinite()) return ""

@@ -64,27 +64,19 @@ class ModelTest {
     }
 
     @Test
-    fun labProfileNeedsOneResultBeyondTemperature() {
-        val labDraft = ObservationDraft(
-            testType = TestType.PennStateLab,
-            values = mapOf(MeasurementKind.Temperature to "18"),
-        )
-        assertTrue(labDraft.requiredComplete)
-        assertTrue(labDraft.requiresAdditionalResult)
-        assertFalse(labDraft.profileMinimumComplete)
+    fun everyTestTypeRequiresOnlyWaterTemperature() {
+        val types: List<TestType?> = TestType.entries + listOf(null)
+        types.forEach { type ->
+            val draft = ObservationDraft(testType = type)
+            assertEquals(listOf(MeasurementKind.Temperature), draft.requiredMeasurements)
+            assertEquals(MeasurementKind.entries.filterNot { it == MeasurementKind.Temperature }, draft.optionalMeasurements)
+        }
 
-        val withResult = labDraft.copy(values = labDraft.values + (MeasurementKind.Ph to "7.1"))
-        assertTrue(withResult.profileMinimumComplete)
+        val temperatureOnly = ObservationDraft(testType = TestType.FieldInstrument, values = mapOf(MeasurementKind.Temperature to "18"))
+        assertTrue(temperatureOnly.requiredComplete)
 
-        val inSitu = ObservationDraft(
-            testType = TestType.FieldInstrument,
-            values = mapOf(
-                MeasurementKind.Temperature to "18", MeasurementKind.Ph to "7.1",
-                MeasurementKind.DissolvedOxygen to "9", MeasurementKind.Conductivity to "300",
-            ),
-        )
-        assertFalse(inSitu.requiresAdditionalResult)
-        assertTrue(inSitu.profileMinimumComplete)
+        val missingTemperature = ObservationDraft(testType = TestType.PennStateLab, values = mapOf(MeasurementKind.Ph to "7.1"))
+        assertFalse(missingTemperature.requiredComplete)
     }
 
     @Test

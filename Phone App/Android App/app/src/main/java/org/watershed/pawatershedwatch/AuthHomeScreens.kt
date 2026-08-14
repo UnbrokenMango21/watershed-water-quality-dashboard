@@ -320,8 +320,6 @@ fun AccountScreen(model: AppViewModel) {
         FieldSurface {
             Column {
                 KeyValueRow("Location", "Requested when capturing a sampling position")
-                KeyValueRow("Camera and photos", "Requested only when adding media")
-                KeyValueRow("Microphone", "Requested only when recording an audio note")
                 TextButton(onClick = { openAppSettings(context) }) {
                     Icon(Icons.Rounded.Settings, contentDescription = null)
                     Spacer(Modifier.width(8.dp))

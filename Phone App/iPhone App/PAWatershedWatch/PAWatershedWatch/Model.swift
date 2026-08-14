@@ -528,9 +528,6 @@ final class ObservationDraft {
         self.ownerUID = ownerUID
     }
 
-    var photoCount: Int { attachments.count(where: \.isPhoto) }
-    var hasAudio: Bool { attachments.contains(where: \.isAudio) }
-
     func touch() {
         lastSaved = .now
         onChange?()
@@ -540,16 +537,9 @@ final class ObservationDraft {
         testType == .pennStateLab || testType == .externalLab || testType == .mixed
     }
 
-    var requiredMeasurements: [MeasurementKind] {
-        switch testType {
-        case .fieldInstrument, .sonde, .mixed:
-            [.temperature, .ph, .dissolvedOxygen, .conductivity]
-        case .fieldKit, .pennStateLab, .externalLab:
-            [.temperature]
-        case .other, .none:
-            [.temperature]
-        }
-    }
+    /// Water Temperature is the only required measurement, for every test type, without exception —
+    /// see docs/PHASE_11_SUPERVISOR_DECISIONS.md. Every other supported measurement is optional.
+    var requiredMeasurements: [MeasurementKind] { [.temperature] }
 
     var optionalMeasurements: [MeasurementKind] {
         MeasurementKind.allCases.filter { !requiredMeasurements.contains($0) }
@@ -563,34 +553,10 @@ final class ObservationDraft {
         requiredMeasurements.first { Double(values[$0] ?? "") == nil }
     }
 
-    /// Lab, field kit, and other test types must carry at least one measurement document beyond the
-    /// temperature fields the revision itself stores. Mirrors `minimumMeasurementCount` for those
-    /// profiles in `config/validation_rules.json`; temperature is not a measurement document.
-    var requiresAdditionalResult: Bool {
-        switch testType {
-        case .fieldInstrument, .sonde, .mixed, .none: false
-        default: true
-        }
-    }
-
-    var hasAdditionalResult: Bool {
-        values.contains { $0.key != .temperature && Double($0.value) != nil }
-    }
-
-    /// The single completeness rule consulted by the Measurements gate, the Review gate, and
-    /// `canonicalSnapshot()`, so no screen can imply the record is finished while it is not.
-    var productionProfileComplete: Bool {
-        guard testType != nil, completedRequiredCount == requiredMeasurements.count else { return false }
-        return !requiresAdditionalResult || hasAdditionalResult
-    }
-
-    /// Progress text for the Required Measurements header. It stays honest about the additional
-    /// result `productionProfileComplete` needs instead of showing a finished "1/1".
-    var measurementProgressText: String {
-        let progress = "\(completedRequiredCount)/\(requiredMeasurements.count)"
-        guard requiresAdditionalResult, !hasAdditionalResult else { return progress }
-        return "\(progress) required · +1 result needed below"
-    }
+    /// Progress text for the Required Measurements header: the ratio of required fields entered.
+    /// Temperature is the only required measurement, so this reaches "1/1" the moment it is filled,
+    /// with no further condition.
+    var measurementProgressText: String { "\(completedRequiredCount)/\(requiredMeasurements.count)" }
 
     var temperatureConversion: String? {
         guard let value = Double(values[.temperature] ?? "") else { return nil }
@@ -802,8 +768,6 @@ final class AppModel {
         correction.method = record.method
         correction.instrument = record.instrument
         correction.notes = record.notes
-        do { correction.attachments = try copyAttachments(record.attachments, to: correction) }
-        catch { workflowError = "Attached files could not be prepared for the correction revision."; return }
         correction.values = Dictionary(uniqueKeysWithValues: record.measurements.map { ($0.kind, $0.value) })
         correction.selectedUnits = Dictionary(uniqueKeysWithValues: record.measurements.map { ($0.kind, $0.unit) })
         correction.isCorrection = true
@@ -840,40 +804,6 @@ final class AppModel {
             }
             sitesLoading = false
         }
-    }
-
-    func addAttachment(data: Data, contentType: String, kind: AttachmentKind) {
-        guard let draft else { return }
-        do {
-            if kind == .sitePhoto, draft.photoCount >= 5 {
-                throw CanonicalizationError.invalid("Up to five site photos can be attached")
-            }
-            guard ["image/jpeg", "image/png", "image/heic", "audio/mp4"].contains(contentType), data.count > 0, data.count <= 50 * 1024 * 1024 else {
-                throw CanonicalizationError.invalid("The attachment format or size is not supported")
-            }
-            let id = UUID()
-            let ext = switch contentType { case "image/jpeg": "jpg"; case "image/png": "png"; case "image/heic": "heic"; default: "m4a" }
-            let url = try attachmentURL(revisionID: draft.revisionID, id: id, extension: ext)
-            try data.write(to: url, options: .atomic)
-            draft.attachments.append(AttachmentRecord(
-                id: id, ownerUID: draft.ownerUID, submissionID: draft.id, revisionID: draft.revisionID,
-                localURL: url, contentType: contentType, sizeBytes: Int64(data.count), kind: kind,
-                createdAt: .now, transferState: .localOnly
-            ))
-        } catch { workflowError = error.localizedDescription }
-    }
-
-    func addRecordedAttachment(_ attachment: AttachmentRecord) {
-        guard let draft, !draft.hasAudio, attachment.isAudio, attachment.sizeBytes > 0,
-              attachment.ownerUID == draft.ownerUID, attachment.submissionID == draft.id, attachment.revisionID == draft.revisionID
-        else { return }
-        draft.attachments.append(attachment)
-    }
-
-    func removeAttachment(_ id: UUID) {
-        guard let draft, let attachment = draft.attachments.first(where: { $0.id == id }) else { return }
-        try? FileManager.default.removeItem(at: attachment.localURL)
-        draft.attachments.removeAll { $0.id == id }
     }
 
     private func applySession(_ user: User?) {
@@ -918,29 +848,6 @@ final class AppModel {
         catch { workflowError = "This draft could not be saved on this phone." }
     }
 
-    private func copyAttachments(_ attachments: [AttachmentRecord], to draft: ObservationDraft) throws -> [AttachmentRecord] {
-        var copies: [AttachmentRecord] = []
-        do {
-            for attachment in attachments {
-                let id = UUID()
-                let ext = switch attachment.contentType { case "image/jpeg": "jpg"; case "image/png": "png"; case "image/heic": "heic"; case "application/pdf": "pdf"; default: "m4a" }
-                let url = try attachmentURL(revisionID: draft.revisionID, id: id, extension: ext)
-                try FileManager.default.copyItem(at: attachment.localURL, to: url)
-                let count = ((try FileManager.default.attributesOfItem(atPath: url.path)[.size]) as? NSNumber)?.int64Value ?? 0
-                guard count == attachment.sizeBytes, count > 0 else { throw CanonicalizationError.invalid("Attachment copy is incomplete") }
-                copies.append(AttachmentRecord(
-                    id: id, ownerUID: draft.ownerUID, submissionID: draft.id, revisionID: draft.revisionID,
-                    localURL: url, contentType: attachment.contentType, sizeBytes: count, kind: attachment.kind,
-                    caption: attachment.caption, createdAt: .now, transferState: .localOnly
-                ))
-            }
-            return copies
-        } catch {
-            copies.forEach { try? FileManager.default.removeItem(at: $0.localURL) }
-            throw error
-        }
-    }
-
     private func reloadRecords() {
         guard let ownerUID else { records = []; return }
         do { records = try store.loadRecords(ownerUID: ownerUID) }
@@ -958,19 +865,10 @@ final class AppModel {
                     let currentWorkflow = records.first(where: { $0.id == id })?.workflow ?? (snapshot.correction ? .resubmitted : .submitted)
                     try store.updateRemoteState(ownerUID: ownerUID, submissionID: id, workflow: currentWorkflow, sync: .syncing, correctionReason: nil, validation: nil, flags: [])
                     syncState = .syncing; reloadRecords()
-                    let acknowledged = try await remote.sync(snapshot) { [weak self] attachmentID, state, path, error in
-                        try? self?.store.updateAttachment(ownerUID: ownerUID, attachmentID: attachmentID, state: state, remotePath: path, error: error)
-                    }
+                    let acknowledged = try await remote.sync(snapshot)
                     try store.markQueue(item, state: "CONFIRMED", error: nil)
                     try store.updateRemoteState(ownerUID: ownerUID, submissionID: id, workflow: acknowledged, sync: .synced, correctionReason: nil, validation: nil, flags: [])
                     syncState = .synced; workflowState = acknowledged
-                } catch let media as AttachmentSyncFailure {
-                    // The scientific record reached the archive; only media is missing. The revision is now
-                    // immutable, so retrying cannot resend it — report it truthfully instead of as a failed record.
-                    try? store.markQueue(item, state: "CONFIRMED", error: media.localizedDescription)
-                    try? store.updateRemoteState(ownerUID: ownerUID, submissionID: id, workflow: media.workflow, sync: .synced, correctionReason: nil, validation: nil, flags: [])
-                    syncState = .synced; workflowState = media.workflow
-                    workflowError = media.localizedDescription
                 } catch {
                     try? store.markQueue(item, state: "RETRYABLE_FAILURE", error: error.localizedDescription)
                     try? store.updateRemoteState(ownerUID: ownerUID, submissionID: id, workflow: records.first(where: { $0.id == id })?.workflow ?? .submitted, sync: .failed, correctionReason: nil, validation: nil, flags: [])

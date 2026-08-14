@@ -1,5 +1,5 @@
 {
-  "validationRulesVersion": "1.0.0",
+  "validationRulesVersion": "1.1.0",
   "profileId": "central_pa_freshwater_stream_v1",
   "principle": "Detect questionable data without suppressing legitimate environmental anomalies.",
   "classes": {
@@ -9,14 +9,14 @@
     "INFO": {"blocksReview": false, "reducesQuality": false}
   },
   "testTypeProfiles": {
-    "In-situ/Penn State Lab": {"requiredMeasurements": ["PH", "DO_MG_L", "CONDUCTIVITY_US_CM"], "minimumMeasurementCount": 3},
-    "In-situ / Field Instrument": {"requiredMeasurements": ["PH", "DO_MG_L", "CONDUCTIVITY_US_CM"], "minimumMeasurementCount": 3},
-    "Continuous Sensor / Sonde": {"requiredMeasurements": ["PH", "DO_MG_L", "CONDUCTIVITY_US_CM"], "minimumMeasurementCount": 3},
-    "Mixed In-situ + Lab": {"requiredMeasurements": ["PH", "DO_MG_L", "CONDUCTIVITY_US_CM"], "minimumMeasurementCount": 3},
-    "Penn State Lab": {"requiredMeasurements": [], "minimumMeasurementCount": 1},
-    "External Lab": {"requiredMeasurements": [], "minimumMeasurementCount": 1},
-    "Field Kit / Colorimetric": {"requiredMeasurements": [], "minimumMeasurementCount": 1},
-    "Other": {"requiredMeasurements": [], "minimumMeasurementCount": 1}
+    "In-situ/Penn State Lab": {"requiredMeasurements": [], "minimumMeasurementCount": 0},
+    "In-situ / Field Instrument": {"requiredMeasurements": [], "minimumMeasurementCount": 0},
+    "Continuous Sensor / Sonde": {"requiredMeasurements": [], "minimumMeasurementCount": 0},
+    "Mixed In-situ + Lab": {"requiredMeasurements": [], "minimumMeasurementCount": 0},
+    "Penn State Lab": {"requiredMeasurements": [], "minimumMeasurementCount": 0},
+    "External Lab": {"requiredMeasurements": [], "minimumMeasurementCount": 0},
+    "Field Kit / Colorimetric": {"requiredMeasurements": [], "minimumMeasurementCount": 0},
+    "Other": {"requiredMeasurements": [], "minimumMeasurementCount": 0}
   },
   "requiredRevisionFields": [
     "site_id", "test_type", "data_collected_by", "method_name", "instrument_name",

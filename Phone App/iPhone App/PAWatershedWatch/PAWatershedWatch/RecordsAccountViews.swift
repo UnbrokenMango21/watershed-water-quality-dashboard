@@ -534,8 +534,6 @@ struct AccountView: View {
                 }
                 Section("Field Permissions") {
                     LabeledContent("Location", value: "Asked at Visit Details")
-                    LabeledContent("Camera", value: "Asked on Capture")
-                    LabeledContent("Microphone", value: "Asked on Record")
                 }
                 Section("About") {
                     LabeledContent("App", value: "PA Watershed Watch")

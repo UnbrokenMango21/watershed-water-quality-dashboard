@@ -187,6 +187,73 @@ test('an identical repeated decision is idempotent and does not create a second 
 
   const auditSnap = await seeded.submissionRef.collection('audit').get();
   assert.equal(auditSnap.size, 1, 'a repeated identical decision must not write a duplicate audit event');
+
+  const revisionSnap = await seeded.revisionRef.get();
+  assert.equal(revisionSnap.data().revision_status, 'SUBMITTED', 'the revision must remain byte-for-byte unchanged across an idempotent replay');
+  assert.equal(revisionSnap.data().temp_c, 20);
+});
+
+test('a replay with the same revision/status/decision but a different reason is a conflict, not an idempotent replay', async () => {
+  const seeded = await seedPendingReview();
+  const first = await applyReviewDecision({
+    db, Timestamp, submissionId: seeded.submissionId, expectedRevisionId: seeded.revisionId,
+    decision: 'REJECT', reviewerUid: 'reviewer-1', reviewerRole: 'QC_REVIEWER', reason: 'bad sample', now: NOW,
+  });
+  assert.equal(first.idempotent, false);
+
+  await assert.rejects(
+    () => applyReviewDecision({
+      db, Timestamp, submissionId: seeded.submissionId, expectedRevisionId: seeded.revisionId,
+      decision: 'REJECT', reviewerUid: 'reviewer-1', reviewerRole: 'QC_REVIEWER', reason: 'different reason', now: NOW,
+    }),
+    ReviewConflictError,
+  );
+
+  const submissionSnap = await seeded.submissionRef.get();
+  assert.equal(submissionSnap.data().review_comment, 'bad sample', 'the original decision must not be overwritten by the conflicting retry');
+  const auditSnap = await seeded.submissionRef.collection('audit').get();
+  assert.equal(auditSnap.size, 1, 'a rejected conflicting replay must not write a second audit event');
+});
+
+test('a replay with the same revision/status/decision but a different reviewer is a conflict', async () => {
+  const seeded = await seedPendingReview();
+  await applyReviewDecision({
+    db, Timestamp, submissionId: seeded.submissionId, expectedRevisionId: seeded.revisionId,
+    decision: 'REJECT', reviewerUid: 'reviewer-1', reviewerRole: 'QC_REVIEWER', reason: 'bad sample', now: NOW,
+  });
+
+  await assert.rejects(
+    () => applyReviewDecision({
+      db, Timestamp, submissionId: seeded.submissionId, expectedRevisionId: seeded.revisionId,
+      decision: 'REJECT', reviewerUid: 'reviewer-2', reviewerRole: 'QC_REVIEWER', reason: 'bad sample', now: NOW,
+    }),
+    ReviewConflictError,
+    'a different reviewer submitting the same decision/reason must not be treated as an idempotent replay of reviewer-1\'s decision',
+  );
+
+  const submissionSnap = await seeded.submissionRef.get();
+  assert.equal(submissionSnap.data().reviewer_user_id, 'reviewer-1');
+  const auditSnap = await seeded.submissionRef.collection('audit').get();
+  assert.equal(auditSnap.size, 1);
+});
+
+test('retrying with a different decision after one has already applied is a conflict, not a silent overwrite', async () => {
+  const seeded = await seedPendingReview();
+  await applyReviewDecision({
+    db, Timestamp, submissionId: seeded.submissionId, expectedRevisionId: seeded.revisionId,
+    decision: 'APPROVE', reviewerUid: 'reviewer-1', reviewerRole: 'QC_REVIEWER', now: NOW,
+  });
+
+  await assert.rejects(
+    () => applyReviewDecision({
+      db, Timestamp, submissionId: seeded.submissionId, expectedRevisionId: seeded.revisionId,
+      decision: 'REJECT', reviewerUid: 'reviewer-1', reviewerRole: 'QC_REVIEWER', reason: 'changed my mind', now: NOW,
+    }),
+    ReviewConflictError,
+  );
+
+  const submissionSnap = await seeded.submissionRef.get();
+  assert.equal(submissionSnap.data().status, 'APPROVED', 'the original decision must stand; a later different decision must not overwrite it');
 });
 
 test('concurrent conflicting decisions on the same revision: exactly one wins, the other is rejected', async () => {

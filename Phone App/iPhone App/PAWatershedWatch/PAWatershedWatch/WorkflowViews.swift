@@ -1,9 +1,6 @@
-import AVFoundation
 @preconcurrency import CoreLocation
-import PhotosUI
 import SwiftUI
 import UIKit
-import UniformTypeIdentifiers
 
 @MainActor
 final class LocationPermissionRequester: NSObject, ObservableObject, CLLocationManagerDelegate {
@@ -59,31 +56,6 @@ final class LocationPermissionRequester: NSObject, ObservableObject, CLLocationM
         Task {
             try? await Task.sleep(for: .seconds(15))
             if requestID == id { requestID = nil; failureMessage = "GPS timed out. Move to an open area and try again." }
-        }
-    }
-}
-
-enum FieldPermissionRequester {
-    static func camera() async -> Bool {
-        switch AVCaptureDevice.authorizationStatus(for: .video) {
-        case .authorized: true
-        case .notDetermined: await AVCaptureDevice.requestAccess(for: .video)
-        case .denied, .restricted: false
-        @unknown default: false
-        }
-    }
-
-    static func microphone() async -> Bool {
-        switch AVAudioApplication.shared.recordPermission {
-        case .granted: true
-        case .undetermined:
-            await withCheckedContinuation { continuation in
-                AVAudioApplication.requestRecordPermission { granted in
-                    continuation.resume(returning: granted)
-                }
-            }
-        case .denied: false
-        @unknown default: false
         }
     }
 }
@@ -584,8 +556,7 @@ struct MeasurementsContent: View {
                     title: "Optional Measurements",
                     kinds: draft.optionalMeasurements,
                     draft: draft,
-                    focused: $focusedMeasurement,
-                    showsAdditionalResultNote: draft.requiresAdditionalResult
+                    focused: $focusedMeasurement
                 )
             }
             .padding(.horizontal, FieldTheme.m)
@@ -596,7 +567,7 @@ struct MeasurementsContent: View {
         .navigationTitle("Measurements")
         .navigationBarTitleDisplayMode(.inline)
         .safeAreaInset(edge: .bottom) {
-            FlowFooter(step: 4, total: 6, actionTitle: "Notes and Media") {
+            FlowFooter(step: 4, total: 6, actionTitle: "Notes") {
                 guard measurementsAreValid else {
                     showValidation = true
                     focusedMeasurement = draft.measurementProblems.first?.kind ?? draft.firstIncompleteRequirement
@@ -623,7 +594,7 @@ struct MeasurementsContent: View {
 
     private var measurementsAreValid: Bool {
         let labSelectionValid = !draft.includesLab || !draft.labResultsPending || !draft.requestedAnalytes.isEmpty
-        return labSelectionValid && draft.measurementProblems.isEmpty && draft.productionProfileComplete
+        return labSelectionValid && draft.measurementProblems.isEmpty && draft.completedRequiredCount == draft.requiredMeasurements.count
     }
 
     /// Entry order of the fields the collector can actually type into.
@@ -657,10 +628,6 @@ struct MeasurementValidationBanner: View {
             NoticeBanner(title: "Check This Entry", verbatimMessage: problem.message, systemImage: "exclamationmark.circle.fill", color: .red)
         } else if draft.includesLab && draft.labResultsPending && draft.requestedAnalytes.isEmpty {
             NoticeBanner(title: "Analysis Required", message: "Select at least one analysis.", systemImage: "exclamationmark.circle.fill", color: .red)
-        } else if draft.completedRequiredCount != draft.requiredMeasurements.count {
-            NoticeBanner(title: "Measurements Required", message: "Complete all required measurements.", systemImage: "exclamationmark.circle.fill", color: .red)
-        } else if !draft.productionProfileComplete {
-            NoticeBanner(title: "Measured Result Required", message: "Enter at least one measurement result below (in addition to temperature) — required for this test type.", systemImage: "exclamationmark.circle.fill", color: .red)
         } else {
             NoticeBanner(title: "Measurements Required", message: "Complete all required measurements.", systemImage: "exclamationmark.circle.fill", color: .red)
         }
@@ -726,28 +693,17 @@ struct MeasurementGroup: View {
     let draft: ObservationDraft
     let focused: FocusState<MeasurementKind?>.Binding
     var showsProgress = false
-    var showsAdditionalResultNote = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .bottom) {
                 FieldSectionHeader(title: title, isRequired: showsProgress)
                 if showsProgress {
-                    // Green only once the whole profile is satisfied, so "1/1" cannot imply a finished section.
+                    // Green only once every required field is filled — Water Temperature is the only
+                    // one, so this reaches "1/1" the moment it is entered, with no further condition.
                     Text(draft.measurementProgressText)
                         .font(.subheadline.weight(.bold))
-                        .foregroundStyle(draft.productionProfileComplete ? FieldTheme.fern : Color.secondary)
-                }
-            }
-            if showsAdditionalResultNote {
-                if draft.hasAdditionalResult {
-                    Label("Required result entered.", systemImage: "checkmark.circle.fill")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(FieldTheme.fern)
-                } else {
-                    Label("At least one result below is required for this test type.", systemImage: "exclamationmark.circle.fill")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(FieldTheme.goldenrod)
+                        .foregroundStyle(draft.completedRequiredCount == draft.requiredMeasurements.count ? FieldTheme.fern : Color.secondary)
                 }
             }
             if kinds.isEmpty {
@@ -943,16 +899,6 @@ struct NotesMediaView: View {
 struct NotesMediaContent: View {
     let model: AppModel
     let draft: ObservationDraft
-    @Environment(\.openURL) private var openURL
-    @State private var showPhotoOptions = false
-    @State private var showPhotoPicker = false
-    @State private var showCamera = false
-    @State private var selectedPhotos: [PhotosPickerItem] = []
-    @State private var recorder = AudioNoteRecorder()
-    @State private var isRecording = false
-    @State private var showPermissionAlert = false
-    @State private var permissionTitle = ""
-    @State private var permissionMessage = ""
 
     var body: some View {
         @Bindable var draft = draft
@@ -968,246 +914,19 @@ struct NotesMediaContent: View {
                 }
                 .padding(FieldTheme.m)
                 .background(Color(uiColor: .systemBackground), in: RoundedRectangle(cornerRadius: FieldTheme.radiusM, style: .continuous))
-                PhotoPanel(
-                    attachments: draft.attachments.filter(\.isPhoto),
-                    add: { showPhotoOptions = true },
-                    onRemove: model.removeAttachment
-                )
-                AudioPanel(hasAudio: draft.hasAudio, isRecording: isRecording, add: toggleRecording) {
-                    if let audio = draft.attachments.first(where: \.isAudio) { model.removeAttachment(audio.id) }
-                }
             }
             .padding(.horizontal, FieldTheme.m)
             .padding(.bottom, FieldTheme.l)
         }
         .fieldScreen()
         .scrollDismissesKeyboard(.interactively)
-        .navigationTitle("Notes and Media")
+        .navigationTitle("Notes")
         .navigationBarTitleDisplayMode(.inline)
         .safeAreaInset(edge: .bottom) {
             FlowFooter(step: 5, total: 6, actionTitle: "Review Observation") {
                 model.advance(to: .review, step: 6)
             }
         }
-        .confirmationDialog("Add Photo", isPresented: $showPhotoOptions, titleVisibility: .visible) {
-            Button("Take Photo") {
-                Task {
-                    if await FieldPermissionRequester.camera(), UIImagePickerController.isSourceTypeAvailable(.camera) {
-                        showCamera = true
-                    } else {
-                        showPermissionDenied(
-                            title: "Camera Access Needed",
-                            message: "Allow camera access in Settings to photograph the sampling site."
-                        )
-                    }
-                }
-            }
-            Button("Choose from Library") { showPhotoPicker = true }
-            Button("Cancel", role: .cancel) { }
-        }
-        .photosPicker(
-            isPresented: $showPhotoPicker,
-            selection: $selectedPhotos,
-            maxSelectionCount: max(1, 5 - draft.photoCount),
-            matching: .images,
-            preferredItemEncoding: .current
-        )
-        .onChange(of: selectedPhotos) { _, items in
-            Task { await importPhotos(items) }
-        }
-        .fullScreenCover(isPresented: $showCamera) {
-            CameraCaptureView { data in model.addAttachment(data: data, contentType: "image/jpeg", kind: .sitePhoto) }
-                .ignoresSafeArea()
-        }
-        .alert(permissionTitle, isPresented: $showPermissionAlert) {
-            Button("Open Settings") { openSettings() }
-            Button("Not Now", role: .cancel) { }
-        } message: {
-            Text(permissionMessage)
-        }
-    }
-
-    private func showPermissionDenied(title: String, message: String) {
-        permissionTitle = title
-        permissionMessage = message
-        showPermissionAlert = true
-    }
-
-    private func importPhotos(_ items: [PhotosPickerItem]) async {
-        defer { selectedPhotos = [] }
-        for item in items.prefix(max(0, 5 - draft.photoCount)) {
-            do {
-                guard let data = try await item.loadTransferable(type: Data.self),
-                      let contentType = Self.contentType(for: item)
-                else { throw CanonicalizationError.invalid("That photo format is not supported") }
-                model.addAttachment(data: data, contentType: contentType, kind: .sitePhoto)
-            } catch { model.workflowError = error.localizedDescription }
-        }
-    }
-
-    private func toggleRecording() {
-        if isRecording {
-            do { model.addRecordedAttachment(try recorder.stop()); isRecording = false }
-            catch { model.workflowError = error.localizedDescription }
-            return
-        }
-        Task {
-            guard await FieldPermissionRequester.microphone() else {
-                showPermissionDenied(title: "Microphone Access Needed", message: "Allow microphone access in Settings to record an audio note.")
-                return
-            }
-            do { try recorder.start(for: draft); isRecording = true }
-            catch { model.workflowError = error.localizedDescription }
-        }
-    }
-
-    private static func contentType(for item: PhotosPickerItem) -> String? {
-        let type = item.supportedContentTypes.first
-        if type?.conforms(to: .jpeg) == true { return "image/jpeg" }
-        if type?.conforms(to: .png) == true { return "image/png" }
-        if type?.conforms(to: .heic) == true || type?.conforms(to: .heif) == true { return "image/heic" }
-        return nil
-    }
-
-    private func openSettings() {
-        if let url = URL(string: UIApplication.openSettingsURLString) {
-            openURL(url)
-        }
-    }
-}
-
-struct PhotoPanel: View {
-    let attachments: [AttachmentRecord]
-    let add: () -> Void
-    let onRemove: (UUID) -> Void
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                FieldSectionHeader(title: "Photos", detail: attachments.isEmpty ? nil : "\(attachments.count) Attached")
-                Button(action: add) {
-                    Label("Add", systemImage: "camera.fill")
-                        .font(.subheadline.weight(.semibold))
-                        .frame(minWidth: 72, minHeight: 44)
-                }
-                .buttonStyle(.bordered)
-                .disabled(attachments.count >= 5)
-            }
-            if !attachments.isEmpty {
-                ScrollView(.horizontal) {
-                    HStack(spacing: 8) {
-                        ForEach(Array(attachments.enumerated()), id: \.element.id) { number, attachment in
-                            PhotoThumbnail(number: number + 1, url: attachment.localURL) { onRemove(attachment.id) }
-                        }
-                    }
-                }
-                .scrollIndicators(.hidden)
-            }
-        }
-        .padding(FieldTheme.m)
-        .background(Color(uiColor: .systemBackground), in: RoundedRectangle(cornerRadius: FieldTheme.radiusM, style: .continuous))
-    }
-}
-
-struct PhotoThumbnail: View {
-    let number: Int
-    let url: URL
-    let onRemove: () -> Void
-
-    var body: some View {
-        ZStack(alignment: .bottomLeading) {
-            if let image = UIImage(contentsOfFile: url.path) {
-                Image(uiImage: image).resizable().scaledToFill()
-            } else {
-                FieldTheme.water.opacity(0.14)
-                Image(systemName: "photo")
-                    .font(.largeTitle)
-                    .foregroundStyle(FieldTheme.hemlock.opacity(0.65))
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            }
-            Text("Photo \(number)")
-                .font(.caption.bold())
-                .padding(8)
-                .background(.regularMaterial, in: Capsule())
-                .padding(8)
-        }
-        .frame(width: 126, height: 92)
-        .clipShape(RoundedRectangle(cornerRadius: FieldTheme.radiusS, style: .continuous))
-        .accessibilityLabel("Attached photo \(number)")
-        .contextMenu { Button("Remove Photo", role: .destructive, action: onRemove) }
-    }
-}
-
-struct AudioPanel: View {
-    let hasAudio: Bool
-    let isRecording: Bool
-    let add: () -> Void
-    let onRemove: () -> Void
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                FieldSectionHeader(title: "Audio Note")
-                if hasAudio {
-                    Menu("Audio options", systemImage: "ellipsis.circle") {
-                        Button("Remove Audio", role: .destructive, action: onRemove)
-                    }
-                    .labelStyle(.iconOnly)
-                    .frame(width: 44, height: 44)
-                }
-            }
-            if hasAudio {
-                HStack(spacing: 16) {
-                    Button(action: {}) {
-                        Image(systemName: "play.fill")
-                            .frame(width: 48, height: 48)
-                            .background(FieldTheme.hemlock, in: Circle())
-                            .foregroundStyle(Color(uiColor: .systemBackground))
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Play audio note")
-                    Image(systemName: "waveform")
-                        .font(.title2)
-                        .foregroundStyle(FieldTheme.water)
-                        .frame(maxWidth: .infinity)
-                    Text("Recorded").font(.subheadline).foregroundStyle(.secondary)
-                }
-            } else {
-                Button(action: add) {
-                    Label(isRecording ? "Stop and Save Recording" : "Record Audio Note", systemImage: isRecording ? "stop.fill" : "mic.fill")
-                        .font(.headline)
-                        .frame(maxWidth: .infinity, minHeight: 50)
-                }
-                .buttonStyle(.bordered)
-            }
-        }
-        .padding(FieldTheme.m)
-        .background(Color(uiColor: .systemBackground), in: RoundedRectangle(cornerRadius: FieldTheme.radiusM, style: .continuous))
-    }
-}
-
-struct CameraCaptureView: UIViewControllerRepresentable {
-    @Environment(\.dismiss) private var dismiss
-    let onCapture: (Data) -> Void
-
-    func makeCoordinator() -> Coordinator { Coordinator(parent: self) }
-    func makeUIViewController(context: Context) -> UIImagePickerController {
-        let controller = UIImagePickerController()
-        controller.sourceType = .camera
-        controller.cameraCaptureMode = .photo
-        controller.delegate = context.coordinator
-        return controller
-    }
-    func updateUIViewController(_ uiViewController: UIImagePickerController, context: Context) { }
-
-    final class Coordinator: NSObject, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
-        let parent: CameraCaptureView
-        init(parent: CameraCaptureView) { self.parent = parent }
-        func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]) {
-            if let image = info[.originalImage] as? UIImage, let data = image.jpegData(compressionQuality: 0.94) { parent.onCapture(data) }
-            parent.dismiss()
-        }
-        func imagePickerControllerDidCancel(_ picker: UIImagePickerController) { parent.dismiss() }
     }
 }
 

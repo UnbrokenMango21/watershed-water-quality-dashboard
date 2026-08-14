@@ -158,7 +158,7 @@ fun PAWatershedApp(model: AppViewModel) {
                 MeasurementsScreen(model, navController::popBackStack) { navController.navigate(Routes.Media) }
             }
             composable(Routes.Media) {
-                NotesMediaScreen(model, navController::popBackStack) { navController.navigate(Routes.Review) }
+                NotesScreen(model, navController::popBackStack) { navController.navigate(Routes.Review) }
             }
             composable(Routes.Review) {
                 ReviewScreen(model, navController::popBackStack, onFix = ::navigateToIssue) { id ->
