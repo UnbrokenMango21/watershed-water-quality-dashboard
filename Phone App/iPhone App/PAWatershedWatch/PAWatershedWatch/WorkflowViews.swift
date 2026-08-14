@@ -122,7 +122,7 @@ struct SelectSiteView: View {
                         description: Text(model.connection == .offline ? "Connect once to cache the site catalog on this phone." : "Site data could not be loaded. Try again.")
                     )
                 }
-                FieldSectionHeader(title: "Nearby Sites")
+                FieldSectionHeader(title: "Nearby Sites", isRequired: true)
                 if visibleSites.isEmpty {
                     ContentUnavailableView.search
                         .padding(.vertical, 48)
@@ -246,6 +246,9 @@ struct VisitDetailsContent: View {
         @Bindable var draft = draft
         ScrollView {
             VStack(alignment: .leading, spacing: FieldTheme.l) {
+                if let error = model.workflowError {
+                    NoticeBanner(title: "Fix This to Continue", verbatimMessage: error, systemImage: "exclamationmark.circle.fill", color: .red)
+                }
                 if let site = draft.site {
                     SelectedSiteHeader(site: site)
                 }
@@ -311,7 +314,7 @@ struct GPSQualityPanel: View {
         @Bindable var draft = draft
         VStack(alignment: .leading, spacing: 16) {
             HStack {
-                FieldSectionHeader(title: "Position")
+                FieldSectionHeader(title: "Position", isRequired: true)
                 StatusPill(verbatimTitle: gpsTitle, systemImage: draft.gpsState.icon, color: draft.gpsState.color)
                     .accessibilityLabel("Location quality: \(gpsTitle)")
             }
@@ -438,9 +441,11 @@ struct TestMethodContent: View {
         @Bindable var draft = draft
         ScrollView {
             VStack(alignment: .leading, spacing: FieldTheme.l) {
-                FieldSectionHeader(title: "Test Type")
+                FieldSectionHeader(title: "Test Type", isRequired: true)
                 if showValidation {
                     NoticeBanner(title: "Complete Test Details", message: "Select a test type and complete its method, instrument or laboratory, and description when Other is selected.", systemImage: "exclamationmark.circle.fill", color: .red)
+                } else if let error = model.workflowError {
+                    NoticeBanner(title: "Fix This to Continue", verbatimMessage: error, systemImage: "exclamationmark.circle.fill", color: .red)
                 }
                 TestTypeList(selected: draft.testType) { type in
                     withAnimation(reduceMotion ? nil : .snappy) {
@@ -454,18 +459,18 @@ struct TestMethodContent: View {
                 if draft.testType != nil {
                     VStack(alignment: .leading, spacing: FieldTheme.l) {
                         if draft.testType == .other {
-                            FieldSectionHeader(title: "Other Test Type")
+                            FieldSectionHeader(title: "Other Test Type", isRequired: true)
                             TextField("Describe the test type", text: $draft.testTypeOther, axis: .vertical)
                                 .lineLimit(2...4)
                                 .padding(16)
                                 .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: FieldTheme.radiusS, style: .continuous))
                         }
-                        FieldSectionHeader(title: "Method")
+                        FieldSectionHeader(title: "Method", isRequired: true)
                         TextField("Method", text: $draft.method, axis: .vertical)
                             .lineLimit(2...5)
                             .padding(16)
                             .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: FieldTheme.radiusS, style: .continuous))
-                        FieldSectionHeader(title: "Instrument or Lab")
+                        FieldSectionHeader(title: "Instrument or Lab", isRequired: true)
                         TextField("Instrument or Lab", text: $draft.instrument, axis: .vertical)
                             .lineLimit(2...5)
                             .padding(16)
@@ -579,7 +584,8 @@ struct MeasurementsContent: View {
                     title: "Optional Measurements",
                     kinds: draft.optionalMeasurements,
                     draft: draft,
-                    focused: $focusedMeasurement
+                    focused: $focusedMeasurement,
+                    showsAdditionalResultNote: draft.requiresAdditionalResult
                 )
             }
             .padding(.horizontal, FieldTheme.m)
@@ -593,8 +599,7 @@ struct MeasurementsContent: View {
             FlowFooter(step: 4, total: 6, actionTitle: "Notes and Media") {
                 guard measurementsAreValid else {
                     showValidation = true
-                    focusedMeasurement = draft.invalidMeasurementKinds.first
-                        ?? draft.requiredMeasurements.first { Double(draft[valueFor: $0]) == nil }
+                    focusedMeasurement = draft.measurementProblems.first?.kind ?? draft.firstIncompleteRequirement
                     return
                 }
                 focusedMeasurement = nil
@@ -604,18 +609,41 @@ struct MeasurementsContent: View {
         .toolbar {
             ToolbarItemGroup(placement: .keyboard) {
                 Spacer()
+                if let next = nextFocusTarget {
+                    Button("Next") { focusedMeasurement = next }
+                }
                 Button("Done") { focusedMeasurement = nil }
             }
+        }
+        .task { await claimPendingFocus() }
+        .onChange(of: model.pendingMeasurementFocus) { _, _ in
+            Task { await claimPendingFocus() }
         }
     }
 
     private var measurementsAreValid: Bool {
         let labSelectionValid = !draft.includesLab || !draft.labResultsPending || !draft.requestedAnalytes.isEmpty
-        return labSelectionValid
-            && draft.invalidMeasurementKinds.isEmpty
-            && draft.completedRequiredCount == draft.requiredMeasurements.count
-            && draft.values.allSatisfy { $0.value.isEmpty || $0.key.productionSpec.support == .fullySupported }
-            && draft.productionProfileComplete
+        return labSelectionValid && draft.measurementProblems.isEmpty && draft.productionProfileComplete
+    }
+
+    /// Entry order of the fields the collector can actually type into.
+    private var focusOrder: [MeasurementKind] {
+        (draft.requiredMeasurements + draft.optionalMeasurements).filter { $0.productionSpec.support == .fullySupported }
+    }
+
+    /// The next field still needing a value, or nil at the last one so only Done remains.
+    private var nextFocusTarget: MeasurementKind? {
+        guard let current = focusedMeasurement, let index = focusOrder.firstIndex(of: current) else { return nil }
+        return focusOrder[(index + 1)...].first { Double(draft[valueFor: $0]) == nil }
+    }
+
+    /// Opens the keyboard on the field a Review or Submit failure named.
+    private func claimPendingFocus() async {
+        guard let kind = model.pendingMeasurementFocus else { return }
+        model.pendingMeasurementFocus = nil
+        showValidation = true
+        await Task.yield()
+        focusedMeasurement = kind
     }
 }
 
@@ -623,14 +651,16 @@ struct MeasurementValidationBanner: View {
     let draft: ObservationDraft
 
     var body: some View {
-        if !draft.invalidMeasurementKinds.isEmpty {
-            NoticeBanner(title: "Invalid Number", message: "Enter a number without units.", systemImage: "exclamationmark.circle.fill", color: .red)
-        } else if draft.values.contains(where: { !$0.value.isEmpty && $0.key.productionSpec.support == .featureGated }) {
+        if draft.values.contains(where: { !$0.value.isEmpty && $0.key.productionSpec.support == .featureGated }) {
             NoticeBanner(title: "Measurement Not Yet Enabled", message: "Clear values marked unavailable before continuing. They cannot be silently omitted from a scientific record.", systemImage: "lock.fill", color: .red)
+        } else if let problem = draft.measurementProblems.first {
+            NoticeBanner(title: "Check This Entry", verbatimMessage: problem.message, systemImage: "exclamationmark.circle.fill", color: .red)
         } else if draft.includesLab && draft.labResultsPending && draft.requestedAnalytes.isEmpty {
             NoticeBanner(title: "Analysis Required", message: "Select at least one analysis.", systemImage: "exclamationmark.circle.fill", color: .red)
+        } else if draft.completedRequiredCount != draft.requiredMeasurements.count {
+            NoticeBanner(title: "Measurements Required", message: "Complete all required measurements.", systemImage: "exclamationmark.circle.fill", color: .red)
         } else if !draft.productionProfileComplete {
-            NoticeBanner(title: "Measured Result Required", message: "Enter at least one supported result in addition to temperature for this test type.", systemImage: "exclamationmark.circle.fill", color: .red)
+            NoticeBanner(title: "Measured Result Required", message: "Enter at least one measurement result below (in addition to temperature) — required for this test type.", systemImage: "exclamationmark.circle.fill", color: .red)
         } else {
             NoticeBanner(title: "Measurements Required", message: "Complete all required measurements.", systemImage: "exclamationmark.circle.fill", color: .red)
         }
@@ -696,15 +726,28 @@ struct MeasurementGroup: View {
     let draft: ObservationDraft
     let focused: FocusState<MeasurementKind?>.Binding
     var showsProgress = false
+    var showsAdditionalResultNote = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .bottom) {
-                FieldSectionHeader(title: title)
+                FieldSectionHeader(title: title, isRequired: showsProgress)
                 if showsProgress {
-                    Text("\(draft.completedRequiredCount)/\(draft.requiredMeasurements.count)")
+                    // Green only once the whole profile is satisfied, so "1/1" cannot imply a finished section.
+                    Text(draft.measurementProgressText)
                         .font(.subheadline.weight(.bold))
-                        .foregroundStyle(draft.completedRequiredCount == draft.requiredMeasurements.count ? FieldTheme.fern : Color.secondary)
+                        .foregroundStyle(draft.productionProfileComplete ? FieldTheme.fern : Color.secondary)
+                }
+            }
+            if showsAdditionalResultNote {
+                if draft.hasAdditionalResult {
+                    Label("Required result entered.", systemImage: "checkmark.circle.fill")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(FieldTheme.fern)
+                } else {
+                    Label("At least one result below is required for this test type.", systemImage: "exclamationmark.circle.fill")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(FieldTheme.goldenrod)
                 }
             }
             if kinds.isEmpty {
@@ -736,7 +779,10 @@ struct MeasurementEntryRow: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Label {
-                    Text(kind.title).font(.headline)
+                    HStack(spacing: FieldTheme.xs) {
+                        Text(kind.title).font(.headline)
+                        if isRequired { RequiredMark() }
+                    }
                 } icon: {
                     Image(systemName: kind.symbol).foregroundStyle(FieldTheme.water)
                 }
@@ -786,10 +832,15 @@ struct MeasurementEntryRow: View {
                     }
                 }
             }
-            if isRequired && !valueIsValid {
-                Text(draft[valueFor: kind].isEmpty ? "Required" : "Enter a number without units")
+            if let problem = draft.measurementProblem(for: kind) {
+                // The same message the submit gate would produce, shown while the collector is still here.
+                Text(verbatim: problem)
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(draft[valueFor: kind].isEmpty ? Color.secondary : .red)
+                    .foregroundStyle(.red)
+            } else if isRequired && !valueIsValid {
+                Text("Required")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
             }
         }
         .padding(FieldTheme.m)

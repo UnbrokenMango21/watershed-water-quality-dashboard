@@ -89,12 +89,13 @@ The dashboard and any public hosted feature-layer view must **not expose** `site
 | `test_type` | string(80) | Yes | Yes | Current records: `In-situ/Penn State Lab`; future values allowed through controlled domain |
 | `data_collected_by` | string(80) | Yes | Yes | Current records: `Student/researcher`; classification, not personal identity |
 | `collector_user_id` | string(128) | Yes for future app | **No** | Authenticated person/account ID |
-| `collected_at` | datetime UTC | Yes | Yes | Actual sampling date/time |
-| `submitted_at` | datetime UTC | Yes after submit | No | Server timestamp |
+| `collected_at` | datetime UTC | Yes | Yes | Actual sampling date/time; collector-entered, not a trusted server timestamp |
+| `submitted_at` | datetime UTC | Yes after submit | No | **Trusted server timestamp only.** Client writes via `FieldValue.serverTimestamp()`; `firebase/firestore.rules` requires it equal `request.time` on every collector-authored update, so a phone-supplied value is rejected. Applies identically to the analogous field on `revisions/{revision_id}`. |
 | `review_status` | string(30) | Yes | Optional | Human review status; see domain below |
-| `review_comment` | string(4000) | No | **No by default** | Supervisor feedback/internal QC note |
-| `reviewer_user_id` | string(128) | No | **No** | Protected reviewer identity |
-| `reviewed_at` | datetime UTC | No | No | Review timestamp |
+| `review_comment` | string(4000) | No | **No by default** | Reviewer's reason (required for Request Correction/Reject) or optional comment (Approve) |
+| `reviewer_user_id` | string(128) | No | **No** | Protected reviewer identity; set only by the server-side review action, never client-writable |
+| `reviewed_at` | datetime UTC | No | No | Trusted server timestamp set by the review action |
+| `reviewed_revision_id` | UUID/string(36) | No | No | The `current_revision_id` the review decision was made against; used for revision-aware staleness checks |
 | `published_at` | datetime UTC | No | No | Set only after ArcGIS publication is verified |
 
 ### 5.2 Location and conditions
@@ -151,7 +152,9 @@ The dashboard and any public hosted feature-layer view must **not expose** `site
 | `parameter_code` | string(40) | Yes | Stable machine code |
 | `value_original` | double | Yes | Immutable submitted/imported numeric value |
 | `value_current` | double | Yes after accepted correction | Effective value used downstream |
-| `unit_code` | string(24) | Yes | Explicit unit |
+| `unit_code` | string(24) | Yes | Canonical, explicit unit — the unit validation, review, and publication treat as authoritative |
+| `entered_value` | double | Yes (non-temperature measurements) | Exactly what the collector typed, before any conversion |
+| `entered_unit_code` | string(24) | Yes (non-temperature measurements) | The stable unit ID the collector selected on-device (from the mobile domain model's unit list), not a display label. Never used as conversion authority — `value`/`unit_code` remain canonical. Temperature uses the separate `temp_entered_value`/`temp_entered_unit`/`temp_c`/`temp_f` fields on the revision instead. |
 | `source_column` | string(80) | No | Original spreadsheet/app label for provenance |
 | `measurement_method` | string(120) | No | Instrument/lab method if available in future |
 | `instrument_id` | string(80) | No | Future traceability |
@@ -226,6 +229,30 @@ Initial review-facing states:
 
 The complete technical workflow also includes `DRAFT`, `SUBMITTED`, `VALIDATING`, `RESUBMITTED`, `PUBLISHING`, `PUBLISH_FAILED`, and `PUBLISHED`.
 
+### 9.1 Roles and review actions
+
+Three roles, carried as a Firebase Auth custom claim (`request.auth.token.role`,
+defaulting to `COLLECTOR` when unset) and mirrored on `users/{uid}.role`:
+
+- `COLLECTOR` — creates/submits/resubmits their own observations. Cannot read other
+  collectors' submissions, cannot write any review or audit field.
+- `QC_REVIEWER` — read-only over all submissions/revisions/measurements/flags/audit;
+  the only role (with `ADMIN`) authorized to invoke the server-side review action.
+  Never edits scientific measurements.
+- `ADMIN` — same reviewer authority as `QC_REVIEWER`, plus (in a future phase) site
+  catalog administration; see `docs/SITE_CATALOG_ADMINISTRATION_PHASE.md`.
+
+Exactly three review actions, executed only by `review/reviewSubmission.mjs` via the
+Firebase Admin SDK (never from browser code): **Approve**, **Request Correction**,
+**Reject**. Request Correction and Reject require a non-empty reason; Approve accepts
+an optional comment. The action is atomic, transactional, idempotent, revision-aware
+(a stale `current_revision_id` is rejected), race-safe (Firestore transaction retry),
+and always writes exactly one immutable audit event
+(`REVIEW_APPROVED`/`REVIEW_NEEDS_CORRECTION`/`REVIEW_REJECTED`) recording the decision,
+previous/new state, revision ID, reviewer identity, a trusted server timestamp, and the
+reason/comment where applicable. It never writes to `revisions/{revision_id}` or its
+`measurements` subcollection — reviewers cannot mutate submitted science.
+
 ## 10. Public/private publication boundary
 
 A public ArcGIS hosted feature-layer view / dashboard data source will contain only public-safe fields. At minimum, the following are **excluded** from normal viewer access:
@@ -246,7 +273,12 @@ The dashboard uses `site_name_public` and never directly uses an unscreened priv
 
 ## 11. AuditEvent
 
-Audit history is append-only. Important events include `CREATED`, `SUBMITTED`, `VALIDATED`, `RETURNED`, `RESUBMITTED`, `APPROVED`, `REJECTED`, `PUBLISH_STARTED`, `PUBLISH_FAILED`, and `PUBLISHED`.
+Audit history is append-only. Important events include `VALIDATION_STARTED`,
+`VALIDATION_COMPLETED`, `VALIDATION_BLOCKED`, `VALIDATION_SYSTEM_FAILURE`,
+`REVIEW_APPROVED`, `REVIEW_NEEDS_CORRECTION`, `REVIEW_REJECTED`, `PUBLISH_STARTED`,
+`PUBLISH_FAILED`, and `PUBLISHED`. `actor_type` for the three `REVIEW_*` events is
+always `QC_REVIEWER` regardless of whether the acting user's role was `QC_REVIEWER` or
+`ADMIN` (the reviewer's specific role is recorded in `metadata.reviewer_role`).
 
 Required audit attributes include:
 

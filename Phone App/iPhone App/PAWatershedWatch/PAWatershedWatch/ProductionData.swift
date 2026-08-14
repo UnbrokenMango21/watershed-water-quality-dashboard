@@ -116,46 +116,113 @@ struct CanonicalSnapshot: Codable, Hashable {
 }
 
 enum CanonicalizationError: LocalizedError {
-    case invalid(String)
-    var errorDescription: String? { if case .invalid(let value) = self { value } else { nil } }
+    case invalid(String, section: WorkflowSection? = nil, measurement: MeasurementKind? = nil)
+
+    var errorDescription: String? { if case .invalid(let value, _, _) = self { value } else { nil } }
+    /// The workflow step that can fix this failure, used to route the collector there.
+    var section: WorkflowSection? { if case .invalid(_, let section, _) = self { section } else { nil } }
+    /// The measurement field that caused this failure, used to open the keyboard on it.
+    var measurement: MeasurementKind? { if case .invalid(_, _, let kind) = self { kind } else { nil } }
+}
+
+/// Hard ranges mirror `config/validation_rules.json` (`temperature.hardRangeC` and `parameters[*].hardRange`).
+/// The numbers are duplicated here deliberately: the app does not read the server rules file, so the
+/// client rejects an out-of-range entry in the field instead of letting the server bounce it later.
+struct ProductionHardRange {
+    let bounds: ClosedRange<Double>
+    let display: String
+
+    static let temperatureC = ProductionHardRange(bounds: -5...60, display: "between -5 and 60 °C")
+
+    /// Only parameters with a documented upper hard bound appear here. Parameters with `hardMin: 0`
+    /// stay on the shared non-negative check, and ORP is signed with no hard range at all.
+    static func forParameter(_ code: String) -> ProductionHardRange? {
+        switch code {
+        case "PH": ProductionHardRange(bounds: 0...14, display: "between 0 and 14")
+        case "DO_MG_L": ProductionHardRange(bounds: 0...50, display: "between 0 and 50 mg/L")
+        case "DO_PERCENT": ProductionHardRange(bounds: 0...300, display: "between 0 and 300 %")
+        default: nil
+        }
+    }
+
+    func message(for name: String) -> String { "\(name) must be \(display)." }
 }
 
 extension ObservationDraft {
+    /// The archive value for an entered reading, rounded exactly as it is stored.
+    func canonicalValue(_ entered: Double, for kind: MeasurementKind) -> Double {
+        (selectedUnit(for: kind).convert(entered, to: kind.defaultUnit) * 1_000_000_000_000).rounded(.toNearestOrEven) / 1_000_000_000_000
+    }
+
+    /// Why this entry cannot be recorded, or nil when it is blank or acceptable. Blank is never a problem
+    /// here — requiredness is reported by `productionProfileComplete`. Shared by the inline field error on
+    /// the Measurements screen and by `canonicalSnapshot()`, so both say exactly the same thing.
+    func measurementProblem(for kind: MeasurementKind) -> String? {
+        let raw = values[kind, default: ""].trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !raw.isEmpty else { return nil }
+        let name = String(localized: kind.title)
+        let spec = kind.productionSpec
+        guard spec.support == .fullySupported, let code = spec.code else { return "\(name) is not enabled by the production contract." }
+        guard let entered = Double(raw), entered.isFinite else { return "\(name) must be a number." }
+        guard kind != .temperature else {
+            let celsius = selectedUnit(for: .temperature).convert(entered, to: .celsius)
+            return ProductionHardRange.temperatureC.bounds.contains(celsius) ? nil : ProductionHardRange.temperatureC.message(for: name)
+        }
+        if kind != .orp && entered < 0 { return "\(name) cannot be negative." }
+        guard let range = ProductionHardRange.forParameter(code) else { return nil }
+        return range.bounds.contains(canonicalValue(entered, for: kind)) ? nil : range.message(for: name)
+    }
+
+    /// Every unusable entry in display order, so the screen can show a banner and focus the first one.
+    var measurementProblems: [(kind: MeasurementKind, message: String)] {
+        (requiredMeasurements + optionalMeasurements).compactMap { kind in
+            measurementProblem(for: kind).map { (kind, $0) }
+        }
+    }
+
     func canonicalSnapshot(submittedAt: Date = .now) throws -> CanonicalSnapshot {
         guard !ownerUID.isEmpty else { throw CanonicalizationError.invalid("Authenticated owner is required") }
         guard let site, let latitude, let longitude, let accuracyMeters,
               (-90...90).contains(latitude), (-180...180).contains(longitude), !(latitude == 0 && longitude == 0), accuracyMeters >= 0
-        else { throw CanonicalizationError.invalid("A valid field GPS position is required") }
-        guard let testType else { throw CanonicalizationError.invalid("Test type is required") }
-        guard testType != .other || !testTypeOther.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw CanonicalizationError.invalid("Describe the other test type") }
-        guard !collector.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-              !method.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+        else { throw CanonicalizationError.invalid("A valid field GPS position is required", section: .visitDetails) }
+        guard !collector.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        else { throw CanonicalizationError.invalid("A collector name is required", section: .visitDetails) }
+        guard let testType else { throw CanonicalizationError.invalid("Test type is required", section: .testMethod) }
+        guard testType != .other || !testTypeOther.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw CanonicalizationError.invalid("Describe the other test type", section: .testMethod) }
+        guard !method.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
               !instrument.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        else { throw CanonicalizationError.invalid("Collector, method, and instrument or laboratory are required") }
-        guard productionProfileComplete else { throw CanonicalizationError.invalid("Measurements do not meet the production validation profile") }
-        guard let enteredTemperature = Double(values[.temperature, default: ""]), enteredTemperature.isFinite else { throw CanonicalizationError.invalid("Water temperature is required") }
+        else { throw CanonicalizationError.invalid("Method and instrument or laboratory are required", section: .testMethod) }
+        if let problem = measurementProblems.first {
+            throw CanonicalizationError.invalid(problem.message, section: .measurements, measurement: problem.kind)
+        }
+        guard let enteredTemperature = Double(values[.temperature, default: ""]), enteredTemperature.isFinite
+        else { throw CanonicalizationError.invalid("\(String(localized: MeasurementKind.temperature.title)) is required.", section: .measurements, measurement: .temperature) }
+        guard productionProfileComplete else {
+            let missing = firstIncompleteRequirement
+            let message = missing.map { "\(String(localized: $0.title)) is required." }
+                ?? "Enter at least one measurement result in addition to temperature. This test type requires it."
+            throw CanonicalizationError.invalid(message, section: .measurements, measurement: missing)
+        }
         let temperatureUnit = selectedUnit(for: .temperature)
         let tempC = temperatureUnit.convert(enteredTemperature, to: .celsius)
         let tempF = MeasurementUnit.celsius.convert(tempC, to: .fahrenheit)
         let canonical = try values.compactMap { kind, raw -> CanonicalMeasurement? in
-            guard kind != .temperature, !raw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+            let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard kind != .temperature, !trimmed.isEmpty else { return nil }
             let spec = kind.productionSpec
-            guard spec.support == .fullySupported, let code = spec.code, let unitCode = spec.unit else { throw CanonicalizationError.invalid("\(String(localized: kind.title)) is not enabled by the production contract") }
-            guard let entered = Double(raw), entered.isFinite else { throw CanonicalizationError.invalid("\(String(localized: kind.title)) must be a finite number") }
-            if kind != .orp && entered < 0 { throw CanonicalizationError.invalid("\(String(localized: kind.title)) cannot be negative") }
-            if kind == .ph && !(0...14).contains(entered) { throw CanonicalizationError.invalid("pH must be from 0 to 14") }
+            guard let code = spec.code, let unitCode = spec.unit, let entered = Double(trimmed), entered.isFinite
+            else { throw CanonicalizationError.invalid("\(String(localized: kind.title)) could not be recorded.", section: .measurements, measurement: kind) }
             let selected = selectedUnit(for: kind)
-            let value = (selected.convert(entered, to: kind.defaultUnit) * 1_000_000_000_000).rounded(.toNearestOrEven) / 1_000_000_000_000
             return CanonicalMeasurement(
                 id: CanonicalID.measurement(revisionID: revisionID, parameterCode: code), kind: kind,
                 parameterCode: code, displayName: String(localized: kind.title), enteredValue: entered,
-                enteredUnitID: selected.id, enteredUnit: selected.menuTitle, value: value, unitCode: unitCode
+                enteredUnitID: selected.id, enteredUnit: selected.menuTitle, value: canonicalValue(entered, for: kind), unitCode: unitCode
             )
         }.sorted { MeasurementKind.allCases.firstIndex(of: $0.kind)! < MeasurementKind.allCases.firstIndex(of: $1.kind)! }
         for attachment in attachments {
             guard attachment.ownerUID == ownerUID, attachment.submissionID == id, attachment.revisionID == revisionID,
                   (1...50 * 1024 * 1024).contains(attachment.sizeBytes)
-            else { throw CanonicalizationError.invalid("Attachment identity or size is invalid") }
+            else { throw CanonicalizationError.invalid("Attachment identity or size is invalid", section: .notesMedia) }
         }
         return CanonicalSnapshot(
             submissionID: id, eventID: eventID, revisionID: revisionID, revisionNumber: revisionNumber, ownerUID: ownerUID,
@@ -174,13 +241,21 @@ extension ObservationDraft {
 
 enum FirebaseMapper {
     static let schemaVersion = "0.1.0"
+
+    /// `submitted_at` is a trusted server timestamp. Firestore rules require it to equal `request.time`
+    /// on every collector write, so a concrete client `Timestamp` from the phone clock is always rejected.
+    /// A draft has not been submitted yet and keeps a null.
+    static func submittedAt(_ status: String) -> Any {
+        status == "DRAFT" ? NSNull() : FieldValue.serverTimestamp()
+    }
+
     static func submission(_ value: CanonicalSnapshot, status: String) -> [String: Any] {
         [
             "submission_id": value.submissionID.uuidString.lowercased(), "event_id": value.eventID.uuidString.lowercased(),
             "collector_user_id": value.ownerUID, "site_id": value.siteID, "status": status,
             "current_revision_id": value.revisionID.uuidString.lowercased(), "current_revision_no": value.revisionNumber,
             "latest_collected_at": Timestamp(date: value.collectedAt), "created_at": Timestamp(date: value.createdAt),
-            "updated_at": Timestamp(date: value.submittedAt), "submitted_at": status == "DRAFT" ? NSNull() : Timestamp(date: value.submittedAt),
+            "updated_at": Timestamp(date: value.submittedAt), "submitted_at": submittedAt(status),
             "schema_version": schemaVersion, "mobile_app_version": value.appVersion,
         ]
     }
@@ -190,7 +265,7 @@ enum FirebaseMapper {
             "revision_id": value.revisionID.uuidString.lowercased(), "revision_no": value.revisionNumber,
             "submission_id": value.submissionID.uuidString.lowercased(), "event_id": value.eventID.uuidString.lowercased(),
             "collector_user_id": value.ownerUID, "site_id": value.siteID, "revision_status": status,
-            "created_at": Timestamp(date: value.createdAt), "submitted_at": status == "DRAFT" ? NSNull() : Timestamp(date: value.submittedAt),
+            "created_at": Timestamp(date: value.createdAt), "submitted_at": submittedAt(status),
             "collected_at": Timestamp(date: value.collectedAt), "time_known": true, "time_imputed": false,
             "latitude": value.latitude, "longitude": value.longitude, "location": GeoPoint(latitude: value.latitude, longitude: value.longitude),
             "gps_accuracy_m": value.accuracyMeters, "site_distance_m": NSNull(), "weather_condition": "",
@@ -206,6 +281,9 @@ enum FirebaseMapper {
         [
             "measurement_id": item.id.uuidString.lowercased(), "parameter_code": item.parameterCode,
             "display_name": item.displayName, "value": item.value, "unit_code": item.unitCode,
+            // Provenance required by config/firebase_schema.json: exactly what the collector typed and the
+            // stable MeasurementUnit id they picked. Never used as conversion authority.
+            "entered_value": item.enteredValue, "entered_unit_code": item.enteredUnitID,
             "method_name": value.method, "instrument_name": value.instrument, "qualifier": NSNull(), "notes": NSNull(),
             "entered_at": Timestamp(date: value.collectedAt),
         ]
@@ -564,6 +642,19 @@ private struct DraftPayload: Codable {
     }
 }
 
+/// The scientific record reached the archive but some media did not. This never reports a failed
+/// submission: the workflow the server acknowledged travels with it so callers can record the truth.
+struct AttachmentSyncFailure: LocalizedError {
+    let workflow: WorkflowState
+    let count: Int
+
+    var errorDescription: String? {
+        count == 1
+            ? "The observation reached the archive. One attachment could not be sent and stays on this phone."
+            : "The observation reached the archive. \(count) attachments could not be sent and stay on this phone."
+    }
+}
+
 @MainActor protocol RemoteMobileRepository: AnyObject {
     func signIn(email: String, password: String) async throws -> User
     func signOut() throws
@@ -615,49 +706,63 @@ private struct DraftPayload: Codable {
         let existingRevision = try await revision.getDocument(source: .server)
         let revisionStatus = existingRevision.get("revision_status") as? String
         if !existingRevision.exists { try await revision.setData(FirebaseMapper.revision(snapshot, status: "DRAFT")) }
+        var failedAttachments = 0
         if revisionStatus != "SUBMITTED" {
             guard revisionStatus == nil || revisionStatus == "DRAFT" else { throw CanonicalizationError.invalid("Remote revision is immutable") }
             for measurement in snapshot.measurements {
                 try await revision.collection("measurements").document(measurement.id.uuidString.lowercased()).setData(FirebaseMapper.measurement(measurement, in: snapshot))
             }
+            let remoteMeasurements = try await revision.collection("measurements").getDocuments(source: .server)
+            guard Set(remoteMeasurements.documents.map(\.documentID)) == Set(snapshot.measurements.map { $0.id.uuidString.lowercased() })
+            else { throw CanonicalizationError.invalid("Server draft is incomplete") }
+            // Media is best effort and each attachment is isolated. Storage and Firestore rules only accept
+            // attachments while this revision is still DRAFT, so the loop has to run before the transition
+            // below, but a failure here is recorded against that one attachment and never blocks the
+            // scientific record from committing. Local files are always kept.
             for attachment in snapshot.attachments {
-                let path = storagePath(attachment, snapshot: snapshot)
-                let reference = storage.reference(withPath: path)
-                onAttachmentTransfer(attachment.id, .uploading, nil, nil)
-                do {
-                    let expected = ["ownerUid": snapshot.ownerUID, "submissionId": snapshot.submissionID.uuidString.lowercased(), "revisionId": snapshot.revisionID.uuidString.lowercased(), "attachmentId": attachment.id.uuidString.lowercased()]
-                    do {
-                        let remote = try await reference.getMetadata()
-                        guard remote.customMetadata == expected, remote.contentType == attachment.contentType, remote.size == attachment.sizeBytes
-                        else { throw CanonicalizationError.invalid("Remote attachment identity does not match the queued file") }
-                    } catch where StorageErrorCode(rawValue: (error as NSError).code) == .objectNotFound {
-                        let attributes = try FileManager.default.attributesOfItem(atPath: attachment.localURL.path)
-                        guard (attributes[.size] as? NSNumber)?.int64Value == attachment.sizeBytes else { throw CanonicalizationError.invalid("An attachment file is missing or changed") }
-                        let metadata = StorageMetadata(); metadata.contentType = attachment.contentType; metadata.customMetadata = expected
-                        _ = try await reference.putFileAsync(from: attachment.localURL, metadata: metadata)
-                    }
-                    try await revision.collection("attachments").document(attachment.id.uuidString.lowercased()).setData(FirebaseMapper.attachment(attachment, in: snapshot, storagePath: path))
-                    onAttachmentTransfer(attachment.id, .uploaded, path, nil)
-                } catch {
+                do { try await upload(attachment, snapshot: snapshot, revision: revision, onAttachmentTransfer: onAttachmentTransfer) }
+                catch {
+                    failedAttachments += 1
                     onAttachmentTransfer(attachment.id, .failed, nil, error.localizedDescription)
-                    throw error
                 }
             }
-            let remoteMeasurements = try await revision.collection("measurements").getDocuments(source: .server)
-            let remoteAttachments = try await revision.collection("attachments").getDocuments(source: .server)
-            guard Set(remoteMeasurements.documents.map(\.documentID)) == Set(snapshot.measurements.map { $0.id.uuidString.lowercased() }),
-                  Set(remoteAttachments.documents.map(\.documentID)) == Set(snapshot.attachments.map { $0.id.uuidString.lowercased() })
-            else { throw CanonicalizationError.invalid("Server draft is incomplete") }
-            try await revision.updateData(["revision_status": "SUBMITTED", "submitted_at": Timestamp(date: .now)])
+            try await revision.updateData(["revision_status": "SUBMITTED", "submitted_at": FieldValue.serverTimestamp()])
         }
         let target = snapshot.correction ? "RESUBMITTED" : "SUBMITTED"
         try await submission.updateData([
             "status": target, "current_revision_id": snapshot.revisionID.uuidString.lowercased(), "current_revision_no": snapshot.revisionNumber,
-            "latest_collected_at": Timestamp(date: snapshot.collectedAt), "updated_at": Timestamp(date: .now), "submitted_at": Timestamp(date: .now), "mobile_app_version": snapshot.appVersion,
+            "latest_collected_at": Timestamp(date: snapshot.collectedAt), "updated_at": FieldValue.serverTimestamp(), "submitted_at": FieldValue.serverTimestamp(), "mobile_app_version": snapshot.appVersion,
         ])
         let acknowledgement = try await submission.getDocument(source: .server)
         guard let status = acknowledgement.get("status") as? String, Self.acknowledged.contains(status), let workflow = WorkflowState.backend(status) else { throw CanonicalizationError.invalid("Server did not acknowledge submission") }
+        guard failedAttachments == 0 else { throw AttachmentSyncFailure(workflow: workflow, count: failedAttachments) }
         return workflow
+    }
+
+    /// Uploads one attachment and writes its metadata document. Retry and idempotency behaviour is
+    /// unchanged: an object that already matches is reused, and a missing object is uploaded.
+    private func upload(
+        _ attachment: AttachmentRecord,
+        snapshot: CanonicalSnapshot,
+        revision: DocumentReference,
+        onAttachmentTransfer: @MainActor (UUID, AttachmentTransferState, String?, String?) -> Void
+    ) async throws {
+        let path = storagePath(attachment, snapshot: snapshot)
+        let reference = storage.reference(withPath: path)
+        onAttachmentTransfer(attachment.id, .uploading, nil, nil)
+        let expected = ["ownerUid": snapshot.ownerUID, "submissionId": snapshot.submissionID.uuidString.lowercased(), "revisionId": snapshot.revisionID.uuidString.lowercased(), "attachmentId": attachment.id.uuidString.lowercased()]
+        do {
+            let remote = try await reference.getMetadata()
+            guard remote.customMetadata == expected, remote.contentType == attachment.contentType, remote.size == attachment.sizeBytes
+            else { throw CanonicalizationError.invalid("Remote attachment identity does not match the queued file") }
+        } catch where StorageErrorCode(rawValue: (error as NSError).code) == .objectNotFound {
+            let attributes = try FileManager.default.attributesOfItem(atPath: attachment.localURL.path)
+            guard (attributes[.size] as? NSNumber)?.int64Value == attachment.sizeBytes else { throw CanonicalizationError.invalid("An attachment file is missing or changed") }
+            let metadata = StorageMetadata(); metadata.contentType = attachment.contentType; metadata.customMetadata = expected
+            _ = try await reference.putFileAsync(from: attachment.localURL, metadata: metadata)
+        }
+        try await revision.collection("attachments").document(attachment.id.uuidString.lowercased()).setData(FirebaseMapper.attachment(attachment, in: snapshot, storagePath: path))
+        onAttachmentTransfer(attachment.id, .uploaded, path, nil)
     }
 
     func listen(ownerUID: String, onChange: @escaping @MainActor (UUID, WorkflowState, String?, ValidationSummary?, [ValidationFlag]) -> Void) -> ListenerRegistration {

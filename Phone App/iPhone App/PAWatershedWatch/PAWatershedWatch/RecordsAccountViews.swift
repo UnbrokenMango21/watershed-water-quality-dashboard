@@ -355,7 +355,7 @@ struct RevisionHistorySection: View {
 struct CorrectionRevisionView: View {
     let model: AppModel
     let recordID: UUID
-    @State private var showValidation = false
+    @State private var validationMessage: String?
     @State private var confirmResubmit = false
     @FocusState private var focus: MeasurementKind?
     @FocusState private var revisionNoteFocused: Bool
@@ -368,8 +368,8 @@ struct CorrectionRevisionView: View {
                     if let reason = draft.correctionReason {
                         CorrectionRequestPanel(reason: reason)
                     }
-                    if showValidation {
-                        NoticeBanner(title: "Correction Required", message: "Complete the required values and document what you checked.", systemImage: "exclamationmark.circle.fill", color: .red)
+                    if let message = validationMessage ?? model.workflowError {
+                        NoticeBanner(title: "Correction Required", verbatimMessage: message, systemImage: "exclamationmark.circle.fill", color: .red)
                     }
                     OriginalValuePanel(record: record)
                     ForEach(editableKinds(draft: draft, record: record)) { kind in
@@ -387,11 +387,20 @@ struct CorrectionRevisionView: View {
                     .padding(FieldTheme.m)
                     .background(Color(uiColor: .systemBackground), in: RoundedRectangle(cornerRadius: FieldTheme.radiusM, style: .continuous))
                     PrimaryActionButton(title: "Resubmit Revision \(record.revision + 1)", systemImage: "paperplane.fill") {
-                        guard validCorrection(draft: draft, record: record) else {
-                            showValidation = true
-                            focus = editableKinds(draft: draft, record: record).first
+                        guard !draft.revisionNote.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                            validationMessage = "Document what you checked before resubmitting."
+                            revisionNoteFocused = true
                             return
                         }
+                        do {
+                            _ = try draft.canonicalSnapshot()
+                        } catch {
+                            validationMessage = error.localizedDescription
+                            focus = (error as? CanonicalizationError)?.measurement
+                                ?? editableKinds(draft: draft, record: record).first { Double(draft[valueFor: $0]) == nil }
+                            return
+                        }
+                        validationMessage = nil
                         confirmResubmit = true
                     }
                     Label("Revision \(record.revision) Retained", systemImage: "lock.fill")
@@ -409,11 +418,18 @@ struct CorrectionRevisionView: View {
             .toolbar {
                 ToolbarItemGroup(placement: .keyboard) {
                     Spacer()
+                    if let next = nextFocus(in: editableKinds(draft: draft, record: record), draft: draft) {
+                        Button("Next") { focus = next }
+                    }
                     Button("Done") {
                         focus = nil
                         revisionNoteFocused = false
                     }
                 }
+            }
+            .task { await claimPendingFocus() }
+            .onChange(of: model.pendingMeasurementFocus) { _, _ in
+                Task { await claimPendingFocus() }
             }
             .alert("Resubmit New Revision?", isPresented: $confirmResubmit) {
                 Button("Resubmit Revision \(record.revision + 1)") { model.resubmitCorrection(recordID: recordID) }
@@ -432,8 +448,18 @@ struct CorrectionRevisionView: View {
         }
     }
 
-    private func validCorrection(draft: ObservationDraft, record: ObservationRecord) -> Bool {
-        !draft.revisionNote.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && (try? draft.canonicalSnapshot()) != nil
+    /// The next editable value still needing an entry, or nil at the last one so only Done remains.
+    private func nextFocus(in kinds: [MeasurementKind], draft: ObservationDraft) -> MeasurementKind? {
+        guard let current = focus, let index = kinds.firstIndex(of: current) else { return nil }
+        return kinds[(index + 1)...].first { Double(draft[valueFor: $0]) == nil }
+    }
+
+    /// Opens the keyboard on the field a failed resubmission named.
+    private func claimPendingFocus() async {
+        guard let kind = model.pendingMeasurementFocus else { return }
+        model.pendingMeasurementFocus = nil
+        await Task.yield()
+        focus = kind
     }
 }
 

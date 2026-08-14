@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -68,8 +69,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
@@ -133,7 +136,7 @@ fun VisitDetailsScreen(model: AppViewModel, onBack: () -> Unit, onNext: () -> Un
                 value = draft.collector,
                 onValueChange = { value -> model.updateDraft { it.copy(collector = value) } },
                 modifier = Modifier.fillMaxWidth(),
-                label = { Text("Collector") },
+                label = { FieldLabel("Collector", required = true) },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
                 keyboardActions = KeyboardActions(onDone = { focus.clearFocus() }),
@@ -241,6 +244,7 @@ fun TestMethodScreen(model: AppViewModel, onBack: () -> Unit, onNext: () -> Unit
         ) {
             ScreenIntro("Step 3", "How are you testing?", "This choice shapes which measurements are required next.")
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                FieldLabel("Test type", required = true, style = MaterialTheme.typography.titleLarge)
                 TestType.entries.forEach { type ->
                     Surface(
                         modifier = Modifier.fillMaxWidth().clickable { model.selectTestType(type) },
@@ -260,7 +264,7 @@ fun TestMethodScreen(model: AppViewModel, onBack: () -> Unit, onNext: () -> Unit
                         value = draft.testTypeOther,
                         onValueChange = { value -> model.updateDraft { it.copy(testTypeOther = value) } },
                         modifier = Modifier.fillMaxWidth(),
-                        label = { Text("Describe test type · Required") },
+                        label = { FieldLabel("Describe test type", required = true) },
                         singleLine = false,
                         maxLines = 3,
                         shape = RoundedCornerShape(16.dp),
@@ -270,7 +274,7 @@ fun TestMethodScreen(model: AppViewModel, onBack: () -> Unit, onNext: () -> Unit
                     value = draft.method,
                     onValueChange = { value -> model.updateDraft { it.copy(method = value) } },
                     modifier = Modifier.fillMaxWidth(),
-                    label = { Text("Collection / measurement method") },
+                    label = { FieldLabel("Collection / measurement method", required = true) },
                     minLines = 2,
                     shape = RoundedCornerShape(16.dp),
                 )
@@ -278,7 +282,7 @@ fun TestMethodScreen(model: AppViewModel, onBack: () -> Unit, onNext: () -> Unit
                     value = draft.instrument,
                     onValueChange = { value -> model.updateDraft { it.copy(instrument = value) } },
                     modifier = Modifier.fillMaxWidth(),
-                    label = { Text(if (type == TestType.PennStateLab || type == TestType.ExternalLab) "Laboratory" else "Instrument or kit") },
+                    label = { FieldLabel(if (type == TestType.PennStateLab || type == TestType.ExternalLab) "Laboratory" else "Instrument or kit", required = true) },
                     minLines = 1,
                     maxLines = 3,
                     shape = RoundedCornerShape(16.dp),
@@ -326,13 +330,42 @@ fun TestMethodScreen(model: AppViewModel, onBack: () -> Unit, onNext: () -> Unit
 fun MeasurementsScreen(model: AppViewModel, onBack: () -> Unit, onNext: () -> Unit) {
     val draft = model.draft ?: return
     val required = draft.requiredMeasurements
-    val invalid = draft.values.any { (kind, value) -> measurementError(kind, value) != null }
-    val canContinue = draft.requiredComplete && !invalid
+    val optional = draft.optionalMeasurements
+    val invalid = draft.values.any { (kind, value) -> measurementError(kind, value, draft.selectedUnit(kind)) != null }
+    // The Review screen enforces the test-type profile minimum, so this screen has to enforce it too;
+    // otherwise the requirement stays hidden until three screens later.
+    val canContinue = draft.requiredComplete && draft.profileMinimumComplete && !invalid
+    val needsResult = draft.requiresAdditionalResult && !draft.hasAdditionalResult
+    val ordered = remember(required, optional) { required + optional }
+    val focusChain = rememberMeasurementFocusChain(ordered)
+    val listState = rememberLazyListState()
+
+    fun supported(kind: MeasurementKind) = ProductionMeasurementCatalog.spec(kind).support == ProductionSupport.FULLY_SUPPORTED
+    fun nextFocus(kind: MeasurementKind): FocusRequester? =
+        ordered.drop(ordered.indexOf(kind) + 1).firstOrNull(::supported)?.let(focusChain::get)
+
+    val headerCount = if (required.isEmpty()) 3 else 2
+    fun itemIndex(kind: MeasurementKind): Int? = when {
+        required.contains(kind) -> headerCount + required.indexOf(kind)
+        optional.contains(kind) -> headerCount + required.size + 1 + optional.indexOf(kind)
+        else -> null
+    }
+
+    val focusTarget = model.measurementFocusTarget
+    LaunchedEffect(focusTarget) {
+        val kind = focusTarget ?: return@LaunchedEffect
+        itemIndex(kind)?.let { index -> runCatching { listState.scrollToItem(index) } }
+        withFrameNanos { }
+        runCatching { focusChain[kind]?.requestFocus() }
+        model.clearMeasurementFocus()
+    }
+
     Scaffold(
         topBar = { FieldTopBar("Measurements", onBack) },
         bottomBar = { WorkflowFooter(4, "Notes and Media", canContinue) { model.setStep(5); onNext() } },
     ) { padding ->
         LazyColumn(
+            state = listState,
             modifier = Modifier.fillMaxSize().padding(padding).imePadding(),
             contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 16.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -341,7 +374,8 @@ fun MeasurementsScreen(model: AppViewModel, onBack: () -> Unit, onNext: () -> Un
                 ScreenIntro(
                     "Step 4",
                     "Enter readings",
-                    "${draft.completedRequiredCount} of ${required.size} required complete · tap any unit to change it",
+                    "${draft.completedRequiredCount} of ${required.size} required complete" +
+                        if (needsResult) " · 1 more result needed below" else " · tap any unit to change it",
                 )
             }
             item { SectionHeading("Required Measurements", "Complete these for ${draft.testType?.label ?: "this test"}") }
@@ -355,18 +389,33 @@ fun MeasurementsScreen(model: AppViewModel, onBack: () -> Unit, onNext: () -> Un
                     draft,
                     kind,
                     required = true,
+                    focusRequester = focusChain[kind],
+                    nextFocusRequester = nextFocus(kind),
                     onValueChange = { model.setMeasurement(kind, it) },
                     onUnitChange = { unit, clear -> model.changeUnit(kind, unit, clear) },
                 )
             }
-            item { SectionHeading("Optional Measurements", "Always available when the field protocol calls for them") }
-            items(draft.optionalMeasurements, key = { "optional-${it.name}" }) { kind ->
-                val supported = ProductionMeasurementCatalog.spec(kind).support == ProductionSupport.FULLY_SUPPORTED
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    SectionHeading("Optional Measurements", "Always available when the field protocol calls for them")
+                    if (needsResult) {
+                        StatusPanel(
+                            "One result is still required",
+                            "At least one result below is required for ${draft.testType?.label ?: "this test type"}. Water temperature alone is not enough.",
+                            Goldenrod,
+                            Icons.Rounded.ErrorOutline,
+                        )
+                    }
+                }
+            }
+            items(optional, key = { "optional-${it.name}" }) { kind ->
                 MeasurementEntry(
                     draft,
                     kind,
                     required = false,
-                    enabled = supported,
+                    enabled = supported(kind),
+                    focusRequester = focusChain[kind],
+                    nextFocusRequester = nextFocus(kind),
                     onValueChange = { model.setMeasurement(kind, it) },
                     onUnitChange = { unit, clear -> model.changeUnit(kind, unit, clear) },
                 )
@@ -533,7 +582,7 @@ fun NotesMediaScreen(model: AppViewModel, onBack: () -> Unit, onNext: () -> Unit
 }
 
 @Composable
-fun ReviewScreen(model: AppViewModel, onBack: () -> Unit, onSubmitted: (String) -> Unit) {
+fun ReviewScreen(model: AppViewModel, onBack: () -> Unit, onFix: (ReviewIssue) -> Unit, onSubmitted: (String) -> Unit) {
     val draft = model.draft ?: return
     val site = model.selectedSite()
     val issues = model.reviewIssues()
@@ -558,7 +607,7 @@ fun ReviewScreen(model: AppViewModel, onBack: () -> Unit, onSubmitted: (String) 
             verticalArrangement = Arrangement.spacedBy(18.dp),
         ) {
             ScreenIntro("Step 6", "Ready to submit?", "Only entered measurements are included. A submitted scientific record can only change through a new revision.")
-            if (issues.isNotEmpty()) StatusPanel("Check required information", issues.joinToString("\n") { "• $it" }, MaterialTheme.colorScheme.error, Icons.Rounded.ErrorOutline)
+            if (issues.isNotEmpty()) ReviewIssuePanel(issues, onFix)
             ReviewSection("Site and visit") {
                 KeyValueRow("Sampling site", site?.name ?: "Not selected")
                 KeyValueRow("Collected", formatDateTime(draft.collectedAt))
@@ -605,6 +654,28 @@ fun ReviewScreen(model: AppViewModel, onBack: () -> Unit, onSubmitted: (String) 
             },
             dismissButton = { TextButton(onClick = { confirm = false }) { Text("Keep Reviewing") } },
         )
+    }
+}
+
+/** Every blocking issue is tappable, so the fix is one step away instead of a scavenger hunt. */
+@Composable
+fun ReviewIssuePanel(issues: List<ReviewIssue>, onFix: (ReviewIssue) -> Unit) {
+    Surface(color = MaterialTheme.colorScheme.error.copy(alpha = .1f), shape = RoundedCornerShape(18.dp)) {
+        Column(modifier = Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Rounded.ErrorOutline, contentDescription = null, tint = MaterialTheme.colorScheme.error)
+                Text("Check required information", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.titleMedium)
+            }
+            issues.forEach { issue ->
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(issue.message, modifier = Modifier.weight(1f), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    TextButton(
+                        onClick = { onFix(issue) },
+                        modifier = Modifier.semantics { contentDescription = "Fix: ${issue.message}" },
+                    ) { Text("Fix") }
+                }
+            }
+        }
     }
 }
 

@@ -31,6 +31,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -107,6 +108,29 @@ fun SectionHeading(title: String, supporting: String? = null, trailing: String? 
             supporting?.let { Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         }
         trailing?.let { Text(it, color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelLarge) }
+    }
+}
+
+/**
+ * The single required-field affordance in the app: a visible asterisk that is never the only signal,
+ * because the text beside it (a field label, or the "Required" caption on a measurement row) still
+ * carries the meaning for screen readers.
+ */
+@Composable
+fun RequiredMark(modifier: Modifier = Modifier) {
+    Text(
+        "*",
+        modifier = modifier.semantics { contentDescription = "Required" },
+        color = MaterialTheme.colorScheme.error,
+        fontWeight = FontWeight.Bold,
+    )
+}
+
+@Composable
+fun FieldLabel(text: String, required: Boolean, modifier: Modifier = Modifier, style: androidx.compose.ui.text.TextStyle = LocalTextStyle.current) {
+    Row(modifier = modifier, horizontalArrangement = Arrangement.spacedBy(3.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(text, style = style)
+        if (required) RequiredMark()
     }
 }
 

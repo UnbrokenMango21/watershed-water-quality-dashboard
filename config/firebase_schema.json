@@ -35,11 +35,12 @@
       "documentId": "Firebase Auth uid",
       "fields": {
         "display_name": "string",
-        "role": "COLLECTOR | ADMIN",
+        "role": "COLLECTOR | QC_REVIEWER | ADMIN",
         "active": "boolean",
         "created_at": "Timestamp",
         "updated_at": "Timestamp"
-      }
+      },
+      "policy": "role is authoritative on the Firebase Auth custom claim (request.auth.token.role); this Firestore field is a readable mirror only. Only QC_REVIEWER and ADMIN may perform reviewer actions. There is no public reviewer signup; roles are provisioned server-side."
     },
     "siteCatalog": {
       "documentId": "site_id",
@@ -48,6 +49,8 @@
         "site_id": "string",
         "site_code": "string",
         "site_name_display": "string",
+        "county": "string|null",
+        "watershed_name": "string|null",
         "latitude": "number",
         "longitude": "number",
         "location": "GeoPoint",
@@ -69,7 +72,7 @@
         "latest_collected_at": "Timestamp",
         "created_at": "Timestamp",
         "updated_at": "Timestamp",
-        "submitted_at": "Timestamp|null",
+        "submitted_at": "Timestamp|null (trusted server timestamp only; client must write via FieldValue.serverTimestamp() and rules require it equal request.time)",
         "workflow_job_id": "string|null",
         "arcgis_staging_globalid": "string|null",
         "schema_version": "string",
@@ -83,7 +86,9 @@
         "info_flag_count": "integer",
         "review_decision": "APPROVE | NEEDS_CORRECTION | REJECT | null",
         "review_comment": "string|null",
+        "reviewer_user_id": "string|null",
         "reviewed_at": "Timestamp|null",
+        "reviewed_revision_id": "string|null",
         "published_at": "Timestamp|null"
       },
       "serverOwnedFields": [
@@ -98,7 +103,9 @@
         "info_flag_count",
         "review_decision",
         "review_comment",
+        "reviewer_user_id",
         "reviewed_at",
+        "reviewed_revision_id",
         "published_at"
       ],
       "subcollections": {
@@ -114,7 +121,7 @@
             "site_id": "string",
             "revision_status": "DRAFT | SUBMITTED",
             "created_at": "Timestamp",
-            "submitted_at": "Timestamp|null",
+            "submitted_at": "Timestamp|null (trusted server timestamp only; client must write via FieldValue.serverTimestamp() and rules require it equal request.time)",
             "collected_at": "Timestamp",
             "time_known": "boolean",
             "time_imputed": "boolean",
@@ -149,12 +156,15 @@
                 "display_name": "string",
                 "value": "number",
                 "unit_code": "string",
+                "entered_value": "number",
+                "entered_unit_code": "string",
                 "method_name": "string",
                 "instrument_name": "string",
                 "qualifier": "string|null",
                 "notes": "string|null",
                 "entered_at": "Timestamp"
-              }
+              },
+              "policy": "value/unit_code are the canonical measurement used for validation, review, and publication. entered_value/entered_unit_code preserve exactly what the collector typed and selected, using the stable unit IDs defined by the mobile domain models, and are never used as conversion authority. Temperature uses the analogous temp_entered_value/temp_entered_unit/temp_c/temp_f fields on the revision instead of a measurement record."
             },
             "validationFlags": {
               "documentId": "flag_id",
@@ -228,6 +238,21 @@
       "APPROVED -> PUBLISHING",
       "PUBLISHING -> PUBLISHED",
       "PUBLISHING -> PUBLISH_FAILED"
+    ]
+  },
+  "reviewWorkflow": {
+    "actions": ["APPROVE", "NEEDS_CORRECTION", "REJECT"],
+    "actorRoles": ["QC_REVIEWER", "ADMIN"],
+    "reasonRequired": {"APPROVE": false, "NEEDS_CORRECTION": true, "REJECT": true},
+    "executionPath": "Server-only (Firebase Admin SDK, Application Default Credentials). Never invoked from browser/client code.",
+    "guarantees": [
+      "atomic: submission patch, and audit event commit in one Firestore transaction",
+      "transactional: read-check-write inside db.runTransaction",
+      "revision-aware: the request must name the submission's current_revision_id; a mismatch is rejected",
+      "race-safe: Firestore transaction read-then-write plus the revision/status check prevents two concurrent reviewers from double-applying a decision",
+      "idempotent: a repeated identical request (same submissionId, revisionId, decision) after it already applied returns the same result without writing a second audit event",
+      "stale: a request naming a revision or status that no longer matches current server state is rejected with HTTP 409",
+      "immutable revision: the review path never writes to submissions/{id}/revisions/{id} or its measurements subcollection"
     ]
   },
   "privacy": {

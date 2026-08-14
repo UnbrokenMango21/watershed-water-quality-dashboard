@@ -18,10 +18,25 @@
       "node_modules/**",
       "Phone App/**",
       "mobile/**",
+      "web/**",
       "tests/**",
       "docs/**",
       "*.zip",
       "*.log"
     ]
+  },
+  "emulators": {
+    "auth": {
+      "port": 9099
+    },
+    "firestore": {
+      "port": 8080
+    },
+    "storage": {
+      "port": 9199
+    },
+    "functions": {
+      "port": 5001
+    }
   }
 }

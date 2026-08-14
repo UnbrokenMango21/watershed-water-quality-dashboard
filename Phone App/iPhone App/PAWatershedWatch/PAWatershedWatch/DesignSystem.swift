@@ -48,15 +48,30 @@ struct WatershedMark: View {
     }
 }
 
+/// The one required-field indicator in the app. Applied only to fields that `canonicalSnapshot()`
+/// or `requiredMeasurements` already enforce, so the glyph never promises a rule that does not exist.
+struct RequiredMark: View {
+    var body: some View {
+        Text(verbatim: "*")
+            .font(.subheadline.weight(.bold))
+            .foregroundStyle(.red)
+            .accessibilityLabel("Required")
+    }
+}
+
 struct FieldSectionHeader: View {
     let title: LocalizedStringResource
     var detail: LocalizedStringResource?
+    var isRequired = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: FieldTheme.xs) {
-            Text(title)
-                .font(.headline)
-                .foregroundStyle(FieldTheme.ink)
+            HStack(spacing: FieldTheme.xs) {
+                Text(title)
+                    .font(.headline)
+                    .foregroundStyle(FieldTheme.ink)
+                if isRequired { RequiredMark() }
+            }
             if let detail {
                 Text(detail)
                     .font(.subheadline)

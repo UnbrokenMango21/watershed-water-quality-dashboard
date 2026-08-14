@@ -14,6 +14,7 @@ import androidx.work.workDataOf
 import com.google.android.gms.tasks.Task
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.DocumentSnapshot
+import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Source
 import com.google.firebase.storage.FirebaseStorage
@@ -25,6 +26,7 @@ import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.suspendCancellableCoroutine
 import java.io.File
 import java.util.concurrent.TimeUnit
+import kotlin.coroutines.cancellation.CancellationException
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
@@ -161,12 +163,25 @@ class FirebaseSyncRepository(
                 revisionRef.collection("measurements").document(value.id.value)
                     .set(FirestoreObservationMapper.measurement(snapshot, value)).awaitResult()
             }
+            // One unreachable photo must not stop its siblings from uploading. Rules only accept
+            // measurement and attachment writes while the revision is still DRAFT, so the status
+            // transition below cannot be hoisted above this loop; instead every attachment gets its
+            // own attempt and the first failure is rethrown afterwards so the retry can finish the
+            // rest without locking the revision on a partial media set.
+            val attachmentFailures = mutableListOf<Exception>()
             snapshot.attachments.forEach { attachment ->
-                val storagePath = attachment.storagePath(snapshot)
-                uploadIfNeeded(attachment, storagePath, snapshot)
-                revisionRef.collection("attachments").document(attachment.id.value)
-                    .set(FirestoreObservationMapper.attachment(snapshot, attachment, storagePath)).awaitResult()
+                try {
+                    val storagePath = attachment.storagePath(snapshot)
+                    uploadIfNeeded(attachment, storagePath, snapshot)
+                    revisionRef.collection("attachments").document(attachment.id.value)
+                        .set(FirestoreObservationMapper.attachment(snapshot, attachment, storagePath)).awaitResult()
+                } catch (cancellation: CancellationException) {
+                    throw cancellation
+                } catch (error: Exception) {
+                    attachmentFailures += error
+                }
             }
+            attachmentFailures.firstOrNull()?.let { throw it }
             require(revisionRef.get(Source.SERVER).awaitResult().exists())
             for (measurement in snapshot.measurements) {
                 require(revisionRef.collection("measurements").document(measurement.id.value).get(Source.SERVER).awaitResult().exists())
@@ -174,7 +189,7 @@ class FirebaseSyncRepository(
             for (attachment in snapshot.attachments) {
                 require(revisionRef.collection("attachments").document(attachment.id.value).get(Source.SERVER).awaitResult().exists())
             }
-            revisionRef.update(mapOf("revision_status" to "SUBMITTED", "submitted_at" to com.google.firebase.Timestamp.now())).awaitResult()
+            revisionRef.update(mapOf("revision_status" to "SUBMITTED", "submitted_at" to FieldValue.serverTimestamp())).awaitResult()
             val target = if (snapshot.correction) "RESUBMITTED" else "SUBMITTED"
             parentRef.update(
                 mapOf(
@@ -182,8 +197,8 @@ class FirebaseSyncRepository(
                     "current_revision_id" to snapshot.revisionId.value,
                     "current_revision_no" to snapshot.revisionNo,
                     "latest_collected_at" to com.google.firebase.Timestamp(java.util.Date(snapshot.collectedAt)),
-                    "updated_at" to com.google.firebase.Timestamp.now(),
-                    "submitted_at" to com.google.firebase.Timestamp.now(),
+                    "updated_at" to FieldValue.serverTimestamp(),
+                    "submitted_at" to FieldValue.serverTimestamp(),
                     "mobile_app_version" to snapshot.appVersion,
                 ),
             ).awaitResult()

@@ -59,6 +59,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
@@ -74,6 +76,7 @@ import androidx.compose.ui.unit.dp
 @Composable
 fun SignInScreen(model: AppViewModel) {
     val focus = LocalFocusManager.current
+    val passwordFocus = remember { FocusRequester() }
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -101,6 +104,7 @@ fun SignInScreen(model: AppViewModel) {
             modifier = Modifier.fillMaxWidth(),
             singleLine = true,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email, imeAction = ImeAction.Next),
+            keyboardActions = KeyboardActions(onNext = { passwordFocus.requestFocus() }),
             shape = RoundedCornerShape(16.dp),
         )
         Spacer(Modifier.height(14.dp))
@@ -109,7 +113,7 @@ fun SignInScreen(model: AppViewModel) {
             onValueChange = { model.password = it },
             label = { Text("Password") },
             leadingIcon = { Icon(Icons.Rounded.Lock, contentDescription = null) },
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().focusRequester(passwordFocus),
             singleLine = true,
             visualTransformation = PasswordVisualTransformation(),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
@@ -236,6 +240,7 @@ fun SelectSiteScreen(model: AppViewModel, onBack: () -> Unit, onNext: () -> Unit
             modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
+            FieldLabel("Choose one sampling site", required = true, style = MaterialTheme.typography.titleMedium)
             if (model.connection == ConnectionState.Offline) {
                 StatusPanel("Cached sites", "You can keep working. Site details were saved on this phone.", Goldenrod, Icons.Rounded.Cached)
             }

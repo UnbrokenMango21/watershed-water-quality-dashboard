@@ -47,6 +47,7 @@ jobs:
             package-lock.json
             tests/firestore-rules/package-lock.json
             tests/validation-firestore/package-lock.json
+            tests/review/package-lock.json
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -54,11 +55,14 @@ jobs:
       - run: npm ci
       - run: npm ci --prefix tests/firestore-rules
       - run: npm ci --prefix tests/validation-firestore
+      - run: npm ci --prefix tests/review
       - run: npm run test:contracts
       - name: Firestore, Storage, and validation persistence
         run: npx firebase emulators:exec --project central-pa-watershed-dev --only firestore,storage "node tests/firestore-rules/run-tests.cjs && node tests/firestore-rules/run-storage-tests.cjs && node tests/validation-firestore/run-tests.cjs"
       - name: Validation trigger integration
         run: npx firebase emulators:exec --project central-pa-watershed-dev --only firestore,functions "npm run test:trigger"
+      - name: QC reviewer action and lifecycle integration
+        run: npx firebase emulators:exec --project central-pa-watershed-dev --only firestore "npm run test:review"
 
   android:
     name: Android native

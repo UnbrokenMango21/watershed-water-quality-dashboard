@@ -231,6 +231,8 @@ fun CorrectionRevisionScreen(model: AppViewModel, recordId: String, onBack: () -
     val source = model.record(recordId) ?: return
     var confirm by remember { mutableStateOf(false) }
     val canSubmit = model.reviewIssues().isEmpty()
+    val correctionKinds = remember(source.measurements) { source.measurements.map(MeasurementValue::kind) }
+    val correctionFocus = rememberMeasurementFocusChain(correctionKinds)
     Scaffold(
         topBar = { FieldTopBar("Correction Revision", onBack) },
         bottomBar = {
@@ -258,11 +260,13 @@ fun CorrectionRevisionScreen(model: AppViewModel, recordId: String, onBack: () -
                 }
             }
             SectionHeading("Corrected measurements", "Edit only what the source check confirms")
-            source.measurements.forEach { original ->
+            source.measurements.forEachIndexed { index, original ->
                 MeasurementEntry(
                     draft = draft,
                     kind = original.kind,
                     required = original.kind in draft.requiredMeasurements,
+                    focusRequester = correctionFocus[original.kind],
+                    nextFocusRequester = correctionKinds.getOrNull(index + 1)?.let(correctionFocus::get),
                     onValueChange = { model.setMeasurement(original.kind, it) },
                     onUnitChange = { unit, clear -> model.changeUnit(original.kind, unit, clear) },
                 )
@@ -271,7 +275,7 @@ fun CorrectionRevisionScreen(model: AppViewModel, recordId: String, onBack: () -
                 value = draft.revisionNote,
                 onValueChange = { value -> model.updateDraft { it.copy(revisionNote = value) } },
                 modifier = Modifier.fillMaxWidth(),
-                label = { Text("Source-check note · Required") },
+                label = { FieldLabel("Source-check note", required = true) },
                 placeholder = { Text("What changed, and what source did you verify?") },
                 minLines = 4,
                 isError = draft.revisionNote.isBlank(),

@@ -27,6 +27,30 @@ enum RecentRoute: Hashable {
     case detail(UUID), correction(UUID), status(UUID)
 }
 
+/// The workflow step that owns a validation failure, so Review and Submit can send the collector
+/// back to the screen that can actually fix it instead of matching on message text.
+enum WorkflowSection: Hashable, Sendable {
+    case visitDetails, testMethod, measurements, notesMedia
+
+    var route: HomeRoute {
+        switch self {
+        case .visitDetails: .visitDetails
+        case .testMethod: .testMethod
+        case .measurements: .measurements
+        case .notesMedia: .media
+        }
+    }
+
+    var step: Int {
+        switch self {
+        case .visitDetails: 2
+        case .testMethod: 3
+        case .measurements: 4
+        case .notesMedia: 5
+        }
+    }
+}
+
 enum ConnectionState: String, CaseIterable, Identifiable, Equatable {
     case online, offline, serverUnavailable
     var id: Self { self }
@@ -535,20 +559,37 @@ final class ObservationDraft {
         requiredMeasurements.count { Double(values[$0] ?? "") != nil }
     }
 
-    var productionProfileComplete: Bool {
-        guard completedRequiredCount == requiredMeasurements.count else { return false }
+    var firstIncompleteRequirement: MeasurementKind? {
+        requiredMeasurements.first { Double(values[$0] ?? "") == nil }
+    }
+
+    /// Lab, field kit, and other test types must carry at least one measurement document beyond the
+    /// temperature fields the revision itself stores. Mirrors `minimumMeasurementCount` for those
+    /// profiles in `config/validation_rules.json`; temperature is not a measurement document.
+    var requiresAdditionalResult: Bool {
         switch testType {
-        case .fieldInstrument, .sonde, .mixed: return true
-        case .none: return false
-        default: return values.contains { $0.key != .temperature && Double($0.value) != nil }
+        case .fieldInstrument, .sonde, .mixed, .none: false
+        default: true
         }
     }
 
-    var invalidMeasurementKinds: [MeasurementKind] {
-        values.compactMap { kind, value in
-            let trimmed = value.trimmingCharacters(in: .whitespaces)
-            return !trimmed.isEmpty && Double(trimmed) == nil ? kind : nil
-        }
+    var hasAdditionalResult: Bool {
+        values.contains { $0.key != .temperature && Double($0.value) != nil }
+    }
+
+    /// The single completeness rule consulted by the Measurements gate, the Review gate, and
+    /// `canonicalSnapshot()`, so no screen can imply the record is finished while it is not.
+    var productionProfileComplete: Bool {
+        guard testType != nil, completedRequiredCount == requiredMeasurements.count else { return false }
+        return !requiresAdditionalResult || hasAdditionalResult
+    }
+
+    /// Progress text for the Required Measurements header. It stays honest about the additional
+    /// result `productionProfileComplete` needs instead of showing a finished "1/1".
+    var measurementProgressText: String {
+        let progress = "\(completedRequiredCount)/\(requiredMeasurements.count)"
+        guard requiresAdditionalResult, !hasAdditionalResult else { return progress }
+        return "\(progress) required · +1 result needed below"
     }
 
     var temperatureConversion: String? {
@@ -637,6 +678,9 @@ final class AppModel {
     var records: [ObservationRecord] = []
     var sites: [Site] = []
     var sitesLoading = false
+    /// Set when a validation failure names a measurement. The measurement screens consume it to open
+    /// the keyboard on the offending field, then clear it.
+    var pendingMeasurementFocus: MeasurementKind?
 
     private var ownerUID: String?
 
@@ -699,7 +743,19 @@ final class AppModel {
     func advance(to route: HomeRoute, step: Int) {
         draft?.currentStep = step
         syncState = .savedLocally
+        workflowError = nil
         homePath.append(route)
+    }
+
+    /// Reports a validation failure on the screen that owns it: the message stays visible, the offending
+    /// section is opened, and the offending measurement is queued for keyboard focus. Entered values are
+    /// never cleared — `canonicalSnapshot()` is a read-only check.
+    func present(_ error: CanonicalizationError, navigating: Bool = true) {
+        workflowError = error.localizedDescription
+        pendingMeasurementFocus = error.measurement
+        guard navigating, let section = error.section else { return }
+        draft?.currentStep = section.step
+        if homePath.last != section.route { homePath.append(section.route) }
     }
 
     func submitDraft() {
@@ -714,6 +770,8 @@ final class AppModel {
             reloadRecords()
             if !homePath.contains(.status) { homePath.append(.status) }
             if connection == .online { retrySync(recordID: snapshot.submissionID) }
+        } catch let error as CanonicalizationError {
+            present(error, navigating: !draft.isCorrection)
         } catch { workflowError = error.localizedDescription }
     }
 
@@ -906,6 +964,13 @@ final class AppModel {
                     try store.markQueue(item, state: "CONFIRMED", error: nil)
                     try store.updateRemoteState(ownerUID: ownerUID, submissionID: id, workflow: acknowledged, sync: .synced, correctionReason: nil, validation: nil, flags: [])
                     syncState = .synced; workflowState = acknowledged
+                } catch let media as AttachmentSyncFailure {
+                    // The scientific record reached the archive; only media is missing. The revision is now
+                    // immutable, so retrying cannot resend it — report it truthfully instead of as a failed record.
+                    try? store.markQueue(item, state: "CONFIRMED", error: media.localizedDescription)
+                    try? store.updateRemoteState(ownerUID: ownerUID, submissionID: id, workflow: media.workflow, sync: .synced, correctionReason: nil, validation: nil, flags: [])
+                    syncState = .synced; workflowState = media.workflow
+                    workflowError = media.localizedDescription
                 } catch {
                     try? store.markQueue(item, state: "RETRYABLE_FAILURE", error: error.localizedDescription)
                     try? store.updateRemoteState(ownerUID: ownerUID, submissionID: id, workflow: records.first(where: { $0.id == id })?.workflow ?? .submitted, sync: .failed, correctionReason: nil, validation: nil, flags: [])

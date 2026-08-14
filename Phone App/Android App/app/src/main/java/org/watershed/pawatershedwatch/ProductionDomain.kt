@@ -1,6 +1,7 @@
 package org.watershed.pawatershedwatch
 
 import com.google.firebase.Timestamp
+import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.GeoPoint
 import java.security.MessageDigest
 import java.math.BigDecimal
@@ -162,6 +163,8 @@ fun ObservationDraft.toCanonicalSnapshot(ownerUid: String, appVersion: String, s
     val temperatureRaw = requireNotNull(values[MeasurementKind.Temperature]?.trim()?.toDoubleOrNull()) { "Water temperature is required" }
     require(temperatureRaw.isFinite()) { "Water temperature must be finite" }
     val temperatureUnit = selectedUnit(MeasurementKind.Temperature)
+    measurementErrorMessage(MeasurementKind.Temperature, values.getValue(MeasurementKind.Temperature), temperatureUnit)
+        ?.let { throw IllegalArgumentException(it) }
     val tempC = temperatureUnit.convert(temperatureRaw, Units.Celsius)
     val tempF = Units.Celsius.convert(tempC, Units.Fahrenheit)
     val canonicalMeasurements = values.mapNotNull { (kind, raw) ->
@@ -170,8 +173,8 @@ fun ObservationDraft.toCanonicalSnapshot(ownerUid: String, appVersion: String, s
         require(spec.support == ProductionSupport.FULLY_SUPPORTED) { "${kind.title} is not enabled by the production contract" }
         val entered = requireNotNull(raw.toDoubleOrNull()) { "${kind.title} must be numeric" }
         require(entered.isFinite()) { "${kind.title} must be finite" }
-        measurementError(kind, raw)?.let { throw IllegalArgumentException(it) }
         val selected = selectedUnit(kind)
+        measurementErrorMessage(kind, raw, selected)?.let { throw IllegalArgumentException(it) }
         val canonicalUnit = kind.units.first()
         val canonical = BigDecimal.valueOf(selected.convert(entered, canonicalUnit)).setScale(12, RoundingMode.HALF_EVEN).stripTrailingZeros().toDouble()
         CanonicalMeasurement(
@@ -199,6 +202,13 @@ fun ObservationDraft.toCanonicalSnapshot(ownerUid: String, appVersion: String, s
 object FirestoreObservationMapper {
     const val SCHEMA_VERSION = "0.1.0"
 
+    /**
+     * firebase/firestore.rules requires `submitted_at == request.time` on every collector-authored
+     * submission and revision write, so the value has to be the trusted server sentinel rather than a
+     * client clock reading. Drafts keep writing null until the record is actually submitted.
+     */
+    private fun submittedAt(status: String): Any? = if (status == "DRAFT") null else FieldValue.serverTimestamp()
+
     fun submission(snapshot: CanonicalObservationSnapshot, status: String): Map<String, Any?> = mapOf(
         "submission_id" to snapshot.submissionId.value,
         "event_id" to snapshot.eventId.value,
@@ -210,7 +220,7 @@ object FirestoreObservationMapper {
         "latest_collected_at" to Timestamp(Date(snapshot.collectedAt)),
         "created_at" to Timestamp(Date(snapshot.createdAt)),
         "updated_at" to Timestamp(Date(snapshot.submittedAt)),
-        "submitted_at" to if (status == "DRAFT") null else Timestamp(Date(snapshot.submittedAt)),
+        "submitted_at" to submittedAt(status),
         "schema_version" to SCHEMA_VERSION,
         "mobile_app_version" to snapshot.appVersion,
     )
@@ -224,7 +234,7 @@ object FirestoreObservationMapper {
         "site_id" to snapshot.siteId.value,
         "revision_status" to status,
         "created_at" to Timestamp(Date(snapshot.createdAt)),
-        "submitted_at" to if (status == "DRAFT") null else Timestamp(Date(snapshot.submittedAt)),
+        "submitted_at" to submittedAt(status),
         "collected_at" to Timestamp(Date(snapshot.collectedAt)),
         "time_known" to true,
         "time_imputed" to false,
@@ -255,6 +265,8 @@ object FirestoreObservationMapper {
         "display_name" to value.displayName,
         "value" to value.value,
         "unit_code" to value.unitCode,
+        "entered_value" to value.enteredValue,
+        "entered_unit_code" to value.enteredUnitId,
         "method_name" to snapshot.methodName,
         "instrument_name" to snapshot.instrumentName,
         "qualifier" to null,

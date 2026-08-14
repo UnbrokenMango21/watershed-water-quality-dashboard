@@ -14,6 +14,7 @@ import {
   setDoc,
   updateDoc,
   deleteDoc,
+  serverTimestamp,
   Timestamp
 } from 'firebase/firestore';
 
@@ -94,6 +95,8 @@ function measurement(id = 'm-1', overrides = {}) {
     display_name: 'pH',
     value: 7.2,
     unit_code: 'pH',
+    entered_value: 7.2,
+    entered_unit_code: 'pH',
     method_name: 'Field meter',
     instrument_name: 'Test instrument',
     qualifier: null,
@@ -191,8 +194,24 @@ test('collector can transition own submission DRAFT to SUBMITTED', async () => {
   const db = env.authenticatedContext('collector-a').firestore();
   await assertSucceeds(updateDoc(doc(db, `submissions/${submissionId}`), {
     status: 'SUBMITTED',
+    submitted_at: serverTimestamp(),
+    updated_at: serverTimestamp()
+  }));
+});
+
+test('collector cannot forge submission submitted_at with a phone-supplied timestamp', async () => {
+  await seed(`submissions/${submissionId}`, draftSubmission());
+  await seed(`submissions/${submissionId}/revisions/${revisionId}`, draftRevision({ revision_status: 'SUBMITTED', submitted_at: nowString() }));
+  const db = env.authenticatedContext('collector-a').firestore();
+  await assertFails(updateDoc(doc(db, `submissions/${submissionId}`), {
+    status: 'SUBMITTED',
     submitted_at: nowString(),
-    updated_at: nowString()
+    updated_at: serverTimestamp()
+  }));
+  await assertFails(updateDoc(doc(db, `submissions/${submissionId}`), {
+    status: 'SUBMITTED',
+    submitted_at: Timestamp.fromDate(new Date('2099-01-01T00:00:00Z')),
+    updated_at: serverTimestamp()
   }));
 });
 
@@ -255,6 +274,16 @@ test('collector can submit a DRAFT revision', async () => {
   const db = env.authenticatedContext('collector-a').firestore();
   await assertSucceeds(updateDoc(doc(db, `submissions/${submissionId}/revisions/${revisionId}`), {
     revision_status: 'SUBMITTED',
+    submitted_at: serverTimestamp()
+  }));
+});
+
+test('collector cannot forge revision submitted_at with a phone-supplied timestamp', async () => {
+  await seed(`submissions/${submissionId}`, draftSubmission());
+  await seed(`submissions/${submissionId}/revisions/${revisionId}`, draftRevision());
+  const db = env.authenticatedContext('collector-a').firestore();
+  await assertFails(updateDoc(doc(db, `submissions/${submissionId}/revisions/${revisionId}`), {
+    revision_status: 'SUBMITTED',
     submitted_at: nowString()
   }));
 });
@@ -297,6 +326,24 @@ test('measurement rejects invalid parameter codes, units, values and forged ids'
   await assertFails(setDoc(doc(db, path), measurement('m-1', { parameter_code: 'PH', unit_code: 'mg/L' })));
   await assertFails(setDoc(doc(db, path), measurement('m-1', { value: '7.2' })));
   await assertFails(setDoc(doc(db, path), measurement('forged-id')));
+});
+
+test('measurement requires entered value/unit provenance alongside the canonical value/unit', async () => {
+  await seed(`submissions/${submissionId}`, draftSubmission());
+  await seed(`submissions/${submissionId}/revisions/${revisionId}`, draftRevision());
+  const db = env.authenticatedContext('collector-a').firestore();
+  const path = `submissions/${submissionId}/revisions/${revisionId}/measurements/m-1`;
+  await assertSucceeds(setDoc(doc(db, path), measurement('m-1', {
+    parameter_code: 'CONDUCTIVITY_US_CM',
+    unit_code: 'uS/cm',
+    value: 350,
+    entered_value: 0.35,
+    entered_unit_code: 'mS/cm',
+  })));
+  await assertFails(setDoc(doc(db, path), measurement('m-1', { entered_value: '7.2' })));
+  await assertFails(setDoc(doc(db, path), measurement('m-1', { entered_unit_code: '' })));
+  const { entered_value, ...withoutEnteredValue } = measurement('m-1');
+  await assertFails(setDoc(doc(db, path), withoutEnteredValue));
 });
 
 test('attachment metadata requires exact owner-scoped storage path, MIME and size', async () => {

@@ -215,7 +215,7 @@ service cloud.firestore {
         && request.resource.data.site_id == resource.data.site_id
         && request.resource.data.created_at == resource.data.created_at
         && request.resource.data.revision_status in ["DRAFT", "SUBMITTED"]
-        && request.resource.data.submitted_at is timestamp
+        && request.resource.data.submitted_at == request.time
         && request.resource.data.temp_entered_unit in ["C", "F"]
         && request.resource.data.latitude is number
         && request.resource.data.longitude is number
@@ -232,6 +232,8 @@ service cloud.firestore {
         "display_name",
         "value",
         "unit_code",
+        "entered_value",
+        "entered_unit_code",
         "method_name",
         "instrument_name",
         "qualifier",
@@ -261,6 +263,8 @@ service cloud.firestore {
           "display_name",
           "value",
           "unit_code",
+          "entered_value",
+          "entered_unit_code",
           "method_name",
           "instrument_name",
           "entered_at"
@@ -269,6 +273,8 @@ service cloud.firestore {
         && nonEmptyString(request.resource.data.display_name)
         && request.resource.data.value is number
         && validParameterUnit(request.resource.data.parameter_code, request.resource.data.unit_code)
+        && request.resource.data.entered_value is number
+        && nonEmptyString(request.resource.data.entered_unit_code)
         && nonEmptyString(request.resource.data.method_name)
         && nonEmptyString(request.resource.data.instrument_name)
         && request.resource.data.entered_at is timestamp;
@@ -374,7 +380,7 @@ service cloud.firestore {
         && request.resource.data.current_revision_no is int
         && request.resource.data.latest_collected_at is timestamp
         && request.resource.data.updated_at is timestamp
-        && request.resource.data.submitted_at is timestamp
+        && request.resource.data.submitted_at == request.time
         && (
           request.resource.data.status in ["DRAFT", "NEEDS_CORRECTION"]
           || validFinalRevisionLink(submissionId)

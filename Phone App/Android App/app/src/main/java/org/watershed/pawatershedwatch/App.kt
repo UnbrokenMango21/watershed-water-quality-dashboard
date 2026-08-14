@@ -48,6 +48,15 @@ private object Routes {
     fun detail(id: String) = "detail/$id"
     fun correction(id: String) = "correction/$id"
     fun status(id: String) = "status/$id"
+
+    fun step(value: WorkflowStep) = when (value) {
+        WorkflowStep.Site -> SelectSite
+        WorkflowStep.VisitDetails -> Visit
+        WorkflowStep.TestMethod -> TestMethod
+        WorkflowStep.Measurements -> Measurements
+        WorkflowStep.NotesMedia -> Media
+        WorkflowStep.Review -> Review
+    }
 }
 
 private data class Tab(val route: String, val label: String, val icon: ImageVector)
@@ -76,15 +85,18 @@ fun PAWatershedApp(model: AppViewModel) {
     var replaceDraft by remember { mutableStateOf(false) }
 
     fun navigateToDraftStep() {
-        val route = when (model.draft?.currentStep) {
-            2 -> Routes.Visit
-            3 -> Routes.TestMethod
-            4 -> Routes.Measurements
-            5 -> Routes.Media
-            6 -> Routes.Review
-            else -> Routes.SelectSite
+        val step = WorkflowStep.entries.firstOrNull { it.number == model.draft?.currentStep } ?: WorkflowStep.Site
+        navController.navigate(Routes.step(step))
+    }
+
+    fun navigateToIssue(issue: ReviewIssue) {
+        model.requestMeasurementFocus(issue.measurementKind)
+        model.setStep(issue.step.number)
+        val route = Routes.step(issue.step)
+        navController.navigate(route) {
+            popUpTo(route)
+            launchSingleTop = true
         }
-        navController.navigate(route)
     }
 
     Scaffold(
@@ -149,7 +161,7 @@ fun PAWatershedApp(model: AppViewModel) {
                 NotesMediaScreen(model, navController::popBackStack) { navController.navigate(Routes.Review) }
             }
             composable(Routes.Review) {
-                ReviewScreen(model, navController::popBackStack) { id ->
+                ReviewScreen(model, navController::popBackStack, onFix = ::navigateToIssue) { id ->
                     navController.navigate(Routes.status(id)) {
                         popUpTo(Routes.Home)
                     }

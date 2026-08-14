@@ -92,11 +92,26 @@ final class ModelTests: XCTestCase {
         XCTAssertEqual(revision["temp_c"] as? Double, 20)
         XCTAssertEqual(revision["test_type"] as? String, "In-situ / Field Instrument")
 
+        // submitted_at is FieldValue.serverTimestamp(): an opaque sentinel with no concrete
+        // value until the server commits the write, so JSONSerialization cannot encode it and
+        // it cannot be diffed against the golden fixture's static ISO string. Assert the trusted
+        // mechanism directly, then drop the key from both sides so every other field - including
+        // all science/provenance data - still goes through the exact same byte-for-byte golden
+        // comparison as before.
+        XCTAssertTrue(submission["submitted_at"] is FieldValue, "submission submitted_at must use the trusted Firestore server-timestamp sentinel, not a client timestamp")
+        XCTAssertTrue(revision["submitted_at"] is FieldValue, "revision submitted_at must use the trusted Firestore server-timestamp sentinel, not a client timestamp")
+
         let fixture = try Self.goldenFixture()
         let fixtureCase = try XCTUnwrap((fixture["serializationCases"] as? [[String: Any]])?.first)
         let expected = try XCTUnwrap(fixtureCase["expected"] as? [String: Any])
-        XCTAssertEqual(try Self.jsonData(submission), try Self.jsonData(try XCTUnwrap(expected["submission"])))
-        XCTAssertEqual(try Self.jsonData(revision), try Self.jsonData(try XCTUnwrap(expected["revision"])))
+        XCTAssertEqual(
+            try Self.jsonData(Self.droppingServerTimestampSentinel(submission)),
+            try Self.jsonData(Self.droppingServerTimestampSentinel(try XCTUnwrap(expected["submission"] as? [String: Any])))
+        )
+        XCTAssertEqual(
+            try Self.jsonData(Self.droppingServerTimestampSentinel(revision)),
+            try Self.jsonData(Self.droppingServerTimestampSentinel(try XCTUnwrap(expected["revision"] as? [String: Any])))
+        )
         XCTAssertEqual(
             try Self.jsonData(snapshot.measurements.map { FirebaseMapper.measurement($0, in: snapshot) }),
             try Self.jsonData(try XCTUnwrap(expected["measurements"]))
@@ -122,6 +137,16 @@ final class ModelTests: XCTestCase {
 
     private static func jsonData(_ value: Any) throws -> Data {
         try JSONSerialization.data(withJSONObject: normalize(value), options: [.sortedKeys])
+    }
+
+    /// Removes `submitted_at` so a trusted-server-timestamp sentinel never reaches
+    /// `JSONSerialization`. Applied identically to the actual and golden-fixture sides, so
+    /// this only removes a field that is asserted separately - it never masks a real mismatch
+    /// in any other field.
+    private static func droppingServerTimestampSentinel(_ dictionary: [String: Any]) -> [String: Any] {
+        var copy = dictionary
+        copy.removeValue(forKey: "submitted_at")
+        return copy
     }
 
     private static func normalize(_ value: Any) -> Any {

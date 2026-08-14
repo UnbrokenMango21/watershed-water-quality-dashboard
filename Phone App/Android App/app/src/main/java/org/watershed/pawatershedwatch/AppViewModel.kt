@@ -61,6 +61,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         private set
     var submitting by mutableStateOf(false)
         private set
+    var measurementFocusTarget by mutableStateOf<MeasurementKind?>(null)
+        private set
     val signedInName: String get() = account?.displayName?.ifBlank { "Watershed researcher" } ?: "Watershed researcher"
     val signedInEmail: String get() = account?.email.orEmpty()
 
@@ -230,25 +232,38 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         value?.localPath?.let(::File)?.delete()
     }
 
-    fun reviewIssues(): List<String> {
-        val current = draft ?: return listOf("Start an observation")
+    fun reviewIssues(): List<ReviewIssue> {
+        val current = draft ?: return listOf(ReviewIssue("Start an observation", WorkflowStep.Site))
         return buildList {
-            if (current.siteId == null) add("Choose a sampling site")
-            if (current.collector.isBlank()) add("Enter a collector display name")
-            if (current.latitude == null || current.longitude == null || current.accuracyMeters == null) add("Capture a GPS location")
-            if (current.latitude == 0.0 && current.longitude == 0.0) add("Capture a valid GPS location")
-            if (current.testType == null) add("Choose a test type")
-            if (current.testType == TestType.Other && current.testTypeOther.isBlank()) add("Describe the other test type")
-            if (current.method.isBlank()) add("Enter a collection or measurement method")
-            if (current.instrument.isBlank()) add("Enter an instrument or laboratory")
-            current.requiredMeasurements.filterNot(current::isComplete).forEach { add("Enter ${it.title}") }
-            if (!current.profileMinimumComplete && current.requiredComplete) add("Enter at least one measured result for this test type")
-            current.values.forEach { (kind, value) ->
-                if (ProductionMeasurementCatalog.spec(kind).support != ProductionSupport.FULLY_SUPPORTED && value.isNotBlank()) add("${kind.title} is not enabled for production submission")
-                measurementError(kind, value)?.let { add("${kind.title}: $it") }
+            fun issue(message: String, step: WorkflowStep, kind: MeasurementKind? = null) = add(ReviewIssue(message, step, kind))
+            if (current.siteId == null) issue("Choose a sampling site", WorkflowStep.Site)
+            if (current.collector.isBlank()) issue("Enter a collector display name", WorkflowStep.VisitDetails)
+            if (current.latitude == null || current.longitude == null || current.accuracyMeters == null) issue("Capture a GPS location", WorkflowStep.VisitDetails)
+            if (current.latitude == 0.0 && current.longitude == 0.0) issue("Capture a valid GPS location", WorkflowStep.VisitDetails)
+            if (current.testType == null) issue("Choose a test type", WorkflowStep.TestMethod)
+            if (current.testType == TestType.Other && current.testTypeOther.isBlank()) issue("Describe the other test type", WorkflowStep.TestMethod)
+            if (current.method.isBlank()) issue("Enter a collection or measurement method", WorkflowStep.TestMethod)
+            if (current.instrument.isBlank()) issue("Enter an instrument or laboratory", WorkflowStep.TestMethod)
+            current.requiredMeasurements.filterNot(current::isComplete).forEach { issue("Enter ${it.title}", WorkflowStep.Measurements, it) }
+            if (!current.profileMinimumComplete && current.requiredComplete) {
+                issue("Enter at least one measured result for this test type", WorkflowStep.Measurements)
             }
-            if (current.isCorrection && current.revisionNote.isBlank()) add("Explain what was corrected")
+            current.values.forEach { (kind, value) ->
+                if (ProductionMeasurementCatalog.spec(kind).support != ProductionSupport.FULLY_SUPPORTED && value.isNotBlank()) {
+                    issue("${kind.title} is not enabled for production submission", WorkflowStep.Measurements, kind)
+                }
+                measurementErrorMessage(kind, value, current.selectedUnit(kind))?.let { issue(it, WorkflowStep.Measurements, kind) }
+            }
+            if (current.isCorrection && current.revisionNote.isBlank()) issue("Explain what was corrected", WorkflowStep.Review)
         }
+    }
+
+    fun requestMeasurementFocus(kind: MeasurementKind?) {
+        measurementFocusTarget = kind
+    }
+
+    fun clearMeasurementFocus() {
+        measurementFocusTarget = null
     }
 
     fun submit(onComplete: (String?) -> Unit) {
@@ -362,6 +377,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         records = emptyList()
         sites = emptyList()
         lastSubmittedId = null
+        measurementFocusTarget = null
         sitesLoading = false
         siteLoadError = null
     }

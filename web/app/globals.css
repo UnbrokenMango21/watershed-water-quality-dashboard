@@ -1,0 +1,466 @@
+/* QC Trusted Web — a deliberately plain, dense, scientific reviewer interface. */
+
+:root {
+  --bg: #f4f6f8;
+  --surface: #ffffff;
+  --border: #d3dae0;
+  --border-strong: #9fadb8;
+  --text: #16212b;
+  --text-muted: #5b6b78;
+  --accent: #14556b;
+  --accent-dark: #0e3d4d;
+
+  --error: #a3221c;
+  --error-bg: #fdeceb;
+  --warning: #8a5300;
+  --warning-bg: #fdf3e2;
+  --alert: #1f5c8b;
+  --alert-bg: #eaf2f9;
+  --info: #4a5a66;
+  --info-bg: #eef1f4;
+  --ok: #1c6b45;
+  --ok-bg: #e8f4ee;
+
+  --radius: 4px;
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+a {
+  color: var(--accent);
+}
+
+/* ---------------------------------------------------------------- layout */
+
+.shell {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 0 20px 64px;
+}
+
+.topbar {
+  background: var(--accent-dark);
+  color: #fff;
+  padding: 10px 20px;
+  margin-bottom: 24px;
+}
+
+.topbar-inner {
+  max-width: 1180px;
+  margin: 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.topbar-brand {
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.topbar-brand small {
+  display: block;
+  font-weight: 400;
+  font-size: 11px;
+  opacity: 0.75;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.topbar-user {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 13px;
+}
+
+.topbar-user code {
+  font-family: var(--mono);
+  background: rgba(255, 255, 255, 0.14);
+  padding: 1px 6px;
+  border-radius: var(--radius);
+}
+
+h1 {
+  font-size: 22px;
+  margin: 0 0 4px;
+}
+
+h2 {
+  font-size: 15px;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--text-muted);
+  margin: 0 0 10px;
+}
+
+h3 {
+  font-size: 14px;
+  margin: 0 0 8px;
+}
+
+.page-head {
+  margin-bottom: 20px;
+}
+
+.page-head p {
+  margin: 0;
+  color: var(--text-muted);
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px 18px;
+  margin-bottom: 18px;
+}
+
+.grid-2 {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 18px;
+  align-items: start;
+}
+
+.muted {
+  color: var(--text-muted);
+}
+
+.mono {
+  font-family: var(--mono);
+  font-size: 12px;
+  word-break: break-all;
+}
+
+/* ------------------------------------------------------------ definition */
+
+dl.fields {
+  display: grid;
+  grid-template-columns: minmax(140px, auto) 1fr;
+  gap: 6px 16px;
+  margin: 0;
+}
+
+dl.fields dt {
+  color: var(--text-muted);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding-top: 2px;
+}
+
+dl.fields dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+/* ---------------------------------------------------------------- tables */
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th,
+td {
+  text-align: left;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+
+th {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border-strong);
+  white-space: nowrap;
+}
+
+tbody tr:last-child td {
+  border-bottom: none;
+}
+
+tr.row-link {
+  cursor: pointer;
+}
+
+tr.row-link:hover,
+tr.row-link:focus-visible {
+  background: #eef4f7;
+  outline: none;
+}
+
+.table-scroll {
+  overflow-x: auto;
+}
+
+/* ---------------------------------------------------------------- badges */
+
+.badge {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  padding: 2px 7px;
+  border-radius: 10px;
+  white-space: nowrap;
+  background: var(--info-bg);
+  color: var(--info);
+  border: 1px solid transparent;
+}
+
+.badge-error {
+  background: var(--error-bg);
+  color: var(--error);
+}
+.badge-warning {
+  background: var(--warning-bg);
+  color: var(--warning);
+}
+.badge-alert {
+  background: var(--alert-bg);
+  color: var(--alert);
+}
+.badge-ok {
+  background: var(--ok-bg);
+  color: var(--ok);
+}
+
+.count-pill {
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+/* ----------------------------------------------------------------- flags */
+
+.flag-group {
+  margin-bottom: 14px;
+}
+
+.flag {
+  border-left: 3px solid var(--border-strong);
+  padding: 6px 0 6px 10px;
+  margin-bottom: 8px;
+}
+
+.flag-ERROR {
+  border-left-color: var(--error);
+}
+.flag-PLAUSIBILITY_WARNING {
+  border-left-color: var(--warning);
+}
+.flag-ENVIRONMENTAL_ALERT {
+  border-left-color: var(--alert);
+}
+.flag-INFO {
+  border-left-color: var(--info);
+}
+
+.flag-meta {
+  font-size: 12px;
+  color: var(--text-muted);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 2px;
+}
+
+/* -------------------------------------------------------------- timeline */
+
+ol.timeline {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-left: 2px solid var(--border);
+}
+
+ol.timeline li {
+  position: relative;
+  padding: 0 0 14px 16px;
+}
+
+ol.timeline li::before {
+  content: "";
+  position: absolute;
+  left: -6px;
+  top: 6px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--surface);
+  border: 2px solid var(--border-strong);
+}
+
+.timeline-head {
+  font-weight: 600;
+}
+
+.timeline-meta {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* ----------------------------------------------------------------- forms */
+
+label.field {
+  display: block;
+  margin-bottom: 10px;
+}
+
+label.field span {
+  display: block;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+
+input[type="email"],
+input[type="password"],
+textarea {
+  width: 100%;
+  font: inherit;
+  padding: 8px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+}
+
+textarea {
+  min-height: 84px;
+  resize: vertical;
+}
+
+button {
+  font: inherit;
+  font-weight: 600;
+  padding: 8px 14px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+}
+
+button:hover:not(:disabled) {
+  background: #eef4f7;
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+button.primary:hover:not(:disabled) {
+  background: var(--accent-dark);
+}
+
+button.danger {
+  background: var(--error);
+  border-color: var(--error);
+  color: #fff;
+}
+
+button.danger:hover:not(:disabled) {
+  background: #851b16;
+}
+
+button.link {
+  background: none;
+  border: none;
+  padding: 0;
+  color: inherit;
+  text-decoration: underline;
+  font-weight: 400;
+}
+
+.button-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.decision-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.decision-tabs button[aria-pressed="true"] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+/* --------------------------------------------------------------- notices */
+
+.notice {
+  border: 1px solid var(--border-strong);
+  border-left-width: 4px;
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  margin-bottom: 14px;
+}
+
+.notice-error {
+  background: var(--error-bg);
+  border-color: var(--error);
+  color: var(--error);
+}
+
+.notice-conflict {
+  background: var(--warning-bg);
+  border-color: var(--warning);
+  color: var(--warning);
+}
+
+.notice-ok {
+  background: var(--ok-bg);
+  border-color: var(--ok);
+  color: var(--ok);
+}
+
+/* ------------------------------------------------------------ auth pages */
+
+.auth-panel {
+  max-width: 420px;
+  margin: 72px auto;
+}
+
+.centered-state {
+  max-width: 640px;
+  margin: 72px auto;
+  text-align: center;
+}

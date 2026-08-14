@@ -1,10 +1,13 @@
 package org.watershed.pawatershedwatch
 
 import com.google.firebase.Timestamp
+import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.GeoPoint
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -66,11 +69,56 @@ class ProductionDomainTest {
         )
         val snapshot = draft.toCanonicalSnapshot(owner, "1.0.0", Instant.parse(input.getString("submittedAt")).toEpochMilli())
         val path = expected.getJSONArray("attachments").getJSONObject(0).getString("storage_path")
+        val submission = FirestoreObservationMapper.submission(snapshot, "SUBMITTED")
+        val revision = FirestoreObservationMapper.revision(snapshot, "SUBMITTED")
 
-        assertEquals(expected.getJSONObject("submission").toValue(), FirestoreObservationMapper.submission(snapshot, "SUBMITTED").normalized())
-        assertEquals(expected.getJSONObject("revision").toValue(), FirestoreObservationMapper.revision(snapshot, "SUBMITTED").normalized())
-        assertEquals(expected.getJSONArray("measurements").toValue(), snapshot.measurements.map { FirestoreObservationMapper.measurement(snapshot, it).normalized() })
+        // submitted_at is now the trusted server sentinel (firestore.rules requires request.time), so the
+        // fixture's client-clock value is compared out and the sentinel asserted separately.
+        assertTrue(submission["submitted_at"] is FieldValue)
+        assertTrue(revision["submitted_at"] is FieldValue)
+        assertEquals(expected.getJSONObject("submission").toValue() - "submitted_at", submission.normalized() - "submitted_at")
+        assertEquals(expected.getJSONObject("revision").toValue() - "submitted_at", revision.normalized() - "submitted_at")
+        assertEquals(
+            expected.getJSONArray("measurements").toValue(),
+            snapshot.measurements.map { FirestoreObservationMapper.measurement(snapshot, it).normalized() },
+        )
         assertEquals(expected.getJSONArray("attachments").toValue(), snapshot.attachments.map { FirestoreObservationMapper.attachment(snapshot, it, path).normalized() })
+    }
+
+    @Test
+    fun submittedAtIsTheTrustedServerSentinelAndDraftsStayNull() {
+        val snapshot = validDraft().toCanonicalSnapshot("owner-a", "1.0.0")
+        assertTrue(FirestoreObservationMapper.submission(snapshot, "SUBMITTED")["submitted_at"] is FieldValue)
+        assertTrue(FirestoreObservationMapper.submission(snapshot, "RESUBMITTED")["submitted_at"] is FieldValue)
+        assertTrue(FirestoreObservationMapper.revision(snapshot, "SUBMITTED")["submitted_at"] is FieldValue)
+        assertNull(FirestoreObservationMapper.submission(snapshot, "DRAFT")["submitted_at"])
+        assertNull(FirestoreObservationMapper.revision(snapshot, "DRAFT")["submitted_at"])
+        // Only submitted_at moves to the server clock; the other timestamps stay client-authored.
+        assertTrue(FirestoreObservationMapper.submission(snapshot, "SUBMITTED")["created_at"] is Timestamp)
+        assertTrue(FirestoreObservationMapper.revision(snapshot, "SUBMITTED")["collected_at"] is Timestamp)
+    }
+
+    @Test
+    fun measurementDocumentsCarryEnteredProvenanceBesideCanonicalValues() {
+        val base = validDraft()
+        val snapshot = base.copy(
+            values = base.values + (MeasurementKind.Conductivity to "0.35"),
+            unitIds = mapOf(MeasurementKind.Conductivity to Units.MsCm.id),
+        ).toCanonicalSnapshot("owner-a", "1.0.0")
+        val conductivity = FirestoreObservationMapper.measurement(
+            snapshot,
+            snapshot.measurements.first { it.parameterCode == "CONDUCTIVITY_US_CM" },
+        )
+
+        assertEquals(350.0, conductivity["value"])
+        assertEquals("uS/cm", conductivity["unit_code"])
+        assertEquals(0.35, conductivity["entered_value"])
+        assertEquals("ms-cm", conductivity["entered_unit_code"])
+        snapshot.measurements.forEach { value ->
+            val document = FirestoreObservationMapper.measurement(snapshot, value)
+            assertNotNull(document["entered_value"])
+            assertTrue((document["entered_unit_code"] as String).isNotEmpty())
+        }
     }
 
     @Test
@@ -110,6 +158,34 @@ class ProductionDomainTest {
         assertThrows(IllegalArgumentException::class.java) {
             valid.copy(values = valid.values + (MeasurementKind.Ph to "14.1")).toCanonicalSnapshot("owner-a", "1.0.0")
         }
+    }
+
+    @Test
+    fun labProfileBlocksTemperatureOnlySubmissionsAndAcceptsOneResult() {
+        val labDraft = ObservationDraft(
+            ownerUid = "owner-a", siteId = "SITE-1", collector = "Collector", latitude = 40.0, longitude = -77.0,
+            accuracyMeters = 5.0, gpsState = GpsState.Good, testType = TestType.PennStateLab,
+            method = "Grab sample", instrument = "Penn State Agricultural Analytical Services Laboratory",
+            values = mapOf(MeasurementKind.Temperature to "18"),
+        )
+        assertThrows(IllegalArgumentException::class.java) { labDraft.toCanonicalSnapshot("owner-a", "1.0.0") }
+
+        val complete = labDraft.copy(values = labDraft.values + (MeasurementKind.Nitrate to "1.2"))
+        val snapshot = complete.toCanonicalSnapshot("owner-a", "1.0.0")
+        assertEquals(listOf("NITRATE_MG_L"), snapshot.measurements.map(CanonicalMeasurement::parameterCode))
+        assertEquals(18.0, snapshot.tempC, 0.0)
+    }
+
+    @Test
+    fun hardRangesRejectImpossibleReadingsBeforeSerialization() {
+        val valid = validDraft()
+        assertThrows(IllegalArgumentException::class.java) {
+            valid.copy(values = valid.values + (MeasurementKind.Temperature to "61")).toCanonicalSnapshot("owner-a", "1.0.0")
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            valid.copy(values = valid.values + (MeasurementKind.DissolvedOxygen to "51")).toCanonicalSnapshot("owner-a", "1.0.0")
+        }
+        assertEquals(-5.0, valid.copy(values = valid.values + (MeasurementKind.Temperature to "-5")).toCanonicalSnapshot("owner-a", "1.0.0").tempC, 0.0)
     }
 
     private fun validDraft() = ObservationDraft(

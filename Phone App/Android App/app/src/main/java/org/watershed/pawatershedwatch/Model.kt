@@ -192,7 +192,19 @@ val MeasurementKind.units: List<UnitSpec>
 val MeasurementKind.preservesQuantity: Boolean
     get() = this !in setOf(MeasurementKind.Turbidity, MeasurementKind.Salinity, MeasurementKind.EColi)
 
-val MeasurementKind.allowsNegative: Boolean get() = this == MeasurementKind.Orp
+val MeasurementKind.allowsNegative: Boolean
+    get() = this == MeasurementKind.Orp || this == MeasurementKind.Temperature
+
+enum class WorkflowStep(val number: Int) {
+    Site(1),
+    VisitDetails(2),
+    TestMethod(3),
+    Measurements(4),
+    NotesMedia(5),
+    Review(6),
+}
+
+data class ReviewIssue(val message: String, val step: WorkflowStep, val measurementKind: MeasurementKind? = null)
 
 data class ObservationDraft(
     val submissionId: SubmissionId = SubmissionId.new(),
@@ -251,11 +263,25 @@ data class ObservationDraft(
 
     val completedRequiredCount: Int get() = requiredMeasurements.count(::isComplete)
     val requiredComplete: Boolean get() = completedRequiredCount == requiredMeasurements.size
-    val profileMinimumComplete: Boolean
+
+    /**
+     * Lab and kit profiles in config/validation_rules.json need at least one entry in the measurements
+     * subcollection. Water temperature is stored on the revision, so it never counts toward that minimum.
+     */
+    val requiresAdditionalResult: Boolean
         get() = when (testType) {
-            TestType.FieldInstrument, TestType.Sonde, TestType.Mixed -> requiredComplete
-            null -> false
-            else -> requiredComplete && values.any { (kind, value) -> kind != MeasurementKind.Temperature && value.toDoubleOrNull() != null }
+            TestType.FieldInstrument, TestType.Sonde, TestType.Mixed, null -> false
+            else -> true
+        }
+
+    val hasAdditionalResult: Boolean
+        get() = values.any { (kind, value) -> kind != MeasurementKind.Temperature && value.toDoubleOrNull() != null }
+
+    val profileMinimumComplete: Boolean
+        get() = when {
+            testType == null -> false
+            requiresAdditionalResult -> requiredComplete && hasAdditionalResult
+            else -> requiredComplete
         }
 }
 
@@ -327,14 +353,41 @@ fun displayMeasurement(value: MeasurementValue): String {
     return "${value.value} ${unit.inlineSymbol}"
 }
 
-fun measurementError(kind: MeasurementKind, raw: String): String? {
+/**
+ * Hard measurement ranges, expressed in each kind's canonical unit. These mirror
+ * config/validation_rules.json (`temperature.hardRangeC` and `parameters[*].hardRange`); parameters
+ * that only declare `hardMin: 0` there stay on the shared non-negative check below.
+ */
+private val HardMeasurementRanges: Map<MeasurementKind, ClosedFloatingPointRange<Double>> = mapOf(
+    MeasurementKind.Temperature to -5.0..60.0,
+    MeasurementKind.Ph to 0.0..14.0,
+    MeasurementKind.DissolvedOxygen to 0.0..50.0,
+    MeasurementKind.DissolvedOxygenSaturation to 0.0..300.0,
+)
+
+/**
+ * Validates one entry and returns a sentence fragment, because every caller prefixes the field name.
+ * Use [measurementErrorMessage] for the composed, user-facing sentence.
+ */
+fun measurementError(kind: MeasurementKind, raw: String, unit: UnitSpec = kind.units.first()): String? {
     if (raw.isBlank()) return null
-    val number = raw.toDoubleOrNull() ?: return "Enter a number"
-    if (!number.isFinite()) return "Enter a finite number"
-    if (kind == MeasurementKind.Ph && number !in 0.0..14.0) return "pH must be from 0 to 14"
-    if (!kind.allowsNegative && number < 0) return "Value cannot be negative"
+    val number = raw.toDoubleOrNull() ?: return "must be a number"
+    if (!number.isFinite()) return "must be a finite number"
+    val canonicalUnit = kind.units.first()
+    val range = HardMeasurementRanges[kind]
+    if (range != null) {
+        val canonical = unit.convert(number, canonicalUnit)
+        if (canonical !in range) {
+            return "must be between ${formatEntry(range.start)} and ${formatEntry(range.endInclusive)} ${canonicalUnit.inlineSymbol}"
+        }
+        return null
+    }
+    if (!kind.allowsNegative && number < 0) return "cannot be negative"
     return null
 }
+
+fun measurementErrorMessage(kind: MeasurementKind, raw: String, unit: UnitSpec = kind.units.first()): String? =
+    measurementError(kind, raw, unit)?.let { "${kind.title} $it." }
 
 fun formatDateTime(epochMillis: Long): String =
     DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).apply {

@@ -1,0 +1,21 @@
+# dependencies
+node_modules/
+
+# next.js
+.next/
+out/
+next-env.d.ts
+
+# production
+build/
+
+# local env files (real config/secrets never belong in Git)
+.env
+.env.local
+.env*.local
+
+# service-account credentials for the Admin SDK
+*serviceAccount*.json
+
+# typescript
+*.tsbuildinfo

@@ -2,11 +2,10 @@ import SwiftUI
 
 struct ReviewView: View {
     let model: AppModel
-    @State private var showValidation = false
 
     var body: some View {
         if let draft = model.draft {
-            ReviewContent(model: model, draft: draft, showValidation: $showValidation)
+            ReviewContent(model: model, draft: draft)
         } else {
             MissingDraftView()
         }
@@ -16,14 +15,10 @@ struct ReviewView: View {
 struct ReviewContent: View {
     let model: AppModel
     let draft: ObservationDraft
-    @Binding var showValidation: Bool
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: FieldTheme.xl) {
-                if showValidation && !reviewIsValid {
-                    NoticeBanner(title: "Required Data Missing", message: "Complete all required fields.", systemImage: "exclamationmark.circle.fill", color: .red)
-                }
                 if let error = model.workflowError {
                     NoticeBanner(title: "Observation Not Ready", verbatimMessage: error, systemImage: "exclamationmark.circle.fill", color: .red)
                 }
@@ -75,17 +70,27 @@ struct ReviewContent: View {
         .navigationBarTitleDisplayMode(.inline)
         .safeAreaInset(edge: .bottom) {
             FlowFooter(step: 6, total: 6, actionTitle: "Continue to Submit") {
-                guard reviewIsValid else {
-                    showValidation = true
+                // Re-run the check every time so the next remaining problem is found, not a cached one.
+                if let failure = validationFailure {
+                    model.present(failure)
                     return
                 }
+                model.workflowError = nil
                 model.homePath.append(.submit)
             }
         }
     }
 
-    private var reviewIsValid: Bool {
-        (try? draft.canonicalSnapshot()) != nil
+    /// The real canonicalization error, kept instead of discarded, so its message and its section reach the collector.
+    private var validationFailure: CanonicalizationError? {
+        do {
+            _ = try draft.canonicalSnapshot()
+            return nil
+        } catch let error as CanonicalizationError {
+            return error
+        } catch {
+            return .invalid(error.localizedDescription)
+        }
     }
 
     private var fieldPosition: String {

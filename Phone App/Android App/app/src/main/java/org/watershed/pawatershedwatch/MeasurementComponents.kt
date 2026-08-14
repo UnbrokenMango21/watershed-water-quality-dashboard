@@ -36,7 +36,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.focus.FocusManager
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -46,18 +47,25 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 
+/** One [FocusRequester] per row, so a keyboard "Next" and a jump from Review can both target a field. */
+@Composable
+fun rememberMeasurementFocusChain(kinds: List<MeasurementKind>): Map<MeasurementKind, FocusRequester> =
+    remember(kinds) { kinds.associateWith { FocusRequester() } }
+
 @Composable
 fun MeasurementEntry(
     draft: ObservationDraft,
     kind: MeasurementKind,
     required: Boolean,
     enabled: Boolean = true,
+    focusRequester: FocusRequester? = null,
+    nextFocusRequester: FocusRequester? = null,
     onValueChange: (String) -> Unit,
     onUnitChange: (UnitSpec, Boolean) -> Boolean,
 ) {
     val value = draft.values[kind].orEmpty()
     val unit = draft.selectedUnit(kind)
-    val error = measurementError(kind, value)
+    val error = measurementErrorMessage(kind, value, unit)
     val complete = value.toDoubleOrNull() != null && error == null
     var pendingUnit by remember { mutableStateOf<UnitSpec?>(null) }
     val focusManager = LocalFocusManager.current
@@ -88,10 +96,10 @@ fun MeasurementEntry(
                 Spacer(Modifier.width(10.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(kind.title, style = MaterialTheme.typography.titleMedium)
-                    Text(
+                    FieldLabel(
                         when { required -> "Required"; enabled -> "Optional"; else -> "Optional · unavailable" },
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        style = MaterialTheme.typography.labelLarge,
+                        required = required,
+                        style = MaterialTheme.typography.labelLarge.copy(color = MaterialTheme.colorScheme.onSurfaceVariant),
                     )
                 }
                 CompletionDot(complete, required)
@@ -103,14 +111,20 @@ fun MeasurementEntry(
                     onValueChange = { candidate ->
                         if (candidate.isValidNumberDraft(kind.allowsNegative)) onValueChange(candidate)
                     },
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.weight(1f).then(focusRequester?.let { Modifier.focusRequester(it) } ?: Modifier),
                     placeholder = { Text("0.0", color = MaterialTheme.colorScheme.outline) },
                     textStyle = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Medium),
                     singleLine = true,
                     enabled = enabled,
                     isError = error != null,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Done),
-                    keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Decimal,
+                        imeAction = if (nextFocusRequester == null) ImeAction.Done else ImeAction.Next,
+                    ),
+                    keyboardActions = KeyboardActions(
+                        onDone = { focusManager.clearFocus() },
+                        onNext = { nextFocusRequester?.requestFocus() },
+                    ),
                     suffix = {
                         UnitPicker(kind, unit, enabled) { selected ->
                             if (!onUnitChange(selected, false)) pendingUnit = selected
