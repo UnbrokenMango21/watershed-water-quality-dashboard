@@ -1,0 +1,177 @@
+name: Phase 11 Release Remediation
+
+on:
+  push:
+    branches:
+      - phase11-remediation-live
+    paths:
+      - 'scripts/phase11_backend_web_remediate.py'
+      - 'scripts/phase11_mobile_remediate.py'
+      - '.github/workflows/phase11-remediation.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: phase11-remediation-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  backend:
+    name: Backend, rules, validation, review
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply release remediation
+        run: |
+          python3 scripts/phase11_backend_web_remediate.py
+          python3 scripts/phase11_mobile_remediate.py
+          git diff --check
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - run: npm ci
+      - run: npm ci --prefix tests/firestore-rules
+      - run: npm ci --prefix tests/validation-firestore
+      - run: npm ci --prefix tests/review
+      - run: npm run test:contracts
+      - name: Firestore, Storage, validation, and review emulator suites
+        run: >-
+          npx firebase emulators:exec --project central-pa-watershed-dev --only firestore,storage
+          "npm run test:review && node tests/firestore-rules/run-tests.cjs && node tests/firestore-rules/run-storage-tests.cjs && node tests/validation-firestore/run-tests.cjs"
+      - name: Validation trigger integration
+        run: >-
+          npx firebase emulators:exec --project central-pa-watershed-dev --only firestore,functions
+          "npm run test:trigger"
+
+  web:
+    name: Reviewer web typecheck and production build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply release remediation
+        run: |
+          python3 scripts/phase11_backend_web_remediate.py
+          python3 scripts/phase11_mobile_remediate.py
+          git diff --check
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - working-directory: web
+        run: npm ci
+      - working-directory: web
+        run: npm run typecheck
+      - working-directory: web
+        run: npm run build
+
+  android:
+    name: Android unit, lint, debug and release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply release remediation
+        run: |
+          python3 scripts/phase11_backend_web_remediate.py
+          python3 scripts/phase11_mobile_remediate.py
+          git diff --check
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+      - working-directory: Phone App/Android App
+        run: ./gradlew --no-daemon :app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:assembleRelease
+
+  ios:
+    name: iOS tests and unsigned release archive
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply release remediation
+        run: |
+          python3 scripts/phase11_backend_web_remediate.py
+          python3 scripts/phase11_mobile_remediate.py
+          git diff --check
+      - name: Select an available iPhone simulator
+        shell: bash
+        run: |
+          destination_id="$(xcrun simctl list devices available -j | python3 -c 'import json,sys; data=json.load(sys.stdin); print(next(d["udid"] for devices in data["devices"].values() for d in devices if d["name"].startswith("iPhone")))')"
+          echo "IOS_DESTINATION=platform=iOS Simulator,id=$destination_id" >> "$GITHUB_ENV"
+      - name: Unit and UI tests
+        working-directory: Phone App/iPhone App/PAWatershedWatch
+        run: >-
+          xcodebuild test -project PAWatershedWatch.xcodeproj -scheme PAWatershedWatch
+          -destination "$IOS_DESTINATION" -test-timeouts-enabled YES
+          -default-test-execution-time-allowance 60 -maximum-test-execution-time-allowance 120
+          CODE_SIGNING_ALLOWED=NO
+      - name: Unsigned release archive
+        working-directory: Phone App/iPhone App/PAWatershedWatch
+        run: >-
+          xcodebuild archive -project PAWatershedWatch.xcodeproj -scheme PAWatershedWatch
+          -configuration Release -destination 'generic/platform=iOS'
+          -archivePath "$RUNNER_TEMP/PAWatershedWatch.xcarchive" CODE_SIGNING_ALLOWED=NO
+
+  hygiene:
+    name: Release hygiene and media-removal proof
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply release remediation
+        run: |
+          python3 scripts/phase11_backend_web_remediate.py
+          python3 scripts/phase11_mobile_remediate.py
+          git diff --check
+      - name: Prove first-release capture/upload implementations are absent
+        shell: bash
+        run: |
+          set -euo pipefail
+          ! grep -R -nE 'MediaRecorder|AudioNoteRecorder|PhotosPicker|UIImagePickerController|FirebaseStorage|firebase-storage|android.permission.CAMERA|android.permission.RECORD_AUDIO|NSCameraUsageDescription|NSMicrophoneUsageDescription' \
+            'Phone App/Android App/app/src/main' \
+            'Phone App/Android App/app/build.gradle.kts' \
+            'Phone App/iPhone App/PAWatershedWatch/PAWatershedWatch' \
+            'Phone App/iPhone App/PAWatershedWatch/PAWatershedWatch.xcodeproj/project.pbxproj'
+      - name: Credential and generated-file guard
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git ls-files | grep -E '(^|/)node_modules/|(^|/)\.next/|(^|/)DerivedData/|(^|/)\.gradle/|(^|/)build/|(^|/)\.env\.local$|service[-_]?account.*\.json$|\.pem$|\.p12$'; then
+            echo 'Unexpected generated file or credential-like artifact is tracked.'
+            exit 1
+          fi
+          if git grep -nE 'BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY|"private_key"[[:space:]]*:' -- ':!package-lock.json' ':!**/package-lock.json'; then
+            echo 'Private-key material detected.'
+            exit 1
+          fi
+
+  commit:
+    name: Commit verified remediation
+    needs: [backend, web, android, ios, hygiene]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: phase11-remediation-live
+          fetch-depth: 0
+      - name: Apply verified release remediation
+        run: |
+          python3 scripts/phase11_backend_web_remediate.py
+          python3 scripts/phase11_mobile_remediate.py
+          git diff --check
+      - name: Remove temporary remediation harness
+        run: |
+          git rm scripts/phase11_backend_web_remediate.py scripts/phase11_mobile_remediate.py .github/workflows/phase11-remediation.yml
+      - name: Commit and push verified tree
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git status --short
+          git commit -m 'fix: lock Phase 11 first production release'
+          git push origin HEAD:phase11-remediation-live
