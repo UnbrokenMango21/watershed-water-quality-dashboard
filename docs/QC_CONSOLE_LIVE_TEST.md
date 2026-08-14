@@ -6,7 +6,7 @@
 
 **Branch:** `codex/qc-console-production-v1`
 
-**Connected deployment SHA:** `PENDING_APPLICATION_CHECKPOINT`
+**Connected deployment SHA:** `18f5d7b807a4b88c82f3d7531742313607e6fce7`
 
 **App Hosting:** `qc-console-dev`, `us-central1`, Node.js 22, root `web`
 

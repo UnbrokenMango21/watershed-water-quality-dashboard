@@ -6,7 +6,7 @@
 
 **Phase 11 baseline:** `d6900c2f45d39a00277a5df39a0af06adb28e2b4`
 
-**Connected deployment SHA:** `PENDING_APPLICATION_CHECKPOINT`
+**Connected deployment SHA:** `18f5d7b807a4b88c82f3d7531742313607e6fce7`
 
 **Verification date:** 2026-08-14
 
