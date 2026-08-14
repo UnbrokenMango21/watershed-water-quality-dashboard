@@ -8,6 +8,7 @@ on:
       - 'scripts/phase11_backend_web_remediate.py'
       - 'scripts/phase11_mobile_remediate.py'
       - 'scripts/phase11_mobile_remediate_v2.py'
+      - 'scripts/phase11_mobile_remediate_v3.py'
       - '.github/workflows/phase11-remediation.yml'
 
 permissions:
@@ -26,7 +27,7 @@ jobs:
       - name: Apply release remediation
         run: |
           python3 scripts/phase11_backend_web_remediate.py
-          python3 scripts/phase11_mobile_remediate_v2.py
+          python3 scripts/phase11_mobile_remediate_v3.py
           git diff --check
       - uses: actions/setup-node@v4
         with:
@@ -58,7 +59,7 @@ jobs:
       - name: Apply release remediation
         run: |
           python3 scripts/phase11_backend_web_remediate.py
-          python3 scripts/phase11_mobile_remediate_v2.py
+          python3 scripts/phase11_mobile_remediate_v3.py
           git diff --check
       - uses: actions/setup-node@v4
         with:
@@ -80,7 +81,7 @@ jobs:
       - name: Apply release remediation
         run: |
           python3 scripts/phase11_backend_web_remediate.py
-          python3 scripts/phase11_mobile_remediate_v2.py
+          python3 scripts/phase11_mobile_remediate_v3.py
           git diff --check
       - uses: actions/setup-java@v4
         with:
@@ -98,7 +99,7 @@ jobs:
       - name: Apply release remediation
         run: |
           python3 scripts/phase11_backend_web_remediate.py
-          python3 scripts/phase11_mobile_remediate_v2.py
+          python3 scripts/phase11_mobile_remediate_v3.py
           git diff --check
       - name: Select an available iPhone simulator
         shell: bash
@@ -127,7 +128,7 @@ jobs:
       - name: Apply release remediation
         run: |
           python3 scripts/phase11_backend_web_remediate.py
-          python3 scripts/phase11_mobile_remediate_v2.py
+          python3 scripts/phase11_mobile_remediate_v3.py
           git diff --check
       - name: Prove first-release capture/upload implementations are absent
         shell: bash
@@ -163,11 +164,11 @@ jobs:
       - name: Apply verified release remediation
         run: |
           python3 scripts/phase11_backend_web_remediate.py
-          python3 scripts/phase11_mobile_remediate_v2.py
+          python3 scripts/phase11_mobile_remediate_v3.py
           git diff --check
       - name: Remove temporary remediation harness
         run: |
-          git rm scripts/phase11_backend_web_remediate.py scripts/phase11_mobile_remediate.py scripts/phase11_mobile_remediate_v2.py .github/workflows/phase11-remediation.yml
+          git rm scripts/phase11_backend_web_remediate.py scripts/phase11_mobile_remediate.py scripts/phase11_mobile_remediate_v2.py scripts/phase11_mobile_remediate_v3.py .github/workflows/phase11-remediation.yml
       - name: Commit and push verified tree
         run: |
           git config user.name 'github-actions[bot]'
