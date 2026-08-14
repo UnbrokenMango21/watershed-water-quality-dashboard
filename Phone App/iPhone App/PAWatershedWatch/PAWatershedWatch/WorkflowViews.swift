@@ -28,25 +28,41 @@ final class LocationPermissionRequester: NSObject, ObservableObject, CLLocationM
         }
     }
 
-    func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
-        status = manager.authorizationStatus
-        isApproximate = manager.accuracyAuthorization == .reducedAccuracy
-        if status == .authorizedAlways || status == .authorizedWhenInUse { acquire() }
-        if status == .denied || status == .restricted { failureMessage = "Location access is denied." }
+    // CLLocationManagerDelegate's requirements are nonisolated in CoreLocation (callbacks can
+    // arrive off the main thread), so a @MainActor conformance cannot satisfy them directly -
+    // each method must itself be nonisolated and hop back to the main actor to touch @Published
+    // state.
+    nonisolated func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+        let status = manager.authorizationStatus
+        let isApproximate = manager.accuracyAuthorization == .reducedAccuracy
+        Task { @MainActor in
+            self.status = status
+            self.isApproximate = isApproximate
+            if status == .authorizedAlways || status == .authorizedWhenInUse { self.acquire() }
+            if status == .denied || status == .restricted { self.failureMessage = "Location access is denied." }
+        }
     }
 
-    func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
+    nonisolated func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
         guard let value = locations.last, value.horizontalAccuracy >= 0,
               abs(value.timestamp.timeIntervalSinceNow) <= 30
-        else { failureMessage = "The location reading was stale. Reacquire GPS."; return }
-        requestID = nil; failureMessage = nil; location = value
+        else {
+            Task { @MainActor in self.failureMessage = "The location reading was stale. Reacquire GPS." }
+            return
+        }
+        Task { @MainActor in
+            self.requestID = nil; self.failureMessage = nil; self.location = value
+        }
     }
 
-    func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
-        requestID = nil
-        failureMessage = (error as? CLError)?.code == .locationUnknown
+    nonisolated func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
+        let message = (error as? CLError)?.code == .locationUnknown
             ? "A field position is not available yet. Reacquire GPS in an open area."
             : "The device could not acquire a field position."
+        Task { @MainActor in
+            self.requestID = nil
+            self.failureMessage = message
+        }
     }
 
     private func acquire() {
