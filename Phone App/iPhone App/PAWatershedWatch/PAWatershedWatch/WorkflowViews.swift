@@ -768,7 +768,7 @@ struct MeasurementEntryRow: View {
                     .font(.largeTitle.bold().monospacedDigit())
                     .keyboardType(.decimalPad)
                     .focused(focused, equals: kind)
-                    .accessibilityLabel(kind.title)
+                    .accessibilityLabel(String(localized: kind.title))
                     .accessibilityHint("Enter " + selectedUnit.spokenName)
                     .layoutPriority(1)
                     .disabled(!isEnabled)
