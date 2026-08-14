@@ -219,7 +219,7 @@ struct FlowFooter: View {
     var body: some View {
         VStack(spacing: 8) {
             HStack {
-                Label(saveText, systemImage: "checkmark.circle")
+                Label { Text(saveText) } icon: { Image(systemName: "checkmark.circle") }
                     .font(.caption.weight(.medium))
                     .foregroundStyle(FieldTheme.fern)
                 Spacer()
