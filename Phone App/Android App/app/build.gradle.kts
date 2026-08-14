@@ -71,7 +71,6 @@ dependencies {
     implementation(firebaseBom)
     implementation("com.google.firebase:firebase-auth")
     implementation("com.google.firebase:firebase-firestore")
-    implementation("com.google.firebase:firebase-storage")
     implementation("com.google.firebase:firebase-appcheck-playintegrity")
     debugImplementation("com.google.firebase:firebase-appcheck-debug")
     ksp("androidx.room:room-compiler:2.8.4")

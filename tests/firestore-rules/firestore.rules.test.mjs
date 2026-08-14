@@ -27,7 +27,22 @@ let env;
 const submissionId = '11111111-1111-4111-8111-111111111111';
 const eventId = '22222222-2222-4222-8222-222222222222';
 const revisionId = '33333333-3333-4333-8333-333333333333';
+const correctionRevisionId = '44444444-4444-4444-8444-444444444444';
 const siteId = 'SITE-TEST-001';
+
+const enteredUnits = [
+  ['PH', 'pH', ['ph-standard']],
+  ['DO_MG_L', 'mg/L', ['mg-o2-l', 'umol-o2-l']],
+  ['DO_PERCENT', 'percent', ['percent']],
+  ['CONDUCTIVITY_US_CM', 'uS/cm', ['us-cm', 'ms-cm', 's-m']],
+  ['TDS_MG_L', 'mg/L', ['mg-l', 'g-l']],
+  ['ORP_MV', 'mV', ['mv', 'v']],
+  ['CHLORIDE_MG_L', 'mg/L', ['mg-l', 'ug-l']],
+  ['SULFATE_MG_L', 'mg/L', ['mg-l', 'ug-l']],
+  ['NITRATE_MG_L', 'mg/L as N', ['mg-n-l', 'ug-n-l', 'mg-no3-l', 'ug-no3-l']],
+  ['PHOSPHATE_MG_L', 'mg/L as P', ['mg-p-l', 'ug-p-l', 'mg-po4-l', 'ug-po4-l']],
+  ['DISCHARGE_M3_S', 'm3/s', ['m3-s', 'l-s', 'ft3-s', 'gal-min']],
+];
 
 function nowString() {
   return Timestamp.fromDate(new Date('2026-08-08T20:00:00Z'));
@@ -96,7 +111,7 @@ function measurement(id = 'm-1', overrides = {}) {
     value: 7.2,
     unit_code: 'pH',
     entered_value: 7.2,
-    entered_unit_code: 'pH',
+    entered_unit_code: 'ph-standard',
     method_name: 'Field meter',
     instrument_name: 'Test instrument',
     qualifier: null,
@@ -199,6 +214,15 @@ test('collector can transition own submission DRAFT to SUBMITTED', async () => {
   }));
 });
 
+test('collector can persist a non-final DRAFT without trusted final timestamps', async () => {
+  await seed(`submissions/${submissionId}`, draftSubmission());
+  const db = env.authenticatedContext('collector-a').firestore();
+  await assertSucceeds(updateDoc(doc(db, `submissions/${submissionId}`), {
+    mobile_app_version: '0.1.1-test',
+    updated_at: nowString(),
+  }));
+});
+
 test('collector cannot forge submission submitted_at with a phone-supplied timestamp', async () => {
   await seed(`submissions/${submissionId}`, draftSubmission());
   await seed(`submissions/${submissionId}/revisions/${revisionId}`, draftRevision({ revision_status: 'SUBMITTED', submitted_at: nowString() }));
@@ -212,6 +236,61 @@ test('collector cannot forge submission submitted_at with a phone-supplied times
     status: 'SUBMITTED',
     submitted_at: Timestamp.fromDate(new Date('2099-01-01T00:00:00Z')),
     updated_at: serverTimestamp()
+  }));
+});
+
+test('collector cannot forge final submission updated_at with old or future timestamps', async () => {
+  await seed(`submissions/${submissionId}`, draftSubmission());
+  await seed(`submissions/${submissionId}/revisions/${revisionId}`, draftRevision({ revision_status: 'SUBMITTED', submitted_at: nowString() }));
+  const db = env.authenticatedContext('collector-a').firestore();
+  for (const forged of [nowString(), Timestamp.fromDate(new Date('2099-01-01T00:00:00Z'))]) {
+    await assertFails(updateDoc(doc(db, `submissions/${submissionId}`), {
+      status: 'SUBMITTED',
+      submitted_at: serverTimestamp(),
+      updated_at: forged,
+    }));
+  }
+});
+
+test('collector can finalize NEEDS_CORRECTION to RESUBMITTED with trusted timestamps', async () => {
+  await seed(`submissions/${submissionId}`, draftSubmission({ status: 'NEEDS_CORRECTION', submitted_at: nowString() }));
+  await seed(
+    `submissions/${submissionId}/revisions/${correctionRevisionId}`,
+    draftRevision({ revision_id: correctionRevisionId, revision_no: 2, revision_status: 'SUBMITTED', submitted_at: nowString() }),
+  );
+  const db = env.authenticatedContext('collector-a').firestore();
+  await assertSucceeds(updateDoc(doc(db, `submissions/${submissionId}`), {
+    status: 'RESUBMITTED',
+    current_revision_id: correctionRevisionId,
+    current_revision_no: 2,
+    latest_collected_at: nowString(),
+    submitted_at: serverTimestamp(),
+    updated_at: serverTimestamp(),
+  }));
+});
+
+test('collector cannot forge either final timestamp when resubmitting a correction', async () => {
+  await seed(`submissions/${submissionId}`, draftSubmission({ status: 'NEEDS_CORRECTION', submitted_at: nowString() }));
+  await seed(
+    `submissions/${submissionId}/revisions/${correctionRevisionId}`,
+    draftRevision({ revision_id: correctionRevisionId, revision_no: 2, revision_status: 'SUBMITTED', submitted_at: nowString() }),
+  );
+  const db = env.authenticatedContext('collector-a').firestore();
+  const update = {
+    status: 'RESUBMITTED',
+    current_revision_id: correctionRevisionId,
+    current_revision_no: 2,
+    latest_collected_at: nowString(),
+  };
+  await assertFails(updateDoc(doc(db, `submissions/${submissionId}`), {
+    ...update,
+    submitted_at: nowString(),
+    updated_at: serverTimestamp(),
+  }));
+  await assertFails(updateDoc(doc(db, `submissions/${submissionId}`), {
+    ...update,
+    submitted_at: serverTimestamp(),
+    updated_at: nowString(),
   }));
 });
 
@@ -338,12 +417,50 @@ test('measurement requires entered value/unit provenance alongside the canonical
     unit_code: 'uS/cm',
     value: 350,
     entered_value: 0.35,
-    entered_unit_code: 'mS/cm',
+    entered_unit_code: 'ms-cm',
   })));
   await assertFails(setDoc(doc(db, path), measurement('m-1', { entered_value: '7.2' })));
   await assertFails(setDoc(doc(db, path), measurement('m-1', { entered_unit_code: '' })));
   const { entered_value, ...withoutEnteredValue } = measurement('m-1');
   await assertFails(setDoc(doc(db, path), withoutEnteredValue));
+});
+
+test('every production parameter accepts every mobile stable entered-unit id', async () => {
+  await seed(`submissions/${submissionId}`, draftSubmission());
+  await seed(`submissions/${submissionId}/revisions/${revisionId}`, draftRevision());
+  const db = env.authenticatedContext('collector-a').firestore();
+  const path = `submissions/${submissionId}/revisions/${revisionId}/measurements/m-1`;
+  for (const [parameterCode, unitCode, stableIds] of enteredUnits) {
+    for (const enteredUnitCode of stableIds) {
+      await assertSucceeds(setDoc(doc(db, path), measurement('m-1', {
+        parameter_code: parameterCode,
+        unit_code: unitCode,
+        entered_unit_code: enteredUnitCode,
+      })));
+    }
+  }
+});
+
+test('measurement rejects arbitrary, display-label, and wrong-parameter entered units', async () => {
+  await seed(`submissions/${submissionId}`, draftSubmission());
+  await seed(`submissions/${submissionId}/revisions/${revisionId}`, draftRevision());
+  const db = env.authenticatedContext('collector-a').firestore();
+  const path = `submissions/${submissionId}/revisions/${revisionId}/measurements/m-1`;
+  await assertFails(setDoc(doc(db, path), measurement('m-1', { entered_unit_code: 'anything' })));
+  await assertFails(setDoc(doc(db, path), measurement('m-1', {
+    parameter_code: 'CONDUCTIVITY_US_CM', unit_code: 'uS/cm', entered_unit_code: 'mS/cm',
+  })));
+  await assertFails(setDoc(doc(db, path), measurement('m-1', { entered_unit_code: 'ms-cm' })));
+});
+
+test('measurement still requires the canonical unit for its parameter', async () => {
+  await seed(`submissions/${submissionId}`, draftSubmission());
+  await seed(`submissions/${submissionId}/revisions/${revisionId}`, draftRevision());
+  const db = env.authenticatedContext('collector-a').firestore();
+  const path = `submissions/${submissionId}/revisions/${revisionId}/measurements/m-1`;
+  await assertFails(setDoc(doc(db, path), measurement('m-1', {
+    parameter_code: 'CONDUCTIVITY_US_CM', unit_code: 'mg/L', entered_unit_code: 'ms-cm',
+  })));
 });
 
 test('attachment metadata requires exact owner-scoped storage path, MIME and size', async () => {
@@ -398,7 +515,6 @@ test('QC reviewer has read-only access and cannot update science workflow envelo
 
 test('collector can create a correction revision only when parent is NEEDS_CORRECTION', async () => {
   await seed(`submissions/${submissionId}`, draftSubmission({ status: 'NEEDS_CORRECTION' }));
-  const correctionRevisionId = '44444444-4444-4444-8444-444444444444';
   const db = env.authenticatedContext('collector-a').firestore();
   await assertSucceeds(setDoc(
     doc(db, `submissions/${submissionId}/revisions/${correctionRevisionId}`),

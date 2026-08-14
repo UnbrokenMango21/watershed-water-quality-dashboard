@@ -52,6 +52,7 @@ object ProductionMeasurementCatalog {
     fun spec(kind: MeasurementKind) = requireNotNull(byKind[kind])
 }
 
+// Dormant historical Room/serialization compatibility only; Phase 11 sync ignores attachments.
 enum class AttachmentKind { SITE_PHOTO, INSTRUMENT_PHOTO, TEST_RESULT, OTHER }
 enum class AttachmentTransferState { LOCAL_ONLY, WAITING, UPLOADING, UPLOADED, FAILED }
 

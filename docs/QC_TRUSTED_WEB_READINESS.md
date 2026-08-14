@@ -4,11 +4,11 @@
 **Date:** 2026-08-14
 
 This document describes the **final** state of the QC Trusted Web + Phase 11 final
-repair work, after two implementation passes on this branch (see
-`docs/QC_TRUSTED_WEB_AUDIT.md` for the full history of both). Every result below is
+repair work, after three implementation passes on this branch (see
+`docs/QC_TRUSTED_WEB_AUDIT.md` for the full history). Every result below is
 from a command actually executed in this environment against the local Firebase
 emulator suite, local Gradle, and local Xcode, re-run independently at the end of the
-second pass rather than trusted from an earlier run or from a subagent's self-report.
+third pass rather than trusted from an earlier run or from a subagent's self-report.
 Where something could not be run (no live Firebase project, no physical device), it is
 marked BLOCKED with the exact reason, not silently assumed passing.
 
@@ -17,22 +17,22 @@ marked BLOCKED with the exact reason, not silently assumed passing.
 | # | Gate | Result | Evidence |
 |---|---|---|---|
 | 1 | Photo/audio capture is completely absent from production apps; no camera/mic permission prompts | PASS | CI hygiene grep (`.github/workflows/mobile-ci.yml`) and an independent manual re-run of the same grep against the current tree both return zero hits for camera/audio-capture APIs or permission declarations in `src/main`/the iOS app target. `NSCameraUsageDescription`/`NSMicrophoneUsageDescription` confirmed absent from `project.pbxproj`; `CAMERA`/`RECORD_AUDIO` confirmed absent from `AndroidManifest.xml`. See `docs/DEFERRED_MEDIA_FEATURE.md`. |
-| 2 | A new submission never creates an attachment or attempts a Storage upload | PASS | Neither mobile UI has any control that can populate an attachment list anymore (confirmed by reading every touched view). Android's sync layer still contains upload code, but the attachments list it iterates is now always empty for a new submission, so the loop runs zero times - verified by reading `FirebaseSyncRepository.sync()`'s call site and confirming nothing populates `ObservationDraft.attachments`. |
+| 2 | A new submission never creates an attachment or attempts a Storage upload | PASS | Neither mobile UI has a media control. Android's `FirebaseStorage` injection, upload/verification loops, correction-time media copying, and `firebase-storage` Gradle dependency are removed; `FirebaseSyncRepository` is Firestore-only. Historical attachment entities/rules remain compatibility-only. |
 | 3 | Water Temperature is the only required measurement, for every test type | PASS | `config/validation_rules.json`: every `testTypeProfiles` entry has `requiredMeasurements: []`/`minimumMeasurementCount: 0`. Both mobile clients' `requiredMeasurements` unconditionally return `[Temperature]`. New contract test asserts this holds for every test type including the previously-4-required "In-situ / Field Instrument". |
 | 4 | Optional science fields do not block when blank; populated optional fields are still validated | PASS | Confirmed by contract test (`tests/validation/validation_engine.test.mjs`) and by each platform's own unit tests: a blank optional measurement never blocks `canonicalSnapshot()`/`toCanonicalSnapshot()`; an out-of-range optional value (e.g. pH 15) still throws. |
 | 5 | No hidden extra-measurement requirement remains | PASS | `productionProfileComplete` (iOS) and `profileMinimumComplete` (Android) - the functions that enforced the prior pass's hidden rule - were deleted, along with their UI warnings, not merely bypassed. Grepped both codebases for their names post-deletion: zero remaining references. |
 | 6 | Submit bug (misleading "complete" state) cannot reproduce | PASS | With the extra-measurement rule gone, the previous root cause (a completeness counter that didn't reflect the true gate) no longer applies - the counter and the gate are now the same simple check (`completedRequiredCount == requiredMeasurements.count`, i.e. "is temperature filled") on both platforms. |
 | 7 | Error navigation (auto-expand/scroll/focus) preserved from the prior pass | PASS | Untouched by this pass; still covered by each platform's existing test suite. |
-| 8 | Entered + canonical measurement provenance preserved | PASS | `entered_value`/`entered_unit_code` alongside canonical `value`/`unit_code`, enforced by `firebase/firestore.rules` and covered by rules-emulator and mobile unit tests; untouched by this pass. |
-| 9 | Trusted server timestamps preserved (not reintroduced as phone-clock) | PASS | `firebase/firestore.rules` still requires `submitted_at == request.time`; both mobile clients still write it via `FieldValue.serverTimestamp()`. Untouched by this pass, re-verified passing. |
+| 8 | Entered + canonical measurement provenance preserved | PASS | Rules allow only the parameter-specific stable IDs used by both production clients and still require the canonical parameter/unit pair. All supported IDs, arbitrary/display aliases, wrong-parameter IDs, and canonical mismatches are covered by emulator tests. The trusted validation engine blocks numerical conversion contradictions. |
+| 9 | Trusted server timestamps preserved (not reintroduced as phone-clock) | PASS | Rules require both `submitted_at == request.time` and `updated_at == request.time` on `DRAFT -> SUBMITTED` and `NEEDS_CORRECTION -> RESUBMITTED`; old/future phone timestamps fail. A dedicated pass test proves non-final DRAFT persistence is not accidentally forced through final timestamps. |
 | 10 | Exact roles (COLLECTOR / QC_REVIEWER / ADMIN) preserved | PASS | Untouched; `config/firebase_schema.json` and `firebase/firestore.rules` consistent. |
 | 11 | Reviewer cannot edit science; review transaction atomic/race-safe/revision-aware | PASS | `review/reviewSubmission.mjs` - one Firestore transaction, never writes to `revisions/{id}` or its measurements. Concurrent-race test (two decisions fired simultaneously) confirms exactly one wins. |
 | 12 | Idempotency requires a genuinely identical replay (reviewer + decision + revision + reason must all match) | PASS | Hardened this pass: the replay check now compares `reviewer_user_id` and normalized `review_comment` in addition to revision/status/decision. 4 new tests: changed reason → conflict, changed reviewer → conflict, changed decision → conflict (original decision stands, never overwritten), exact replay → idempotent with no duplicate audit event. |
 | 13 | Stale review returns 409 | PASS | `ReviewConflictError` → HTTP 409; covered by dedicated emulator tests (stale revision id, non-`PENDING_REVIEW` status, later stale approval, and the new identity-mismatch cases above). |
 | 14 | Current reviewer authorization is rechecked server-side (not just an embedded token claim) | PASS | Hardened this pass: `web/app/api/submissions/[submissionId]/review/route.ts` now verifies the ID token with `checkRevoked: true`, then re-fetches the live Firebase Auth user record and authorizes off its current `customClaims.role`/`disabled` state, never the token's own (potentially stale) claim. Verified by `tsc`/`next build`; live claim-revocation timing is BLOCKED (no real Firebase project - see below). |
 | 15 | Web reviewer console builds; console is in CI | PASS | `cd web && npm run typecheck && npm run build` both succeed. `.github/workflows/mobile-ci.yml` now has a `web` job (`npm ci`, `typecheck`, `build`) and `web/**`/`review/**` are in the trigger paths for both `pull_request` and `push` (including this branch). |
-| 16 | Reviewer console preserved: read-only science, three actions only, reason required for Correction/Reject, Eastern time, entered+canonical, flags, revision history, audit trail | PASS | Unchanged by this pass; verified again by reading `web/app/review/[submissionId]/page.tsx` and `web/components/ReviewActions.tsx` end to end. |
-| 17 | Backend tests green | PASS | 91/91 - see table below. |
+| 16 | Reviewer console preserved: read-only science, three actions only, reason required for Correction/Reject, Eastern time, entered+canonical, flags, revision history, audit trail | PASS | `web/lib/format.ts` centrally converts stable/canonical unit codes to human-readable scientific labels; `MeasurementValue` shows canonical only when the displayed representation differs. Typecheck/build pass and persisted data is unchanged. |
+| 17 | Backend tests green | PASS | 99/99 - see table below. |
 | 18 | Android gates green | PASS | 16/16 unit tests, clean lint, debug + release build - see table below. |
 | 19 | iOS gates green | PASS | 11/11 tests, unsigned release archive - see table below. |
 | 20 | Repo hygiene green (no generated/local output tracked) | PASS | See hygiene section below. |
@@ -52,13 +52,13 @@ were complete - not carried forward from an earlier, now-superseded run.
 
 | Suite | Command | Result |
 |---|---|---|
-| Backend validation/contract unit tests | `npm run test:contracts` | **29/29 pass** |
-| Firestore rules (emulator) | `node tests/firestore-rules/run-tests.cjs` | **32/32 pass** |
+| Backend validation/contract unit tests | `npm run test:contracts` | **30/30 pass** |
+| Firestore rules (emulator) | `node tests/firestore-rules/run-tests.cjs` | **39/39 pass** |
 | Storage rules (emulator) | `node tests/firestore-rules/run-storage-tests.cjs` | **6/6 pass** |
 | Validation persistence/orchestrator (emulator) | `node tests/validation-firestore/run-tests.cjs` | **7/7 pass** |
 | Review action + lifecycle (emulator) | `npm run test:review` | **16/16 pass** (13 from the first pass + 3 new identity-aware idempotency tests) |
 | Validation Firestore trigger (emulator, Functions) | `npm run test:trigger` | **1/1 pass** |
-| **Backend total** | | **91/91 pass** |
+| **Backend total** | | **99/99 pass** |
 | Web TypeScript check | `cd web && npx tsc --noEmit` | **Clean, 0 errors** |
 | Web production build | `cd web && npx next build` | **Succeeds** - routes `/`, `/review`, `/review/[submissionId]`, `/api/submissions/[submissionId]/review` all compile |
 | Android unit tests | `./gradlew --no-daemon :app:testDebugUnitTest` | **16/16 pass** (6 `ModelTest` + 10 `ProductionDomainTest`) |
@@ -78,6 +78,9 @@ real hits - `ProductionData.swift`, `WorkflowViews.swift`, `AndroidManifest.xml`
 `WorkflowScreens.kt` - proving the check actually detects the code it's meant to
 detect, not a no-op), and once *after* (zero hits on both platforms). This is the same
 verification technique used to prove a test can fail before trusting that it can pass.
+The targeted closure also greps Android production/Gradle source for
+`FirebaseStorage`, `firebase-storage`, `StorageMetadata`, `StorageException`,
+`uploadIfNeeded`, `putFile`, and `storage.reference`; all return zero hits.
 
 ### Environment notes carried forward from the first pass
 

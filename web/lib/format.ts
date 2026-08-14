@@ -64,6 +64,39 @@ export function formatText(value: Nullable<string>): string {
   return value != null && String(value).trim().length > 0 ? String(value) : EMPTY;
 }
 
+const UNIT_LABELS: Record<string, string> = {
+  'ph-standard': 'pH',
+  'mg-o2-l': 'mg/L as O₂',
+  'umol-o2-l': 'µmol/L as O₂',
+  percent: '%',
+  'us-cm': 'µS/cm',
+  'ms-cm': 'mS/cm',
+  's-m': 'S/m',
+  'uS/cm': 'µS/cm',
+  'mg-l': 'mg/L',
+  'ug-l': 'µg/L',
+  'g-l': 'g/L',
+  mv: 'mV',
+  v: 'V',
+  'mg-n-l': 'mg/L as N',
+  'ug-n-l': 'µg/L as N',
+  'mg-no3-l': 'mg/L as NO₃',
+  'ug-no3-l': 'µg/L as NO₃',
+  'mg-p-l': 'mg/L as P',
+  'ug-p-l': 'µg/L as P',
+  'mg-po4-l': 'mg/L as PO₄',
+  'ug-po4-l': 'µg/L as PO₄',
+  'm3-s': 'm³/s',
+  'l-s': 'L/s',
+  'ft3-s': 'ft³/s (cfs)',
+  'gal-min': 'US gal/min',
+  'm3/s': 'm³/s',
+};
+
+export function formatUnit(value: Nullable<string>): string {
+  return value ? (UNIT_LABELS[value] ?? value) : EMPTY;
+}
+
 export function formatBoolean(value: Nullable<boolean>): string {
   if (value == null) return EMPTY;
   return value ? 'Yes' : 'No';

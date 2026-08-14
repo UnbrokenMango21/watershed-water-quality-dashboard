@@ -17,6 +17,21 @@ const nonBlank = (v) => typeof v === 'string' && v.trim().length > 0;
 const clamp = (v, lo = 0, hi = 100) => Math.max(lo, Math.min(hi, v));
 const mean = (arr) => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null;
 
+// Stable mobile unit IDs and their exact scale into the parameter's canonical unit.
+const enteredUnitScale = {
+  PH: { 'ph-standard': 1 },
+  DO_MG_L: { 'mg-o2-l': 1, 'umol-o2-l': 0.0319988 },
+  DO_PERCENT: { percent: 1 },
+  CONDUCTIVITY_US_CM: { 'us-cm': 1, 'ms-cm': 1_000, 's-m': 10_000 },
+  TDS_MG_L: { 'mg-l': 1, 'g-l': 1_000 },
+  ORP_MV: { mv: 1, v: 1_000 },
+  CHLORIDE_MG_L: { 'mg-l': 1, 'ug-l': 0.001 },
+  SULFATE_MG_L: { 'mg-l': 1, 'ug-l': 0.001 },
+  NITRATE_MG_L: { 'mg-n-l': 1, 'ug-n-l': 0.001, 'mg-no3-l': 14 / 62, 'ug-no3-l': 0.014 / 62 },
+  PHOSPHATE_MG_L: { 'mg-p-l': 1, 'ug-p-l': 0.001, 'mg-po4-l': 0.326315789, 'ug-po4-l': 0.000326315789 },
+  DISCHARGE_M3_S: { 'm3-s': 1, 'l-s': 0.001, 'ft3-s': 0.028316846592, 'gal-min': 0.0000630901964 },
+};
+
 function median(values) {
   if (!values.length) return null;
   const a = [...values].sort((x, y) => x - y);
@@ -278,6 +293,32 @@ function validateTemperature(revision, rules, flags) {
 function validateMeasurements(measurements, rules, flags) {
   for (const m of measurements || []) {
     const code = m.parameter_code;
+    if (isFiniteNumber(m.entered_value) && nonBlank(m.entered_unit_code) && isFiniteNumber(m.value)) {
+      const scale = enteredUnitScale[code]?.[m.entered_unit_code];
+      if (scale == null) {
+        flags.push(createFlag(
+          'MEAS_ENTERED_UNIT_INVALID',
+          'ERROR',
+          'DATA_CONSISTENCY',
+          `Entered unit '${m.entered_unit_code}' is not supported for ${code}.`,
+          code,
+          { affectsQualityComponent: 'validation' },
+        ));
+      } else {
+        const expected = m.entered_value * scale;
+        const tolerance = Math.max(1e-9, Math.abs(expected) * 1e-12);
+        if (Math.abs(m.value - expected) > tolerance) {
+          flags.push(createFlag(
+            'MEAS_CONVERSION_MISMATCH',
+            'ERROR',
+            'DATA_CONSISTENCY',
+            `Stored canonical value does not agree with entered_value and entered_unit_code for ${code}.`,
+            code,
+            { affectsQualityComponent: 'validation' },
+          ));
+        }
+      }
+    }
     const rule = rules.parameters?.[code];
     if (!rule || !isFiniteNumber(m.value)) continue;
     const value = m.value;

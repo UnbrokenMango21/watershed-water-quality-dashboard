@@ -15,8 +15,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import kotlinx.coroutines.withContext
-import java.io.File
 
 class AppViewModel(application: Application) : AndroidViewModel(application) {
     private val graph = (application as PAWatershedApplication).graph
@@ -243,20 +241,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             currentStep = 4, isCorrection = true, sourceRecordId = record.id, baseRevision = record.revision,
             correctionReason = record.correctionReason,
         )
-        viewModelScope.launch {
-            runCatching { withContext(Dispatchers.IO) { copyCorrectionAttachments(record.attachments, base) } }
-                .onSuccess { copies ->
-                    val correction = base.copy(attachments = copies)
-                    draft = correction
-                    persistDraft(correction)
-                    onReady(true)
-                }
-                .onFailure {
-                    localStoreError = "Attached files could not be prepared for the correction revision."
-                    onReady(false)
-                }
-            preparingCorrection = false
-        }
+        draft = base
+        persistDraft(base)
+        preparingCorrection = false
+        onReady(true)
     }
 
     fun resubmitCorrection(onComplete: (String?) -> Unit) = submit(onComplete)
@@ -329,61 +317,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         super.onCleared()
     }
 
-    private fun prepareAttachment(draft: ObservationDraft, contentType: String, kind: AttachmentKind): ObservationAttachment {
-        val id = AttachmentId.new()
-        val extension = when (contentType) {
-            "image/jpeg" -> "jpg"
-            "image/png" -> "png"
-            "image/heic" -> "heic"
-            "audio/mp4" -> "m4a"
-            else -> error("Unsupported attachment type")
-        }
-        val directory = File(getApplication<Application>().filesDir, "attachments/${draft.revisionId.value}").apply { mkdirs() }
-        val file = File(directory, "${id.value}.$extension").apply { createNewFile() }
-        return ObservationAttachment(
-            id = id, ownerUid = draft.ownerUid, submissionId = draft.submissionId, revisionId = draft.revisionId,
-            localPath = file.absolutePath, contentType = contentType, sizeBytes = 0, kind = kind,
-        )
-    }
-
-    private fun copyCorrectionAttachments(values: List<ObservationAttachment>, draft: ObservationDraft): List<ObservationAttachment> {
-        val targets = mutableListOf<File>()
-        return try {
-            values.map { source ->
-                val sourceFile = File(source.localPath)
-                require(sourceFile.isFile && sourceFile.length() == source.sizeBytes) { "Source attachment is unavailable" }
-                val prepared = prepareAttachment(draft, source.contentType, source.kind)
-                val target = File(prepared.localPath).also(targets::add)
-                sourceFile.inputStream().use { input -> target.outputStream().use { output -> input.copyBoundedTo(output, MAX_ATTACHMENT_BYTES) } }
-                require(target.length() == source.sizeBytes) { "Attachment copy is incomplete" }
-                prepared.copy(sizeBytes = target.length(), caption = source.caption, createdAt = System.currentTimeMillis())
-            }
-        } catch (error: Exception) {
-            targets.forEach(File::delete)
-            throw error
-        }
-    }
-
     private fun Throwable.authMessage(): String = when ((this as? FirebaseAuthException)?.errorCode) {
         "ERROR_USER_DISABLED" -> "This account is disabled. Contact your watershed program administrator."
         "ERROR_INVALID_CREDENTIAL", "ERROR_WRONG_PASSWORD", "ERROR_USER_NOT_FOUND" -> "Email or password is incorrect."
         "ERROR_NETWORK_REQUEST_FAILED" -> "A network connection is required for sign-in. Saved field records remain on this device."
         else -> "We couldn't sign you in. Try again or contact your program administrator."
-    }
-
-    private companion object {
-        const val MAX_ATTACHMENT_BYTES = 50L * 1024 * 1024
-    }
-}
-
-private fun java.io.InputStream.copyBoundedTo(output: java.io.OutputStream, maximumBytes: Long) {
-    val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
-    var total = 0L
-    while (true) {
-        val count = read(buffer)
-        if (count < 0) return
-        total += count
-        require(total <= maximumBytes) { "The selected photo is larger than 50 MB" }
-        output.write(buffer, 0, count)
     }
 }

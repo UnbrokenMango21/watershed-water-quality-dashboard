@@ -1,5 +1,5 @@
 {
-  "version": "0.1.2",
+  "version": "0.1.3",
   "database": "Cloud Firestore Standard",
   "environmentStrategy": {
     "developmentProject": "central-pa-watershed-dev",
@@ -71,8 +71,8 @@
         "current_revision_no": "integer",
         "latest_collected_at": "Timestamp",
         "created_at": "Timestamp",
-        "updated_at": "Timestamp",
-        "submitted_at": "Timestamp|null (trusted server timestamp only; client must write via FieldValue.serverTimestamp() and rules require it equal request.time)",
+        "updated_at": "Timestamp (must equal request.time on DRAFT -> SUBMITTED and NEEDS_CORRECTION -> RESUBMITTED)",
+        "submitted_at": "Timestamp|null (trusted server timestamp only on final collector transitions; client writes FieldValue.serverTimestamp() and rules require request.time)",
         "workflow_job_id": "string|null",
         "arcgis_staging_globalid": "string|null",
         "schema_version": "string",
@@ -121,7 +121,7 @@
             "site_id": "string",
             "revision_status": "DRAFT | SUBMITTED",
             "created_at": "Timestamp",
-            "submitted_at": "Timestamp|null (trusted server timestamp only; client must write via FieldValue.serverTimestamp() and rules require it equal request.time)",
+            "submitted_at": "Timestamp|null (trusted server timestamp only when the revision is finalized; client writes FieldValue.serverTimestamp() and rules require request.time)",
             "collected_at": "Timestamp",
             "time_known": "boolean",
             "time_imputed": "boolean",
@@ -164,7 +164,7 @@
                 "notes": "string|null",
                 "entered_at": "Timestamp"
               },
-              "policy": "value/unit_code are the canonical measurement used for validation, review, and publication. entered_value/entered_unit_code preserve exactly what the collector typed and selected, using the stable unit IDs defined by the mobile domain models, and are never used as conversion authority. Temperature uses the analogous temp_entered_value/temp_entered_unit/temp_c/temp_f fields on the revision instead of a measurement record."
+              "policy": "value/unit_code are the canonical measurement used for validation, review, and publication. entered_value/entered_unit_code preserve exactly what the collector typed and selected. Firestore Rules allow only parameter-specific stable mobile unit IDs and valid canonical parameter/unit pairs; the trusted validation engine, not Rules, detects entered/canonical numerical conversion contradictions. Temperature uses the analogous temp_entered_value/temp_entered_unit/temp_c/temp_f fields on the revision instead of a measurement record."
             },
             "validationFlags": {
               "documentId": "flag_id",

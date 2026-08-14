@@ -84,6 +84,24 @@ service cloud.firestore {
       );
     }
 
+    function isFinalCollectorSubmissionTransition() {
+      return (
+        resource.data.status == "DRAFT"
+        && request.resource.data.status == "SUBMITTED"
+      ) || (
+        resource.data.status == "NEEDS_CORRECTION"
+        && request.resource.data.status == "RESUBMITTED"
+      );
+    }
+
+    function validCollectorSubmissionTimestamps() {
+      return isFinalCollectorSubmissionTransition()
+        ? request.resource.data.submitted_at == request.time
+          && request.resource.data.updated_at == request.time
+        : request.resource.data.submitted_at == resource.data.submitted_at
+          && request.resource.data.updated_at is timestamp;
+    }
+
     function validFinalRevisionLink(submissionId) {
       let revision = get(revisionPath(submissionId, request.resource.data.current_revision_id));
       return revision.data.submission_id == submissionId
@@ -255,6 +273,19 @@ service cloud.firestore {
         || (parameterCode == "DISCHARGE_M3_S" && unitCode == "m3/s");
     }
 
+    function validEnteredUnit(parameterCode, enteredUnitCode) {
+      return (parameterCode == "PH" && enteredUnitCode == "ph-standard")
+        || (parameterCode == "DO_MG_L" && enteredUnitCode in ["mg-o2-l", "umol-o2-l"])
+        || (parameterCode == "DO_PERCENT" && enteredUnitCode == "percent")
+        || (parameterCode == "CONDUCTIVITY_US_CM" && enteredUnitCode in ["us-cm", "ms-cm", "s-m"])
+        || (parameterCode == "TDS_MG_L" && enteredUnitCode in ["mg-l", "g-l"])
+        || (parameterCode == "ORP_MV" && enteredUnitCode in ["mv", "v"])
+        || (parameterCode in ["CHLORIDE_MG_L", "SULFATE_MG_L"] && enteredUnitCode in ["mg-l", "ug-l"])
+        || (parameterCode == "NITRATE_MG_L" && enteredUnitCode in ["mg-n-l", "ug-n-l", "mg-no3-l", "ug-no3-l"])
+        || (parameterCode == "PHOSPHATE_MG_L" && enteredUnitCode in ["mg-p-l", "ug-p-l", "mg-po4-l", "ug-po4-l"])
+        || (parameterCode == "DISCHARGE_M3_S" && enteredUnitCode in ["m3-s", "l-s", "ft3-s", "gal-min"]);
+    }
+
     function validMeasurement(measurementId) {
       return request.resource.data.keys().hasOnly(measurementAllowedKeys())
         && request.resource.data.keys().hasAll([
@@ -274,7 +305,7 @@ service cloud.firestore {
         && request.resource.data.value is number
         && validParameterUnit(request.resource.data.parameter_code, request.resource.data.unit_code)
         && request.resource.data.entered_value is number
-        && nonEmptyString(request.resource.data.entered_unit_code)
+        && validEnteredUnit(request.resource.data.parameter_code, request.resource.data.entered_unit_code)
         && nonEmptyString(request.resource.data.method_name)
         && nonEmptyString(request.resource.data.instrument_name)
         && request.resource.data.entered_at is timestamp;
@@ -379,8 +410,7 @@ service cloud.firestore {
         && request.resource.data.site_id == resource.data.site_id
         && request.resource.data.current_revision_no is int
         && request.resource.data.latest_collected_at is timestamp
-        && request.resource.data.updated_at is timestamp
-        && request.resource.data.submitted_at == request.time
+        && validCollectorSubmissionTimestamps()
         && (
           request.resource.data.status in ["DRAFT", "NEEDS_CORRECTION"]
           || validFinalRevisionLink(submissionId)

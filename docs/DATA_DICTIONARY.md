@@ -90,7 +90,8 @@ The dashboard and any public hosted feature-layer view must **not expose** `site
 | `data_collected_by` | string(80) | Yes | Yes | Current records: `Student/researcher`; classification, not personal identity |
 | `collector_user_id` | string(128) | Yes for future app | **No** | Authenticated person/account ID |
 | `collected_at` | datetime UTC | Yes | Yes | Actual sampling date/time; collector-entered, not a trusted server timestamp |
-| `submitted_at` | datetime UTC | Yes after submit | No | **Trusted server timestamp only.** Client writes via `FieldValue.serverTimestamp()`; `firebase/firestore.rules` requires it equal `request.time` on every collector-authored update, so a phone-supplied value is rejected. Applies identically to the analogous field on `revisions/{revision_id}`. |
+| `submitted_at` | datetime UTC | Yes after submit | No | **Trusted server timestamp only.** On `DRAFT -> SUBMITTED` and `NEEDS_CORRECTION -> RESUBMITTED`, the client writes `FieldValue.serverTimestamp()` and Rules require equality with `request.time`. The analogous revision finalization field has the same trust requirement. |
+| `updated_at` | datetime UTC | Yes | No | Draft persistence may use a client timestamp. On the two final collector transitions, Rules require `updated_at == request.time`; later trusted validation/review transitions are server-written. |
 | `review_status` | string(30) | Yes | Optional | Human review status; see domain below |
 | `review_comment` | string(4000) | No | **No by default** | Reviewer's reason (required for Request Correction/Reject) or optional comment (Approve) |
 | `reviewer_user_id` | string(128) | No | **No** | Protected reviewer identity; set only by the server-side review action, never client-writable |
@@ -154,13 +155,37 @@ The dashboard and any public hosted feature-layer view must **not expose** `site
 | `value_current` | double | Yes after accepted correction | Effective value used downstream |
 | `unit_code` | string(24) | Yes | Canonical, explicit unit — the unit validation, review, and publication treat as authoritative |
 | `entered_value` | double | Yes (non-temperature measurements) | Exactly what the collector typed, before any conversion |
-| `entered_unit_code` | string(24) | Yes (non-temperature measurements) | The stable unit ID the collector selected on-device (from the mobile domain model's unit list), not a display label. Never used as conversion authority — `value`/`unit_code` remain canonical. Temperature uses the separate `temp_entered_value`/`temp_entered_unit`/`temp_c`/`temp_f` fields on the revision instead. |
+| `entered_unit_code` | string(24) | Yes (non-temperature measurements) | The stable unit ID the collector selected on-device, not a display label. Firestore Rules enforce the parameter-specific allowlist below. Temperature uses the separate `temp_entered_value`/`temp_entered_unit`/`temp_c`/`temp_f` fields on the revision instead. |
 | `source_column` | string(80) | No | Original spreadsheet/app label for provenance |
 | `measurement_method` | string(120) | No | Instrument/lab method if available in future |
 | `instrument_id` | string(80) | No | Future traceability |
 | `required_by_protocol` | boolean | Yes once protocols are defined | Requiredness at time of collection |
 | `measurement_notes` | string(1000) | No | Parameter-specific notes |
 | `schema_version` | string(20) | Yes | Measurement schema version |
+
+### 6.1 Stable entered-unit IDs
+
+These IDs are shared by the current production iOS and Android domain models:
+
+| Parameter | Allowed `entered_unit_code` values |
+|---|---|
+| `PH` | `ph-standard` |
+| `DO_MG_L` | `mg-o2-l`, `umol-o2-l` |
+| `DO_PERCENT` | `percent` |
+| `CONDUCTIVITY_US_CM` | `us-cm`, `ms-cm`, `s-m` |
+| `TDS_MG_L` | `mg-l`, `g-l` |
+| `ORP_MV` | `mv`, `v` |
+| `CHLORIDE_MG_L`, `SULFATE_MG_L` | `mg-l`, `ug-l` |
+| `NITRATE_MG_L` | `mg-n-l`, `ug-n-l`, `mg-no3-l`, `ug-no3-l` |
+| `PHOSPHATE_MG_L` | `mg-p-l`, `ug-p-l`, `mg-po4-l`, `ug-po4-l` |
+| `DISCHARGE_M3_S` | `m3-s`, `l-s`, `ft3-s`, `gal-min` |
+
+Firestore Rules enforce the stable entered-unit ID and the canonical
+`parameter_code`/`unit_code` pair, but deliberately do not implement scientific unit
+conversion. The existing trusted validation engine checks that `entered_value`
+converted from `entered_unit_code` agrees with canonical `value`; a contradiction is
+a blocking `MEAS_CONVERSION_MISMATCH`. The reviewer formats both stored unit-code
+families into human-readable labels without changing persisted provenance.
 
 **Correction policy:** supervisors cannot populate or change scientific `value_current` directly. If a value is wrong, the supervisor requests correction. The collector/researcher submits the corrected value; the original remains preserved in audit history.
 

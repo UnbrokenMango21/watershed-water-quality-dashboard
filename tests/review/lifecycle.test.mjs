@@ -61,7 +61,7 @@ function revision(submissionId, revisionId, revisionNo = 1, overrides = {}) {
   };
 }
 
-function measurement(code, value, unit, overrides = {}) {
+function measurement(code, value, unit, enteredUnitCode, overrides = {}) {
   return {
     measurement_id: `m-${code}`,
     parameter_code: code,
@@ -69,7 +69,7 @@ function measurement(code, value, unit, overrides = {}) {
     value,
     unit_code: unit,
     entered_value: value,
-    entered_unit_code: unit,
+    entered_unit_code: enteredUnitCode,
     method_name: 'Field meter',
     instrument_name: 'Synthetic Sonde',
     qualifier: null,
@@ -81,9 +81,9 @@ function measurement(code, value, unit, overrides = {}) {
 
 function coreMeasurements(ph = 7.2) {
   return [
-    measurement('PH', ph, 'pH'),
-    measurement('DO_MG_L', 9, 'mg/L'),
-    measurement('CONDUCTIVITY_US_CM', 350, 'uS/cm'),
+    measurement('PH', ph, 'pH', 'ph-standard'),
+    measurement('DO_MG_L', 9, 'mg/L', 'mg-o2-l'),
+    measurement('CONDUCTIVITY_US_CM', 350, 'uS/cm', 'us-cm'),
   ];
 }
 

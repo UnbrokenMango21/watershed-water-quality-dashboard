@@ -162,7 +162,7 @@ jobs:
             echo "$tracked"
             exit 1
           fi
-      - name: Media capture is deferred - production code must not reintroduce it
+      - name: Media is deferred - production code must not reintroduce capture or upload
         shell: bash
         run: |
           # Phase 11 interim decision (docs/DEFERRED_MEDIA_FEATURE.md): active camera/photo/
@@ -172,10 +172,10 @@ jobs:
           # generic English words - so it fails on a real reintroduction, not on prose.
           ios_hits="$(git ls-files 'Phone App/iPhone App/PAWatershedWatch/PAWatershedWatch/*.swift' \
             | xargs -I{} grep -lE 'AVAudioRecorder|AVCaptureSession|PHPickerViewController|PhotosPicker\(|UIImagePickerController|NSCameraUsageDescription|NSMicrophoneUsageDescription' {} 2>/dev/null || true)"
-          android_hits="$(git ls-files 'Phone App/Android App/app/src/main/**/*.kt' 'Phone App/Android App/app/src/main/**/*.xml' 'Phone App/Android App/app/src/main/AndroidManifest.xml' \
-            | xargs -I{} grep -lE 'MediaRecorder|androidx\.camera|PickVisualMedia|android\.permission\.CAMERA|android\.permission\.RECORD_AUDIO' {} 2>/dev/null || true)"
+          android_hits="$(git ls-files 'Phone App/Android App/app/src/main/**/*.kt' 'Phone App/Android App/app/src/main/**/*.xml' 'Phone App/Android App/app/src/main/AndroidManifest.xml' 'Phone App/Android App/app/build.gradle.kts' \
+            | xargs -I{} grep -lE 'MediaRecorder|androidx\.camera|PickVisualMedia|android\.permission\.CAMERA|android\.permission\.RECORD_AUDIO|FirebaseStorage|firebase-storage|StorageMetadata|StorageException|uploadIfNeeded|putFile\(' {} 2>/dev/null || true)"
           if [ -n "$ios_hits" ] || [ -n "$android_hits" ]; then
-            echo "Active camera/audio capture code was found in production source, but media capture is intentionally deferred for this phase (see docs/DEFERRED_MEDIA_FEATURE.md)."
+            echo "Active media capture or Android upload code was found in production source, but media is intentionally deferred for this phase (see docs/DEFERRED_MEDIA_FEATURE.md)."
             echo "$ios_hits"
             echo "$android_hits"
             echo "If reintroducing media capture is an intentional, reviewed future-phase change, update this check accordingly."

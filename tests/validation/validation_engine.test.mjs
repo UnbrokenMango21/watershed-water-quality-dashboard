@@ -132,6 +132,25 @@ test('temperature conversion contradiction blocks review', () => {
   assert.ok(result.flags.some((f) => f.rule_code === 'TEMP_CONVERSION_MISMATCH'));
 });
 
+test('entered measurement conversion contradiction blocks review', () => {
+  const valid = measurement('CONDUCTIVITY_US_CM', 350, 'uS/cm', {
+    entered_value: 0.35,
+    entered_unit_code: 'ms-cm',
+  });
+  const accepted = validateObservation({ revision: revision(), measurements: [valid], site, now: NOW });
+  assert.equal(accepted.blocking, false);
+  assert.ok(!accepted.flags.some((f) => f.rule_code === 'MEAS_CONVERSION_MISMATCH'));
+
+  const contradicted = validateObservation({
+    revision: revision(),
+    measurements: [{ ...valid, value: 35 }],
+    site,
+    now: NOW,
+  });
+  assert.equal(contradicted.blocking, true);
+  assert.ok(contradicted.flags.some((f) => f.rule_code === 'MEAS_CONVERSION_MISMATCH'));
+});
+
 test('poor GPS warns and lowers location score but does not block', () => {
   const result = validateObservation({ revision: revision({ gps_accuracy_m: 60 }), measurements: core(), site, now: NOW });
   assert.equal(result.blocking, false);

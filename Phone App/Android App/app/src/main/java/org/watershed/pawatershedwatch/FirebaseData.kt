@@ -1,7 +1,6 @@
 package org.watershed.pawatershedwatch
 
 import android.app.Application
-import android.net.Uri
 import androidx.work.BackoffPolicy
 import androidx.work.Constraints
 import androidx.work.CoroutineWorker
@@ -17,16 +16,11 @@ import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Source
-import com.google.firebase.storage.FirebaseStorage
-import com.google.firebase.storage.StorageException
-import com.google.firebase.storage.StorageMetadata
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.suspendCancellableCoroutine
-import java.io.File
 import java.util.concurrent.TimeUnit
-import kotlin.coroutines.cancellation.CancellationException
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
@@ -47,7 +41,7 @@ class AppGraph(application: Application, val database: WatershedDatabase) {
     val local = RoomMobileRepository(database)
     val sites: SiteRepository = FirebaseSiteRepository(FirebaseFirestore.getInstance(), database.dao())
     val sync: SyncRepository = FirebaseSyncRepository(
-        application, FirebaseAuth.getInstance(), FirebaseFirestore.getInstance(), FirebaseStorage.getInstance(), database.dao(), local,
+        application, FirebaseAuth.getInstance(), FirebaseFirestore.getInstance(), database.dao(), local,
     )
 }
 
@@ -109,7 +103,6 @@ class FirebaseSyncRepository(
     private val application: Application,
     private val auth: FirebaseAuth,
     private val firestore: FirebaseFirestore,
-    private val storage: FirebaseStorage,
     private val dao: MobileDao,
     private val local: ObservationRepository,
 ) : SyncRepository {
@@ -129,10 +122,7 @@ class FirebaseSyncRepository(
         val parent = dao.observation(ownerUid, submissionId.value) ?: return SyncAttempt(false, false, "Local submission is missing")
         val revision = dao.revision(ownerUid, parent.currentRevisionId) ?: return SyncAttempt(false, false, "Local revision is missing")
         val queue = dao.queue(ownerUid, submissionId.value) ?: return SyncAttempt(false, false, "Sync queue item is missing")
-        val snapshot = revision.snapshot(
-            dao.measurements(ownerUid, revision.revisionId),
-            dao.attachments(ownerUid, revision.revisionId).map(LocalAttachmentEntity::asDomain),
-        )
+        val snapshot = revision.snapshot(dao.measurements(ownerUid, revision.revisionId))
         val parentRef = firestore.collection("submissions").document(submissionId.value)
         val revisionRef = parentRef.collection("revisions").document(snapshot.revisionId.value)
         return try {
@@ -163,31 +153,9 @@ class FirebaseSyncRepository(
                 revisionRef.collection("measurements").document(value.id.value)
                     .set(FirestoreObservationMapper.measurement(snapshot, value)).awaitResult()
             }
-            // One unreachable photo must not stop its siblings from uploading. Rules only accept
-            // measurement and attachment writes while the revision is still DRAFT, so the status
-            // transition below cannot be hoisted above this loop; instead every attachment gets its
-            // own attempt and the first failure is rethrown afterwards so the retry can finish the
-            // rest without locking the revision on a partial media set.
-            val attachmentFailures = mutableListOf<Exception>()
-            snapshot.attachments.forEach { attachment ->
-                try {
-                    val storagePath = attachment.storagePath(snapshot)
-                    uploadIfNeeded(attachment, storagePath, snapshot)
-                    revisionRef.collection("attachments").document(attachment.id.value)
-                        .set(FirestoreObservationMapper.attachment(snapshot, attachment, storagePath)).awaitResult()
-                } catch (cancellation: CancellationException) {
-                    throw cancellation
-                } catch (error: Exception) {
-                    attachmentFailures += error
-                }
-            }
-            attachmentFailures.firstOrNull()?.let { throw it }
             require(revisionRef.get(Source.SERVER).awaitResult().exists())
             for (measurement in snapshot.measurements) {
                 require(revisionRef.collection("measurements").document(measurement.id.value).get(Source.SERVER).awaitResult().exists())
-            }
-            for (attachment in snapshot.attachments) {
-                require(revisionRef.collection("attachments").document(attachment.id.value).get(Source.SERVER).awaitResult().exists())
             }
             revisionRef.update(mapOf("revision_status" to "SUBMITTED", "submitted_at" to FieldValue.serverTimestamp())).awaitResult()
             val target = if (snapshot.correction) "RESUBMITTED" else "SUBMITTED"
@@ -253,58 +221,7 @@ class FirebaseSyncRepository(
         return SyncAttempt(true, false)
     }
 
-    private suspend fun uploadIfNeeded(attachment: ObservationAttachment, storagePath: String, snapshot: CanonicalObservationSnapshot) {
-        val reference = storage.reference.child(storagePath)
-        dao.updateAttachmentTransfer(snapshot.ownerUid, attachment.id.value, "UPLOADING", null, null)
-        try {
-            val exists = try {
-                val metadata = reference.metadata.awaitResult()
-                require(
-                    metadata.getCustomMetadata("ownerUid") == snapshot.ownerUid &&
-                        metadata.getCustomMetadata("submissionId") == snapshot.submissionId.value &&
-                        metadata.getCustomMetadata("revisionId") == snapshot.revisionId.value &&
-                        metadata.getCustomMetadata("attachmentId") == attachment.id.value &&
-                        metadata.contentType == attachment.contentType && metadata.sizeBytes == attachment.sizeBytes,
-                ) { "Remote attachment identity does not match the queued file" }
-                true
-            } catch (error: StorageException) {
-                if (error.errorCode == StorageException.ERROR_OBJECT_NOT_FOUND) false else throw error
-            }
-            if (!exists) {
-                val file = File(attachment.localPath)
-                require(file.isFile && file.length() == attachment.sizeBytes && attachment.sizeBytes in 1..MAX_ATTACHMENT_BYTES) {
-                    "Attachment file is missing or changed"
-                }
-                val metadata = StorageMetadata.Builder()
-                    .setContentType(attachment.contentType)
-                    .setCustomMetadata("ownerUid", snapshot.ownerUid)
-                    .setCustomMetadata("submissionId", snapshot.submissionId.value)
-                    .setCustomMetadata("revisionId", snapshot.revisionId.value)
-                    .setCustomMetadata("attachmentId", attachment.id.value)
-                    .build()
-                reference.putFile(Uri.fromFile(file), metadata).awaitResult()
-            }
-            dao.updateAttachmentTransfer(snapshot.ownerUid, attachment.id.value, "UPLOADED", storagePath, null)
-        } catch (error: Exception) {
-            dao.updateAttachmentTransfer(snapshot.ownerUid, attachment.id.value, "FAILED", null, error.message?.take(300))
-            throw error
-        }
-    }
-
-    private fun ObservationAttachment.storagePath(snapshot: CanonicalObservationSnapshot): String {
-        val extension = when (contentType) {
-            "image/jpeg" -> "jpg"
-            "image/png" -> "png"
-            "image/heic" -> "heic"
-            "audio/mp4", "audio/m4a" -> "m4a"
-            "application/pdf" -> "pdf"
-            else -> error("Unsupported attachment MIME type")
-        }
-        return "users/${snapshot.ownerUid}/submissions/${snapshot.submissionId.value}/revisions/${snapshot.revisionId.value}/${id.value}.$extension"
-    }
-
     companion object {
-        private const val MAX_ATTACHMENT_BYTES = 50L * 1024 * 1024
         private val SERVER_ACK_STATES = setOf(
             "SUBMITTED", "VALIDATING", "PENDING_REVIEW", "NEEDS_CORRECTION", "RESUBMITTED", "APPROVED", "REJECTED", "PUBLISHING", "PUBLISH_FAILED", "PUBLISHED",
         )
@@ -325,7 +242,7 @@ class ObservationSyncWorker(application: android.content.Context, params: Worker
     }
 }
 
-private fun RevisionEntity.snapshot(measurements: List<LocalMeasurementEntity>, attachments: List<ObservationAttachment>): CanonicalObservationSnapshot {
+private fun RevisionEntity.snapshot(measurements: List<LocalMeasurementEntity>): CanonicalObservationSnapshot {
     val canonicalMeasurements = measurements.mapNotNull { entity ->
         val kind = MeasurementKind.entries.firstOrNull { it.name == entity.kind } ?: return@mapNotNull null
         if (kind == MeasurementKind.Temperature || entity.parameterCode == null || entity.canonicalValue == null || entity.canonicalUnit == null) return@mapNotNull null
@@ -337,13 +254,6 @@ private fun RevisionEntity.snapshot(measurements: List<LocalMeasurementEntity>, 
     return CanonicalObservationSnapshot(
         SubmissionId(submissionId), EventId(eventId), RevisionId(revisionId), revisionNo, ownerUid, SiteId(siteId), createdAt,
         collectedAt, submittedAt, latitude, longitude, accuracyM, collector, testType, testTypeOther, method, instrument, notes,
-        tempEnteredValue, tempEnteredUnit, tempC, tempF, canonicalMeasurements, attachments, appVersion, revisionNo > 1,
+        tempEnteredValue, tempEnteredUnit, tempC, tempF, canonicalMeasurements, emptyList(), appVersion, revisionNo > 1,
     )
 }
-
-private fun LocalAttachmentEntity.asDomain() = ObservationAttachment(
-    id = AttachmentId(attachmentId), ownerUid = ownerUid, submissionId = SubmissionId(submissionId), revisionId = RevisionId(revisionId),
-    localPath = localPath, contentType = contentType, sizeBytes = sizeBytes, kind = kind.enumOr(AttachmentKind.OTHER), caption = caption,
-    createdAt = createdAt, transferState = transferState.enumOr(AttachmentTransferState.LOCAL_ONLY),
-    remoteStoragePath = remoteStoragePath, lastError = lastError,
-)

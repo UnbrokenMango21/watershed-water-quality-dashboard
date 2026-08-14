@@ -4,7 +4,7 @@
 **Starting checkpoint:** `7dbc714ca5a92b32ab159d09e8786fcc86f5bbeb`
 **Scope:** trusted QC reviewer backend/web, mobile P0 defects, mobile/data-contract closeouts.
 
-This document is a historical record of two implementation passes on this branch. The
+This document is a historical record of three implementation passes on this branch. The
 first pass (everything below up to "A regression introduced and fixed within this
 phase") built the QC reviewer backend/web app and closed the original mobile P0
 defects. A second pass, "Phase 11 final repair, polish, and lock" at the end of this
@@ -303,3 +303,29 @@ non-trivial by running the same grep against the pre-removal tree first and seei
 real hits), Android's full Gradle gate, and iOS's full `xcodebuild test` +
 `xcodebuild archive` — all re-run from a clean invocation, not read from a cached
 agent claim. Results are in `docs/QC_TRUSTED_WEB_READINESS.md`.
+
+---
+
+## Phase 11 final targeted closure
+
+The third and final pass closed four narrowly scoped gaps without changing product
+requirements or redesigning either app:
+
+- **Android media removal completed:** `FirebaseSyncRepository` is now Firestore-only.
+  The `FirebaseStorage` dependency/injection, upload/metadata/verification code, and
+  correction-time media file copying were deleted. Historical Room/domain attachment
+  shapes remain for migration and serialization compatibility, but the shipping app
+  has no Storage call or attachment-write path. The existing CI media-hygiene gate now
+  also rejects reintroduction of these Android Storage/upload symbols and dependency.
+- **Both final collector timestamps are trusted:** Firestore Rules now explicitly
+  distinguish final transitions (`DRAFT -> SUBMITTED`, `NEEDS_CORRECTION ->
+  RESUBMITTED`) and require both `submitted_at` and `updated_at` to equal
+  `request.time`. Non-final DRAFT persistence retains its legitimate timestamp path.
+- **Entered units are stable and conversion-consistent:** Rules allow only the stable
+  parameter-specific unit IDs implemented identically by the current iOS and Android
+  clients, while preserving the existing canonical parameter/unit check. Rules do not
+  duplicate conversion math; the trusted validation engine now blocks an entered vs.
+  canonical numerical contradiction with `MEAS_CONVERSION_MISMATCH`.
+- **Reviewer units are readable:** one formatter maps stable and canonical stored codes
+  to scientific display labels. Entered and canonical lines are shown only when their
+  displayed representations differ; persisted values remain unchanged.

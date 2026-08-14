@@ -22,6 +22,7 @@ import {
   formatEastern,
   formatNumber,
   formatText,
+  formatUnit,
   humanizeCode,
 } from '@/lib/format';
 import type {
@@ -60,17 +61,19 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
 
 /** "Entered: 7.2 pH" plus a canonical line only when it actually differs. */
 function MeasurementValue({ measurement }: { measurement: MeasurementDoc }) {
+  const enteredUnit = formatUnit(measurement.entered_unit_code);
+  const canonicalUnit = formatUnit(measurement.unit_code);
   const differs =
-    measurement.entered_value !== measurement.value || measurement.entered_unit_code !== measurement.unit_code;
+    measurement.entered_value !== measurement.value || enteredUnit !== canonicalUnit;
   return (
     <>
       <div>
         Entered: <strong>{formatNumber(measurement.entered_value)}</strong>{' '}
-        {formatText(measurement.entered_unit_code)}
+        {enteredUnit}
       </div>
       {differs ? (
         <div className="muted">
-          Canonical: <strong>{formatNumber(measurement.value)}</strong> {formatText(measurement.unit_code)}
+          Canonical: <strong>{formatNumber(measurement.value)}</strong> {canonicalUnit}
         </div>
       ) : null}
     </>
