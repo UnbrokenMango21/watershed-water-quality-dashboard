@@ -17,7 +17,6 @@ on:
   push:
     branches:
       - main
-      - codex/repository-consolidation-v1
 
 permissions:
   contents: read
