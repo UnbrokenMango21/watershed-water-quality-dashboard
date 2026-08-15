@@ -1,0 +1,93 @@
+name: ASC Existing App Audit
+
+on:
+  push:
+    branches:
+      - ops/asc-existing-app-audit
+
+permissions:
+  contents: read
+
+jobs:
+  audit-existing-app:
+    runs-on: macos-14
+    env:
+      ASC_API_KEY_P8_BASE64: ${{ secrets.ASC_API_KEY_P8_BASE64 }}
+      ASC_KEY_ID: IPDY81DL8P2Z
+      ASC_OLD_BUNDLE_ID: org.centralpawatershed.mobile
+      ASC_NEW_BUNDLE_ID: org.watershed.pawatershedwatch
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare App Store Connect API key
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${ASC_API_KEY_P8_BASE64:-}" || { echo "ASC API key secret is missing"; exit 1; }
+          printf '%s' "$ASC_API_KEY_P8_BASE64" | base64 --decode > /tmp/asc-key.bin
+          if grep -aq "BEGIN .*PRIVATE KEY" /tmp/asc-key.bin; then
+            cp /tmp/asc-key.bin /tmp/AuthKey.p8
+          else
+            openssl pkey -inform DER -in /tmp/asc-key.bin -out /tmp/AuthKey.p8
+          fi
+          chmod 600 /tmp/AuthKey.p8
+          openssl pkey -in /tmp/AuthKey.p8 -check -noout
+          python3 - <<'PY'
+          import json, os
+          with open('/tmp/AuthKey.p8', 'r', encoding='utf-8') as f:
+              key = f.read()
+          with open('/tmp/asc-api-key.json', 'w', encoding='utf-8') as f:
+              json.dump({
+                  'key_id': os.environ['ASC_KEY_ID'],
+                  'issuer_id': None,
+                  'key': key,
+                  'duration': 1200,
+                  'in_house': False,
+              }, f)
+          PY
+      - name: Install Fastlane
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! command -v fastlane >/dev/null 2>&1; then
+            gem install fastlane --no-document
+          fi
+          fastlane --version
+      - name: Query existing App Store Connect record
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "Checking historical bundle ID: $ASC_OLD_BUNDLE_ID"
+          fastlane pilot builds --api_key_path /tmp/asc-api-key.json --app_identifier "$ASC_OLD_BUNDLE_ID"
+          echo "Checking current native bundle ID: $ASC_NEW_BUNDLE_ID"
+          set +e
+          fastlane pilot builds --api_key_path /tmp/asc-api-key.json --app_identifier "$ASC_NEW_BUNDLE_ID"
+          new_status=$?
+          set -e
+          echo "CURRENT_NATIVE_LOOKUP_EXIT=$new_status"
+      - name: Resolve exact existing app metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          ruby <<'RUBY'
+          require 'spaceship'
+          token = Spaceship::ConnectAPI::Token.create(
+            key_id: ENV.fetch('ASC_KEY_ID'),
+            issuer_id: nil,
+            filepath: '/tmp/AuthKey.p8',
+            duration: 1200,
+            in_house: false
+          )
+          Spaceship::ConnectAPI.token = token
+          target = ENV.fetch('ASC_OLD_BUNDLE_ID')
+          app = Spaceship::ConnectAPI::App.all.find { |candidate| candidate.bundle_id == target }
+          abort("EXISTING_APP_NOT_FOUND bundle_id=#{target}") unless app
+          puts "EXISTING_APP_FOUND"
+          puts "name=#{app.name}"
+          puts "bundle_id=#{app.bundle_id}"
+          puts "apple_id=#{app.id}"
+          puts "sku=#{app.sku}" if app.respond_to?(:sku)
+          RUBY
+      - name: Remove key material
+        if: always()
+        shell: bash
+        run: rm -f /tmp/asc-key.bin /tmp/AuthKey.p8 /tmp/asc-api-key.json
