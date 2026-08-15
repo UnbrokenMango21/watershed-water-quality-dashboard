@@ -13,116 +13,125 @@ jobs:
     runs-on: macos-14
     env:
       EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+      EAS_PROJECT_ID: 3b378200-8390-4b03-9fea-ca42413e7fa5
+      IOS_BUNDLE_ID: org.centralpawatershed.mobile
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22.x'
-      - name: Restore the historical EAS project definition
+      - name: Fetch the existing APP_STORE signing material from EAS
         shell: bash
         run: |
           set -euo pipefail
           test -n "${EXPO_TOKEN:-}" || { echo 'EXPO_TOKEN is missing'; exit 1; }
-          git checkout qc-console-v1 -- mobile
-          cd mobile
           python3 - <<'PY'
-          import json
-          from pathlib import Path
-          p = Path('eas.json')
-          data = json.loads(p.read_text())
-          production = data.get('build', {}).get('production', {})
-          data['build'] = {'production': production}
-          p.write_text(json.dumps(data, indent=2) + '\n')
+          import base64, json, os, pathlib, urllib.request, urllib.error
+
+          query = r'''
+          query ExistingIosSigning($appId: String!) {
+            app {
+              byId(appId: $appId) {
+                id
+                fullName
+                iosAppCredentials {
+                  id
+                  appleAppIdentifier { id bundleIdentifier }
+                  appleTeam { id appleTeamIdentifier appleTeamName }
+                  iosAppBuildCredentialsList {
+                    id
+                    iosDistributionType
+                    distributionCertificate {
+                      id certificateP12 certificatePassword serialNumber
+                      developerPortalIdentifier validityNotBefore validityNotAfter
+                    }
+                    provisioningProfile {
+                      id provisioningProfile expiration developerPortalIdentifier status
+                    }
+                  }
+                }
+              }
+            }
+          }
+          '''
+          body = json.dumps({'query': query, 'variables': {'appId': os.environ['EAS_PROJECT_ID']}}).encode()
+          req = urllib.request.Request(
+              'https://api.expo.dev/graphql', data=body, method='POST',
+              headers={'Authorization': 'Bearer ' + os.environ['EXPO_TOKEN'], 'Content-Type': 'application/json'})
+          try:
+              with urllib.request.urlopen(req, timeout=60) as response:
+                  payload = json.load(response)
+          except urllib.error.HTTPError as exc:
+              print('EAS GraphQL HTTP failure:', exc.code)
+              raise
+          if payload.get('errors'):
+              print('EAS GraphQL errors:')
+              for error in payload['errors']:
+                  print('-', error.get('message', 'unknown error'))
+              raise SystemExit(2)
+          app = payload['data']['app']['byId']
+          print('EAS_APP_FULL_NAME=' + app['fullName'])
+          target = None
+          for credentials in app.get('iosAppCredentials') or []:
+              identifier = credentials.get('appleAppIdentifier') or {}
+              if identifier.get('bundleIdentifier') == os.environ['IOS_BUNDLE_ID']:
+                  target = credentials
+                  break
+          if not target:
+              raise SystemExit('No EAS iOS credentials found for ' + os.environ['IOS_BUNDLE_ID'])
+          team = target.get('appleTeam') or {}
+          print('APPLE_TEAM_ID=' + str(team.get('appleTeamIdentifier')))
+          print('APPLE_TEAM_NAME=' + str(team.get('appleTeamName')))
+          store = next((x for x in target.get('iosAppBuildCredentialsList') or [] if x.get('iosDistributionType') == 'APP_STORE'), None)
+          if not store:
+              raise SystemExit('No APP_STORE build credentials are stored in EAS')
+          cert = store.get('distributionCertificate') or {}
+          profile = store.get('provisioningProfile') or {}
+          required = {
+              'certificateP12': cert.get('certificateP12'),
+              'certificatePassword': cert.get('certificatePassword'),
+              'provisioningProfile': profile.get('provisioningProfile'),
+          }
+          missing = [k for k, v in required.items() if not v]
+          if missing:
+              raise SystemExit('EAS signing material incomplete: ' + ', '.join(missing))
+          pathlib.Path('/tmp/dist-cert.p12').write_bytes(base64.b64decode(required['certificateP12']))
+          pathlib.Path('/tmp/profile.mobileprovision').write_bytes(base64.b64decode(required['provisioningProfile']))
+          pathlib.Path('/tmp/p12-password').write_text(required['certificatePassword'])
+          for path in ('/tmp/dist-cert.p12','/tmp/profile.mobileprovision','/tmp/p12-password'):
+              os.chmod(path, 0o600)
+          print('EAS_APP_STORE_CREDENTIALS=present')
+          print('CERT_SERIAL=' + str(cert.get('serialNumber')))
+          print('CERT_VALID_FROM=' + str(cert.get('validityNotBefore')))
+          print('CERT_VALID_TO=' + str(cert.get('validityNotAfter')))
+          print('PROFILE_STATUS=' + str(profile.get('status')))
+          print('PROFILE_EXPIRATION=' + str(profile.get('expiration')))
+          print('PROFILE_PORTAL_ID=' + str(profile.get('developerPortalIdentifier')))
           PY
-          npm ci
-          npx --yes eas-cli@latest whoami
-          npx --yes eas-cli@latest config -p ios -e production --json --non-interactive >/tmp/eas-config.json
-          python3 - <<'PY'
-          import json
-          data=json.load(open('/tmp/eas-config.json'))
-          exp=data.get('exp', data)
-          print('EAS_PROJECT_NAME=' + str(exp.get('name')))
-          print('EAS_SLUG=' + str(exp.get('slug')))
-          print('EAS_IOS_BUNDLE=' + str((exp.get('ios') or {}).get('bundleIdentifier')))
-          print('EAS_PROJECT_ID=' + str(((exp.get('extra') or {}).get('eas') or {}).get('projectId')))
-          PY
-      - name: Download remote iOS build credentials without changing them
-        working-directory: mobile
+      - name: Validate certificate, profile, bundle ID, and Release entitlements
         shell: bash
         run: |
           set -euo pipefail
-          cat >/tmp/download-eas-credentials.exp <<'EXP'
-          set timeout 180
-          log_user 1
-          spawn npx --yes eas-cli@latest credentials -p ios
-          expect {
-            -re {What do you want to do\?} {
-              send "\033\[B\033\[B\033\[B\r"
-            }
-            timeout { puts "Timed out waiting for EAS high-level credentials menu"; exit 21 }
-            eof { puts "EAS credentials exited before high-level menu"; exit 22 }
-          }
-          expect {
-            -re {What do you want to do\?} {
-              send "\r"
-            }
-            timeout { puts "Timed out waiting for credentials.json menu"; exit 23 }
-            eof { puts "EAS credentials exited before credentials.json menu"; exit 24 }
-          }
-          expect {
-            -re {synced with values stored on EAS servers} {
-              send "\003"
-              expect eof
-            }
-            -re {There are no credentials configured} { puts "No remote credentials available"; exit 25 }
-            timeout { puts "Timed out waiting for EAS credential download"; exit 26 }
-            eof { puts "EAS credentials exited before download completed"; exit 27 }
-          }
-          EXP
-          /usr/bin/expect /tmp/download-eas-credentials.exp || status=$?
-          status=${status:-0}
-          test -f credentials.json || { echo "credentials.json was not produced (expect status $status)"; exit 1; }
-          exit 0
-      - name: Validate recovered certificate and provisioning profile
-        working-directory: mobile
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 - <<'PY'
-          import json, pathlib
-          data=json.load(open('credentials.json'))['ios']
-          cert=data['distributionCertificate']
-          profile=data['provisioningProfilePath']
-          print('DIST_CERT_PATH=' + cert['path'])
-          print('DIST_CERT_PASSWORD_PRESENT=' + str(bool(cert.get('password'))).lower())
-          print('PROFILE_PATH=' + profile)
-          assert pathlib.Path(cert['path']).is_file()
-          assert pathlib.Path(profile).is_file()
-          pathlib.Path('/tmp/p12-password').write_text(cert['password'])
-          pathlib.Path('/tmp/p12-path').write_text(cert['path'])
-          pathlib.Path('/tmp/profile-path').write_text(profile)
-          PY
-          p12="$(cat /tmp/p12-path)"
           pass="$(cat /tmp/p12-password)"
-          profile="$(cat /tmp/profile-path)"
-          openssl pkcs12 -in "$p12" -passin "pass:$pass" -clcerts -nokeys -out /tmp/dist-cert.pem
+          openssl pkcs12 -in /tmp/dist-cert.p12 -passin "pass:$pass" -clcerts -nokeys -out /tmp/dist-cert.pem
           openssl x509 -in /tmp/dist-cert.pem -noout -subject -issuer -dates -fingerprint -sha256
-          security cms -D -i "$profile" > /tmp/profile.plist
-          /usr/libexec/PlistBuddy -c 'Print :Name' /tmp/profile.plist
-          /usr/libexec/PlistBuddy -c 'Print :UUID' /tmp/profile.plist
-          /usr/libexec/PlistBuddy -c 'Print :ExpirationDate' /tmp/profile.plist
+          security cms -D -i /tmp/profile.mobileprovision > /tmp/profile.plist
+          echo "PROFILE_NAME=$(/usr/libexec/PlistBuddy -c 'Print :Name' /tmp/profile.plist)"
+          echo "PROFILE_UUID=$(/usr/libexec/PlistBuddy -c 'Print :UUID' /tmp/profile.plist)"
+          echo "PROFILE_EXPIRATION_DATE=$(/usr/libexec/PlistBuddy -c 'Print :ExpirationDate' /tmp/profile.plist)"
           app_identifier="$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:application-identifier' /tmp/profile.plist)"
           team_identifier="$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:com.apple.developer.team-identifier' /tmp/profile.plist)"
           echo "PROFILE_APPLICATION_IDENTIFIER=$app_identifier"
           echo "PROFILE_TEAM_IDENTIFIER=$team_identifier"
           case "$app_identifier" in
             *.org.centralpawatershed.mobile) ;;
-            *) echo 'Provisioning profile does not match existing App Store bundle ID'; exit 1;;
+            *) echo 'Provisioning profile does not match the existing App Store bundle ID'; exit 1;;
           esac
+          if /usr/libexec/PlistBuddy -c 'Print :Entitlements:com.apple.developer.devicecheck.appattest-environment' /tmp/profile.plist >/tmp/appattest 2>/dev/null; then
+            echo "PROFILE_APP_ATTEST=$(cat /tmp/appattest)"
+          else
+            echo 'PROFILE_APP_ATTEST=missing'
+            exit 3
+          fi
+          test "$(cat /tmp/appattest)" = 'production'
       - name: Destroy recovered signing material
         if: always()
         shell: bash
-        run: |
-          rm -rf mobile/credentials mobile/credentials.json /tmp/p12-password /tmp/p12-path /tmp/profile-path /tmp/profile.plist /tmp/dist-cert.pem /tmp/eas-config.json /tmp/download-eas-credentials.exp
+        run: rm -f /tmp/dist-cert.p12 /tmp/profile.mobileprovision /tmp/p12-password /tmp/dist-cert.pem /tmp/profile.plist /tmp/appattest
