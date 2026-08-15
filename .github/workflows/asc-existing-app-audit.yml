@@ -1,4 +1,4 @@
-name: Audit TestFlight Build 10 Availability
+name: Compare TestFlight Export Compliance
 
 on:
   push:
@@ -9,106 +9,55 @@ permissions:
   contents: read
 
 jobs:
-  audit-testflight:
+  compare-compliance:
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 10
     env:
       ASC_API_KEY_P8_BASE64: ${{ secrets.ASC_API_KEY_P8_BASE64 }}
       ASC_APP_ID: '6800149959'
       ASC_KEY_ID: IPDY81DL8P2Z
-      BUILD_NUMBER: '10'
-      GROUP_NAME: PA Watershed Internal
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '22.x'
-
       - name: Prepare App Store Connect key
         shell: bash
         run: |
           set -euo pipefail
-          test -n "${ASC_API_KEY_P8_BASE64:-}"
           printf '%s' "$ASC_API_KEY_P8_BASE64" | base64 --decode > /tmp/asc-key.raw
-          if grep -q 'BEGIN.*PRIVATE KEY' /tmp/asc-key.raw 2>/dev/null; then
-            cp /tmp/asc-key.raw /tmp/asc-key.p8
-          else
-            openssl pkey -inform DER -in /tmp/asc-key.raw -out /tmp/asc-key.p8
-          fi
-          openssl pkey -in /tmp/asc-key.p8 -check -noout
+          if grep -q 'BEGIN.*PRIVATE KEY' /tmp/asc-key.raw 2>/dev/null; then cp /tmp/asc-key.raw /tmp/asc-key.p8; else openssl pkey -inform DER -in /tmp/asc-key.raw -out /tmp/asc-key.p8; fi
           chmod 600 /tmp/asc-key.p8
-
-      - name: Audit exact beta availability state
+      - name: Compare builds 9 and 10
         shell: bash
         run: |
           set -euo pipefail
           node <<'NODE'
-          const fs=require('fs');
-          const crypto=require('crypto');
+          const fs=require('fs'),crypto=require('crypto');
           const key=fs.readFileSync('/tmp/asc-key.p8','utf8');
           const enc=x=>Buffer.from(JSON.stringify(x)).toString('base64url');
-          function jwt(){
-            const now=Math.floor(Date.now()/1000);
-            const h=enc({alg:'ES256',kid:process.env.ASC_KEY_ID,typ:'JWT'});
-            const p=enc({sub:'user',iat:now-30,exp:now+600,aud:'appstoreconnect-v1'});
-            const input=`${h}.${p}`;
-            const sig=crypto.sign('sha256',Buffer.from(input),{key,dsaEncoding:'ieee-p1363'}).toString('base64url');
-            return `${input}.${sig}`;
-          }
-          async function api(path){
-            const r=await fetch(`https://api.appstoreconnect.apple.com${path}`,{headers:{Authorization:`Bearer ${jwt()}`}});
-            const t=await r.text();
-            if(!r.ok) throw new Error(`GET ${path} -> ${r.status}: ${t.slice(0,4000)}`);
-            return JSON.parse(t);
-          }
+          function jwt(){const now=Math.floor(Date.now()/1000);const h=enc({alg:'ES256',kid:process.env.ASC_KEY_ID,typ:'JWT'});const p=enc({sub:'user',iat:now-30,exp:now+600,aud:'appstoreconnect-v1'});const i=`${h}.${p}`;const s=crypto.sign('sha256',Buffer.from(i),{key,dsaEncoding:'ieee-p1363'}).toString('base64url');return `${i}.${s}`}
+          async function get(path){const r=await fetch(`https://api.appstoreconnect.apple.com${path}`,{headers:{Authorization:`Bearer ${jwt()}`}});const t=await r.text();if(!r.ok)throw new Error(`${r.status}: ${t}`);return JSON.parse(t)}
           (async()=>{
             const appId=process.env.ASC_APP_ID;
-            const num=process.env.BUILD_NUMBER;
-            const list=await api(`/v1/builds?filter%5Bapp%5D=${appId}&fields%5Bbuilds%5D=version,processingState,buildAudienceType,usesNonExemptEncryption,uploadedDate,expirationDate,expired,buildBetaDetail,betaGroups,individualTesters&include=buildBetaDetail,betaGroups,individualTesters&sort=-uploadedDate&limit=50`);
-            const b=list.data.find(x=>String(x.attributes?.version)===num);
-            if(!b) throw new Error(`Build ${num} not found`);
-            console.log(`BUILD_ID=${b.id}`);
-            console.log(`PROCESSING_STATE=${b.attributes?.processingState}`);
-            console.log(`BUILD_AUDIENCE_TYPE=${b.attributes?.buildAudienceType}`);
-            console.log(`USES_NON_EXEMPT_ENCRYPTION=${b.attributes?.usesNonExemptEncryption}`);
-            console.log(`UPLOADED_DATE=${b.attributes?.uploadedDate}`);
-            console.log(`EXPIRATION_DATE=${b.attributes?.expirationDate}`);
-            console.log(`EXPIRED=${b.attributes?.expired}`);
-            const relDetail=b.relationships?.buildBetaDetail?.data?.id;
-            const detail=(list.included||[]).find(x=>x.type==='buildBetaDetails'&&x.id===relDetail);
-            console.log(`BETA_DETAIL_ID=${relDetail||'NONE'}`);
-            console.log(`INTERNAL_BUILD_STATE=${detail?.attributes?.internalBuildState||'UNKNOWN'}`);
-            console.log(`EXTERNAL_BUILD_STATE=${detail?.attributes?.externalBuildState||'UNKNOWN'}`);
-            console.log(`AUTO_NOTIFY_ENABLED=${detail?.attributes?.autoNotifyEnabled}`);
-            const linkedGroups=(b.relationships?.betaGroups?.data||[]).map(x=>x.id);
-            console.log(`BUILD_LINKED_GROUP_IDS=${linkedGroups.join(',')||'NONE'}`);
-            const includedGroups=(list.included||[]).filter(x=>x.type==='betaGroups');
-            for(const g of includedGroups){
-              console.log(`BUILD_GROUP=${g.id}|${g.attributes?.name}|internal=${g.attributes?.isInternalGroup}|allBuilds=${g.attributes?.hasAccessToAllBuilds}`);
+            const list=await get(`/v1/builds?filter%5Bapp%5D=${appId}&fields%5Bbuilds%5D=version,processingState,usesNonExemptEncryption,buildBetaDetail,appEncryptionDeclaration,uploadedDate&include=buildBetaDetail,appEncryptionDeclaration&sort=-uploadedDate&limit=50`);
+            for(const n of ['9','10']){
+              const b=list.data.find(x=>String(x.attributes?.version)===n);
+              if(!b){console.log(`BUILD_${n}=NOT_FOUND`);continue}
+              const did=b.relationships?.buildBetaDetail?.data?.id;
+              const d=(list.included||[]).find(x=>x.type==='buildBetaDetails'&&x.id===did);
+              const eid=b.relationships?.appEncryptionDeclaration?.data?.id;
+              const e=(list.included||[]).find(x=>x.type==='appEncryptionDeclarations'&&x.id===eid);
+              console.log(`BUILD_${n}_ID=${b.id}`);
+              console.log(`BUILD_${n}_PROCESSING=${b.attributes?.processingState}`);
+              console.log(`BUILD_${n}_USES_NON_EXEMPT_ENCRYPTION=${b.attributes?.usesNonExemptEncryption}`);
+              console.log(`BUILD_${n}_INTERNAL_STATE=${d?.attributes?.internalBuildState||'UNKNOWN'}`);
+              console.log(`BUILD_${n}_EXTERNAL_STATE=${d?.attributes?.externalBuildState||'UNKNOWN'}`);
+              console.log(`BUILD_${n}_ENCRYPTION_DECLARATION_ID=${eid||'NONE'}`);
+              if(e) console.log(`BUILD_${n}_ENCRYPTION_DECLARATION_STATE=${e.attributes?.appEncryptionDeclarationState||e.attributes?.state||'UNKNOWN'}`);
             }
-            const linkedTesters=(b.relationships?.individualTesters?.data||[]).map(x=>x.id);
-            console.log(`BUILD_INDIVIDUAL_TESTER_IDS=${linkedTesters.join(',')||'NONE'}`);
-
-            const groups=await api(`/v1/betaGroups?filter%5Bapp%5D=${appId}&filter%5BisInternalGroup%5D=true&fields%5BbetaGroups%5D=name,isInternalGroup,hasAccessToAllBuilds&limit=200`);
-            const group=groups.data.find(g=>g.attributes?.name===process.env.GROUP_NAME);
-            if(group){
-              console.log(`TARGET_GROUP_ID=${group.id}`);
-              console.log(`TARGET_GROUP_ALL_BUILDS=${group.attributes?.hasAccessToAllBuilds}`);
-              const members=await api(`/v1/betaGroups/${group.id}/betaTesters?fields%5BbetaTesters%5D=email,state,inviteType&limit=200`);
-              for(const m of members.data||[]) console.log(`TARGET_GROUP_TESTER=${m.attributes?.email}|state=${m.attributes?.state}|inviteType=${m.attributes?.inviteType}`);
-              try{
-                const groupBuilds=await api(`/v1/betaGroups/${group.id}/builds?fields%5Bbuilds%5D=version,processingState,usesNonExemptEncryption,buildBetaDetail&include=buildBetaDetail&limit=200`);
-                for(const gb of groupBuilds.data||[]){
-                  const did=gb.relationships?.buildBetaDetail?.data?.id;
-                  const d=(groupBuilds.included||[]).find(x=>x.type==='buildBetaDetails'&&x.id===did);
-                  console.log(`TARGET_GROUP_BUILD=${gb.attributes?.version}|id=${gb.id}|processing=${gb.attributes?.processingState}|internal=${d?.attributes?.internalBuildState||'UNKNOWN'}|encryption=${gb.attributes?.usesNonExemptEncryption}`);
-                }
-              }catch(e){console.log(`TARGET_GROUP_BUILDS_QUERY_NOTE=${e.message}`)}
-            } else console.log('TARGET_GROUP=NOT_FOUND');
-          })().catch(e=>{console.error(e.stack||e.message||String(e));process.exit(1)});
+          })().catch(e=>{console.error(e.stack||String(e));process.exit(1)});
           NODE
-
       - name: Destroy temporary credentials
         if: always()
-        shell: bash
         run: rm -f /tmp/asc-key.raw /tmp/asc-key.p8
