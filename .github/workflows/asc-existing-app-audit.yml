@@ -61,7 +61,7 @@ jobs:
           console.log(`EAS_BUILD_LOG_FILES=${JSON.stringify(b.logFiles || [])}`);
           fs.writeFileSync('/tmp/log-urls.txt', (b.logFiles || []).join('\n') + '\n');
           NODE
-      - name: Print remote EAS build logs
+      - name: Print decoded EAS build logs
         shell: bash
         run: |
           set -euo pipefail
@@ -70,6 +70,6 @@ jobs:
             [ -n "$url" ] || continue
             i=$((i+1))
             echo "===== EAS REMOTE LOG $i ====="
-            curl --fail --location --silent --show-error "$url" | tail -n 700
+            curl --compressed --fail --location --silent --show-error "$url" | tail -n 900
           done < /tmp/log-urls.txt
           test "$i" -gt 0 || { echo "No remote logFiles were returned by EAS."; exit 1; }
