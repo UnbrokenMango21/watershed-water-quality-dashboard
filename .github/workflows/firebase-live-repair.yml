@@ -1,0 +1,135 @@
+name: Firebase Live Repair
+
+on:
+  push:
+    branches: [ops/firebase-control]
+    paths:
+      - '.github/workflows/firebase-live-repair.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: firebase-live-repair
+  cancel-in-progress: false
+
+env:
+  PROJECT_ID: central-pa-watershed-dev
+  WIF_PROVIDER: projects/652403958133/locations/global/workloadIdentityPools/github-watershed/providers/watershed-github
+  WIF_SERVICE_ACCOUNT: github-watershed-ops@central-pa-watershed-dev.iam.gserviceaccount.com
+
+jobs:
+  repair:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v3
+        with:
+          project_id: ${{ env.PROJECT_ID }}
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: ${{ env.WIF_SERVICE_ACCOUNT }}
+          create_credentials_file: true
+          export_environment_variables: true
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v3
+        with:
+          project_id: ${{ env.PROJECT_ID }}
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install backend dependencies
+        run: npm ci
+
+      - name: Deploy validation functions codebase only
+        run: >-
+          npx firebase-tools@15.26.0 deploy
+          --project "$PROJECT_ID"
+          --only functions:validation
+          --non-interactive
+
+      - name: Verify deployed validation function
+        run: |
+          set -euo pipefail
+          gcloud functions describe validateSubmittedObservation \
+            --gen2 \
+            --region=us-east4 \
+            --project="$PROJECT_ID" \
+            --format='yaml(name,state,updateTime,buildConfig.runtime,eventTrigger.eventType,eventTrigger.eventFilters)'
+
+      - name: Backfill the two live iOS submissions through the production validator
+        env:
+          SUBMISSION_IDS: 51723538-c8ac-4ef8-9329-014487997bd5,a29670d1-7c00-46d1-96bb-3d0d845495d3
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import { initializeApp } from 'firebase-admin/app';
+          import { getFirestore, Timestamp } from 'firebase-admin/firestore';
+          import { runValidationForSubmission } from './validation/orchestrator.mjs';
+
+          initializeApp({ projectId: process.env.PROJECT_ID });
+          const db = getFirestore();
+          const ids = process.env.SUBMISSION_IDS.split(',').map(v => v.trim()).filter(Boolean);
+          const terminal = new Set(['PENDING_REVIEW', 'NEEDS_CORRECTION', 'APPROVED', 'REJECTED', 'PUBLISHING', 'PUBLISH_FAILED', 'PUBLISHED']);
+
+          for (const submissionId of ids) {
+            const ref = db.collection('submissions').doc(submissionId);
+            const before = await ref.get();
+            if (!before.exists) throw new Error(`Missing target submission ${submissionId}`);
+            const beforeData = before.data();
+            console.log(`BACKFILL_BEFORE ${submissionId} status=${beforeData.status} site=${beforeData.site_id} app=${beforeData.mobile_app_version}`);
+
+            let result = null;
+            if (beforeData.status === 'SUBMITTED' || beforeData.status === 'RESUBMITTED') {
+              result = await runValidationForSubmission({ db, Timestamp, submissionId });
+              console.log(`BACKFILL_RESULT ${submissionId} final=${result.final_status} blocking=${result.blocking}`);
+            } else if (!terminal.has(beforeData.status)) {
+              throw new Error(`Target ${submissionId} is in unexpected status ${beforeData.status}`);
+            }
+
+            const after = await ref.get();
+            const data = after.data();
+            console.log(`BACKFILL_AFTER ${submissionId} status=${data.status} errors=${data.error_flag_count ?? 'null'} warnings=${data.warning_flag_count ?? 'null'} info=${data.info_flag_count ?? 'null'} quality=${data.overall_quality_score ?? 'null'}`);
+          }
+          NODE
+
+      - name: Verify QC queue contains live iOS results
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import { initializeApp } from 'firebase-admin/app';
+          import { getFirestore } from 'firebase-admin/firestore';
+
+          initializeApp({ projectId: process.env.PROJECT_ID });
+          const db = getFirestore();
+          const ids = ['51723538-c8ac-4ef8-9329-014487997bd5','a29670d1-7c00-46d1-96bb-3d0d845495d3'];
+          let pending = 0;
+          for (const id of ids) {
+            const snap = await db.collection('submissions').doc(id).get();
+            const d = snap.data();
+            console.log(`FINAL ${id} status=${d.status} site=${d.site_id} app=${d.mobile_app_version} quality=${d.overall_quality_score ?? 'null'}`);
+            if (d.status === 'PENDING_REVIEW') pending += 1;
+          }
+          const queue = await db.collection('submissions').where('status','==','PENDING_REVIEW').get();
+          console.log(`QC_PENDING_REVIEW_TOTAL=${queue.size}`);
+          console.log(`TARGETS_PENDING_REVIEW=${pending}`);
+          NODE
+
+      - name: Show recent validation logs
+        if: always()
+        run: |
+          gcloud functions logs read validateSubmittedObservation \
+            --gen2 \
+            --region=us-east4 \
+            --project="$PROJECT_ID" \
+            --limit=40 2>&1 || true
