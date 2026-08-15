@@ -22,6 +22,7 @@
 		AA0000000000000000000022 /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = AA0000000000000000000012 /* FirebaseAuth */; };
 		AA0000000000000000000023 /* FirebaseFirestore in Frameworks */ = {isa = PBXBuildFile; productRef = AA0000000000000000000013 /* FirebaseFirestore */; };
 		AA0000000000000000000025 /* FirebaseAppCheck in Frameworks */ = {isa = PBXBuildFile; productRef = AA0000000000000000000015 /* FirebaseAppCheck */; };
+		AA0000000000000000000026 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000027 /* Assets.xcassets */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -49,6 +50,7 @@
 		AA0000000000000000000003 /* GoogleService-Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = "GoogleService-Info.plist"; sourceTree = "<group>"; };
 		AA0000000000000000000005 /* mobile_golden.json */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.json; name = mobile_golden.json; path = "../../../tests/mobile-contract-fixtures/mobile_golden.json"; sourceTree = SOURCE_ROOT; };
 		AA0000000000000000000007 /* PAWatershedWatch.entitlements */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.entitlements; path = PAWatershedWatch.entitlements; sourceTree = "<group>"; };
+		AA0000000000000000000027 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -104,6 +106,7 @@
 			isa = PBXGroup;
 			children = (
 				AA0000000000000000000007 /* PAWatershedWatch.entitlements */,
+				AA0000000000000000000027 /* Assets.xcassets */,
 				AA0000000000000000000003 /* GoogleService-Info.plist */,
 				DA25B6C5C207E46EAE523F30 /* CoreViews.swift */,
 				090C161F36EDE07CE012ADB4 /* DesignSystem.swift */,
@@ -217,6 +220,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				AA0000000000000000000026 /* Assets.xcassets in Resources */,
 				AA0000000000000000000004 /* GoogleService-Info.plist in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
