@@ -12,6 +12,7 @@ permissions:
 
 env:
   TARGET_BRANCH: fix/ios-correction-resubmit-ack
+  PATCH_ATTEMPT: '2'
 
 jobs:
   patch:
