@@ -16,6 +16,20 @@ jobs:
       ASC_KEY_ID: IPDY81DL8P2Z
       ASC_OLD_BUNDLE_ID: org.centralpawatershed.mobile
       ASC_NEW_BUNDLE_ID: org.watershed.pawatershedwatch
+      GOOGLE_SERVICE_INFO_PLIST_BASE64: ${{ secrets.GOOGLE_SERVICE_INFO_PLIST_BASE64 }}
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+      BUILD_CERTIFICATE_BASE64: ${{ secrets.BUILD_CERTIFICATE_BASE64 }}
+      P12_PASSWORD: ${{ secrets.P12_PASSWORD }}
+      PROVISIONING_PROFILE_BASE64: ${{ secrets.PROVISIONING_PROFILE_BASE64 }}
+      KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+      IOS_DISTRIBUTION_CERTIFICATE_BASE64: ${{ secrets.IOS_DISTRIBUTION_CERTIFICATE_BASE64 }}
+      IOS_PROVISIONING_PROFILE_BASE64: ${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}
+      IOS_CERTIFICATE_PASSWORD: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
+      ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+      APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+      APP_STORE_CONNECT_API_KEY_BASE64: ${{ secrets.APP_STORE_CONNECT_API_KEY_BASE64 }}
+      MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
+      MATCH_GIT_BASIC_AUTHORIZATION: ${{ secrets.MATCH_GIT_BASIC_AUTHORIZATION }}
     steps:
       - uses: actions/checkout@v4
       - name: Prepare App Store Connect API key
@@ -37,7 +51,37 @@ jobs:
           set -euo pipefail
           gem install fastlane -v 2.238.0 --no-document
           fastlane --version
-      - name: Resolve exact App Store Connect metadata and builds
+      - name: Validate legacy Firebase client configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${GOOGLE_SERVICE_INFO_PLIST_BASE64:-}" || { echo "FIREBASE_IOS_CONFIG=missing"; exit 1; }
+          printf '%s' "$GOOGLE_SERVICE_INFO_PLIST_BASE64" | base64 --decode > /tmp/GoogleService-Info.plist
+          bundle_id="$(/usr/libexec/PlistBuddy -c 'Print :BUNDLE_ID' /tmp/GoogleService-Info.plist)"
+          project_id="$(/usr/libexec/PlistBuddy -c 'Print :PROJECT_ID' /tmp/GoogleService-Info.plist)"
+          google_app_id="$(/usr/libexec/PlistBuddy -c 'Print :GOOGLE_APP_ID' /tmp/GoogleService-Info.plist)"
+          echo "FIREBASE_IOS_CONFIG=present"
+          echo "FIREBASE_BUNDLE_ID=$bundle_id"
+          echo "FIREBASE_PROJECT_ID=$project_id"
+          echo "FIREBASE_GOOGLE_APP_ID=$google_app_id"
+          test "$bundle_id" = "$ASC_OLD_BUNDLE_ID"
+          test "$project_id" = 'central-pa-watershed-dev'
+      - name: Report reusable signing inputs without exposing values
+        shell: bash
+        run: |
+          set -euo pipefail
+          for name in \
+            EXPO_TOKEN BUILD_CERTIFICATE_BASE64 P12_PASSWORD PROVISIONING_PROFILE_BASE64 KEYCHAIN_PASSWORD \
+            IOS_DISTRIBUTION_CERTIFICATE_BASE64 IOS_PROVISIONING_PROFILE_BASE64 IOS_CERTIFICATE_PASSWORD \
+            ASC_ISSUER_ID APP_STORE_CONNECT_ISSUER_ID APP_STORE_CONNECT_API_KEY_BASE64 \
+            MATCH_PASSWORD MATCH_GIT_BASIC_AUTHORIZATION; do
+            if [ -n "${!name:-}" ]; then
+              echo "SECRET_PRESENT $name"
+            else
+              echo "SECRET_MISSING $name"
+            fi
+          done
+      - name: Resolve App Store metadata, builds, and beta groups
         shell: bash
         run: |
           set -euo pipefail
@@ -48,11 +92,7 @@ jobs:
           require 'uri'
 
           token = Spaceship::ConnectAPI::Token.create(
-            key_id: ENV.fetch('ASC_KEY_ID'),
-            issuer_id: nil,
-            filepath: '/tmp/AuthKey.p8',
-            duration: 1200,
-            in_house: false
+            key_id: ENV.fetch('ASC_KEY_ID'), issuer_id: nil, filepath: '/tmp/AuthKey.p8', duration: 1200, in_house: false
           )
           Spaceship::ConnectAPI.token = token
           apps = Spaceship::ConnectAPI::App.all
@@ -60,26 +100,23 @@ jobs:
           new_bundle = ENV.fetch('ASC_NEW_BUNDLE_ID')
           old_app = apps.find { |candidate| candidate.bundle_id == old_bundle }
           new_app = apps.find { |candidate| candidate.bundle_id == new_bundle }
-
           abort("EXISTING_APP_NOT_FOUND bundle_id=#{old_bundle}") unless old_app
           puts "APP_FOUND bundle_id=#{old_app.bundle_id} apple_id=#{old_app.id} name=#{old_app.name.inspect}"
           puts "APP_SKU bundle_id=#{old_app.bundle_id} sku=#{old_app.sku.inspect}" if old_app.respond_to?(:sku)
           puts(new_app ? "APP_FOUND bundle_id=#{new_app.bundle_id} apple_id=#{new_app.id} name=#{new_app.name.inspect}" : "APP_NOT_FOUND bundle_id=#{new_bundle}")
 
-          query = URI.encode_www_form({
-            'filter[app]' => old_app.id,
-            'include' => 'preReleaseVersion',
-            'limit' => '50',
-            'sort' => '-uploadedDate'
-          })
-          uri = URI("https://api.appstoreconnect.apple.com/v1/builds?#{query}")
-          req = Net::HTTP::Get.new(uri)
-          req['Authorization'] = "Bearer #{token.text}"
-          req['Accept'] = 'application/json'
-          res = Net::HTTP.start(uri.hostname, uri.port, use_ssl: true) { |http| http.request(req) }
-          abort("BUILDS_API_FAILED status=#{res.code} body=#{res.body[0,500]}") unless res.is_a?(Net::HTTPSuccess)
+          def get_json(path, token)
+            uri = URI("https://api.appstoreconnect.apple.com#{path}")
+            req = Net::HTTP::Get.new(uri)
+            req['Authorization'] = "Bearer #{token.text}"
+            req['Accept'] = 'application/json'
+            res = Net::HTTP.start(uri.hostname, uri.port, use_ssl: true) { |http| http.request(req) }
+            abort("ASC_API_FAILED status=#{res.code} path=#{path} body=#{res.body[0,500]}") unless res.is_a?(Net::HTTPSuccess)
+            JSON.parse(res.body)
+          end
 
-          payload = JSON.parse(res.body)
+          builds_query = URI.encode_www_form({'filter[app]' => old_app.id, 'include' => 'preReleaseVersion', 'limit' => '50', 'sort' => '-uploadedDate'})
+          payload = get_json("/v1/builds?#{builds_query}", token)
           versions = (payload['included'] || []).select { |x| x['type'] == 'preReleaseVersions' }.to_h { |x| [x['id'], x.dig('attributes', 'version')] }
           builds = payload['data'] || []
           puts "BUILD_COUNT=#{builds.length}"
@@ -88,8 +125,16 @@ jobs:
             pre_id = build.dig('relationships', 'preReleaseVersion', 'data', 'id')
             puts "BUILD version=#{versions[pre_id].inspect} build=#{a['version'].inspect} uploaded=#{a['uploadedDate'].inspect} processing=#{a['processingState'].inspect} expired=#{a['expired'].inspect} id=#{build['id']}"
           end
+
+          groups_query = URI.encode_www_form({'filter[app]' => old_app.id, 'limit' => '200'})
+          groups = get_json("/v1/betaGroups?#{groups_query}", token)['data'] || []
+          puts "BETA_GROUP_COUNT=#{groups.length}"
+          groups.each do |group|
+            a = group['attributes'] || {}
+            puts "BETA_GROUP id=#{group['id']} name=#{a['name'].inspect} internal=#{a['isInternalGroup'].inspect} all_builds=#{a['hasAccessToAllBuilds'].inspect}"
+          end
           RUBY
-      - name: Remove key material
+      - name: Remove temporary key and plist material
         if: always()
         shell: bash
-        run: rm -f /tmp/asc-key.bin /tmp/AuthKey.p8
+        run: rm -f /tmp/asc-key.bin /tmp/AuthKey.p8 /tmp/GoogleService-Info.plist
