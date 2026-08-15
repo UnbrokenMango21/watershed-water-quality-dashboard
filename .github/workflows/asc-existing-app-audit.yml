@@ -31,6 +31,19 @@ jobs:
           fi
           chmod 600 /tmp/AuthKey.p8
           openssl pkey -in /tmp/AuthKey.p8 -check -noout
+          python3 - <<'PY'
+          import json, os
+          with open('/tmp/AuthKey.p8', 'r', encoding='utf-8') as f:
+              key = f.read()
+          with open('/tmp/asc-api-key.json', 'w', encoding='utf-8') as f:
+              json.dump({
+                  'key_id': os.environ['ASC_KEY_ID'],
+                  'issuer_id': None,
+                  'key': key,
+                  'duration': 1200,
+                  'in_house': False,
+              }, f)
+          PY
       - name: Install current Fastlane
         shell: bash
         run: |
@@ -62,7 +75,12 @@ jobs:
             end
           end
           RUBY
+      - name: List prior TestFlight builds
+        shell: bash
+        run: |
+          set -euo pipefail
+          fastlane pilot builds --api_key_path /tmp/asc-api-key.json --app_identifier "$ASC_OLD_BUNDLE_ID"
       - name: Remove key material
         if: always()
         shell: bash
-        run: rm -f /tmp/asc-key.bin /tmp/AuthKey.p8
+        run: rm -f /tmp/asc-key.bin /tmp/AuthKey.p8 /tmp/asc-api-key.json
