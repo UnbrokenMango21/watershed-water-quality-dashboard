@@ -1,4 +1,4 @@
-name: Submit Native iOS Build 10 to TestFlight
+name: Enable Internal TestFlight Build 10
 
 on:
   push:
@@ -9,78 +9,24 @@ permissions:
   contents: read
 
 jobs:
-  submit-testflight:
+  enable-internal-testflight:
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 20
     env:
-      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
       ASC_API_KEY_P8_BASE64: ${{ secrets.ASC_API_KEY_P8_BASE64 }}
-      EAS_PROJECT_ID: 3b378200-8390-4b03-9fea-ca42413e7fa5
-      RELEASE_SHA: c80e1183a3e5ac5488ea687bfcfa3dc9c6b1716d
-      EAS_BUILD_ID: 9d78a100-b58d-4965-ba3c-3eec38c5101e
       ASC_APP_ID: '6800149959'
       ASC_KEY_ID: IPDY81DL8P2Z
-      BUNDLE_ID: org.centralpawatershed.mobile
       APP_VERSION: '0.1.0'
       BUILD_NUMBER: '10'
+      GROUP_NAME: PA Watershed Internal
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
           node-version: '22.x'
 
-      - name: Restore EAS submission context and verify finished build
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p /tmp/eas-submit
-          cat >/tmp/eas-submit/app.json <<JSON
-          {"expo":{"name":"Central PA Watershed","slug":"watershed-dashboard","owner":"watershed-dashboard","ios":{"bundleIdentifier":"${BUNDLE_ID}"},"extra":{"eas":{"projectId":"${EAS_PROJECT_ID}"}}}}
-          JSON
-          echo '{"name":"watershed-submit","private":true,"version":"0.1.0"}' >/tmp/eas-submit/package.json
-          cat >/tmp/eas-submit/eas.json <<JSON
-          {"submit":{"production":{"ios":{"ascAppId":"${ASC_APP_ID}"}}}}
-          JSON
-          cd /tmp/eas-submit
-          npx --yes eas-cli@latest whoami
-          npx --yes eas-cli@latest build:view "${EAS_BUILD_ID}" --json > /tmp/eas-build-view.json
-          node <<'NODE'
-          const fs=require('fs');
-          const b=JSON.parse(fs.readFileSync('/tmp/eas-build-view.json','utf8'));
-          if(b.status!=='FINISHED') throw new Error(`EAS build status ${b.status}`);
-          if(b.gitCommitHash!==process.env.RELEASE_SHA) throw new Error(`Unexpected commit ${b.gitCommitHash}`);
-          console.log(`EAS_BUILD_ID=${b.id}`);
-          console.log(`EAS_BUILD_STATUS=${b.status}`);
-          console.log(`EAS_BUILD_VERSION=${b.appVersion ?? process.env.APP_VERSION}`);
-          console.log(`EAS_BUILD_NUMBER=${b.appBuildVersion ?? process.env.BUILD_NUMBER}`);
-          console.log(`EAS_BUILD_COMMIT=${b.gitCommitHash}`);
-          console.log(`EAS_BUILD_URL=https://expo.dev/accounts/watershed-dashboard/projects/watershed-dashboard/builds/${b.id}`);
-          NODE
-
-      - name: Submit existing EAS build to App Store Connect
-        working-directory: /tmp/eas-submit
-        shell: bash
-        run: |
-          set -euo pipefail
-          npx --yes eas-cli@latest submit \
-            --platform ios \
-            --profile production \
-            --id "${EAS_BUILD_ID}" \
-            --non-interactive \
-            --wait \
-            --verbose 2>&1 | tee /tmp/eas-submit.log
-
-          submission_id="$(grep -Eo 'submissions/[0-9a-fA-F-]{36}' /tmp/eas-submit.log | tail -1 | cut -d/ -f2 || true)"
-          if [ -z "$submission_id" ]; then
-            submission_id="$(grep -Eo '[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}' /tmp/eas-submit.log | tail -1 || true)"
-          fi
-          test -n "$submission_id" || { echo 'Submission completed but submission ID could not be parsed'; exit 1; }
-          echo "EAS_SUBMISSION_ID=$submission_id" >> "$GITHUB_ENV"
-          echo "EAS_SUBMISSION_ID=$submission_id"
-          echo "EAS_SUBMISSION_STATUS=finished"
-          echo "EAS_SUBMISSION_URL=https://expo.dev/accounts/watershed-dashboard/projects/watershed-dashboard/submissions/$submission_id"
-
-      - name: Prepare App Store Connect readback key
+      - name: Prepare App Store Connect key
         shell: bash
         run: |
           set -euo pipefail
@@ -93,62 +39,174 @@ jobs:
           fi
           openssl pkey -in /tmp/asc-key.p8 -check -noout
           chmod 600 /tmp/asc-key.p8
-          echo 'ASC_READBACK_KEY=ready'
 
-      - name: Verify TestFlight build 10 in App Store Connect
+      - name: Distribute build to Account Holder in internal TestFlight
         shell: bash
         run: |
           set -euo pipefail
           node <<'NODE'
-          const fs=require('fs');
-          const crypto=require('crypto');
-          const key=fs.readFileSync('/tmp/asc-key.p8','utf8');
-          const enc=x=>Buffer.from(JSON.stringify(x)).toString('base64url');
-          function jwt(){
-            const now=Math.floor(Date.now()/1000);
-            const h=enc({alg:'ES256',kid:process.env.ASC_KEY_ID,typ:'JWT'});
-            const p=enc({sub:'user',iat:now-30,exp:now+600,aud:'appstoreconnect-v1'});
-            const input=`${h}.${p}`;
-            const sig=crypto.sign('sha256',Buffer.from(input),{key,dsaEncoding:'ieee-p1363'}).toString('base64url');
+          const fs = require('fs');
+          const crypto = require('crypto');
+          const key = fs.readFileSync('/tmp/asc-key.p8', 'utf8');
+          const enc = x => Buffer.from(JSON.stringify(x)).toString('base64url');
+
+          function jwt() {
+            const now = Math.floor(Date.now() / 1000);
+            const h = enc({ alg: 'ES256', kid: process.env.ASC_KEY_ID, typ: 'JWT' });
+            const p = enc({ sub: 'user', iat: now - 30, exp: now + 600, aud: 'appstoreconnect-v1' });
+            const input = `${h}.${p}`;
+            const sig = crypto.sign('sha256', Buffer.from(input), { key, dsaEncoding: 'ieee-p1363' }).toString('base64url');
             return `${input}.${sig}`;
           }
-          async function getBuilds(){
-            const u=new URL('https://api.appstoreconnect.apple.com/v1/builds');
-            u.searchParams.set('filter[app]',process.env.ASC_APP_ID);
-            u.searchParams.set('include','preReleaseVersion');
-            u.searchParams.set('sort','-uploadedDate');
-            u.searchParams.set('limit','30');
-            const r=await fetch(u,{headers:{Authorization:`Bearer ${jwt()}`}});
-            const t=await r.text();
-            if(!r.ok) throw new Error(`App Store Connect ${r.status}: ${t.slice(0,800)}`);
-            return JSON.parse(t);
-          }
-          (async()=>{
-            for(let attempt=1;attempt<=40;attempt++){
-              const data=await getBuilds();
-              const b=data.data.find(x=>String(x.attributes?.version)===process.env.BUILD_NUMBER);
-              if(b){
-                const preId=b.relationships?.preReleaseVersion?.data?.id;
-                const pre=(data.included||[]).find(x=>x.type==='preReleaseVersions'&&x.id===preId);
-                const marketing=pre?.attributes?.version || process.env.APP_VERSION;
-                if(marketing!==process.env.APP_VERSION) throw new Error(`Unexpected App Store version ${marketing}`);
-                console.log(`ASC_BUILD_ID=${b.id}`);
-                console.log(`ASC_APP_VERSION=${marketing}`);
-                console.log(`ASC_BUILD_NUMBER=${b.attributes.version}`);
-                console.log(`ASC_PROCESSING_STATE=${b.attributes.processingState}`);
-                console.log(`ASC_UPLOAD_DATE=${b.attributes.uploadedDate}`);
-                console.log(`ASC_TESTFLIGHT_URL=https://appstoreconnect.apple.com/apps/${process.env.ASC_APP_ID}/testflight/ios`);
-                if(b.attributes.processingState==='FAILED') process.exit(2);
-                return;
-              }
-              console.log(`ASC_READBACK attempt=${attempt} build=${process.env.BUILD_NUMBER} not_visible_yet`);
-              await new Promise(r=>setTimeout(r,30000));
+
+          async function api(method, path, body, ok = [200, 201, 204]) {
+            const res = await fetch(`https://api.appstoreconnect.apple.com${path}`, {
+              method,
+              headers: {
+                Authorization: `Bearer ${jwt()}`,
+                'Content-Type': 'application/json'
+              },
+              body: body === undefined ? undefined : JSON.stringify(body)
+            });
+            const text = await res.text();
+            let data = null;
+            if (text) {
+              try { data = JSON.parse(text); } catch { data = text; }
             }
-            throw new Error(`Build ${process.env.BUILD_NUMBER} did not become visible in App Store Connect within 20 minutes`);
-          })().catch(e=>{console.error(e.message);process.exit(1)});
+            if (!ok.includes(res.status)) {
+              const printable = typeof data === 'string' ? data : JSON.stringify(data);
+              throw new Error(`${method} ${path} -> ${res.status}: ${printable?.slice(0, 2000)}`);
+            }
+            return data;
+          }
+
+          (async () => {
+            const appId = process.env.ASC_APP_ID;
+            const version = process.env.APP_VERSION;
+            const buildNumber = process.env.BUILD_NUMBER;
+            const groupName = process.env.GROUP_NAME;
+
+            const builds = await api('GET', `/v1/builds?filter%5Bapp%5D=${encodeURIComponent(appId)}&include=preReleaseVersion&sort=-uploadedDate&limit=50`);
+            const build = builds.data.find(b => String(b.attributes?.version) === buildNumber);
+            if (!build) throw new Error(`App Store Connect build ${buildNumber} was not found.`);
+            const preId = build.relationships?.preReleaseVersion?.data?.id;
+            const pre = (builds.included || []).find(x => x.type === 'preReleaseVersions' && x.id === preId);
+            const marketing = pre?.attributes?.version || version;
+            if (marketing !== version) throw new Error(`Build ${buildNumber} belongs to version ${marketing}, expected ${version}.`);
+            if (build.attributes.processingState !== 'VALID') throw new Error(`Build ${buildNumber} processing state is ${build.attributes.processingState}, not VALID.`);
+            console.log(`ASC_BUILD_ID=${build.id}`);
+            console.log(`ASC_APP_VERSION=${marketing}`);
+            console.log(`ASC_BUILD_NUMBER=${build.attributes.version}`);
+            console.log(`ASC_PROCESSING_STATE=${build.attributes.processingState}`);
+
+            const users = await api('GET', `/v1/users?fields%5Busers%5D=username,firstName,lastName,roles,allAppsVisible&limit=200`);
+            const holders = users.data.filter(u => (u.attributes?.roles || []).includes('ACCOUNT_HOLDER'));
+            if (holders.length !== 1) throw new Error(`Expected exactly one ACCOUNT_HOLDER user, found ${holders.length}.`);
+            const holder = holders[0];
+            const holderEmail = holder.attributes.username;
+            console.log(`INTERNAL_TESTER_USER=${holder.attributes.firstName || ''} ${holder.attributes.lastName || ''} <${holderEmail}>`);
+            console.log(`INTERNAL_TESTER_ROLES=${(holder.attributes.roles || []).join(',')}`);
+
+            let groups = await api('GET', `/v1/betaGroups?filter%5Bapp%5D=${encodeURIComponent(appId)}&filter%5BisInternalGroup%5D=true&fields%5BbetaGroups%5D=name,isInternalGroup,hasAccessToAllBuilds&limit=200`);
+            let group = groups.data.find(g => g.attributes?.name === groupName);
+            if (!group) {
+              const created = await api('POST', '/v1/betaGroups', {
+                data: {
+                  type: 'betaGroups',
+                  attributes: {
+                    name: groupName,
+                    isInternalGroup: true,
+                    hasAccessToAllBuilds: true
+                  },
+                  relationships: {
+                    app: { data: { type: 'apps', id: appId } }
+                  }
+                }
+              });
+              group = created.data;
+              console.log(`INTERNAL_GROUP_CREATED=${group.id}`);
+            } else {
+              console.log(`INTERNAL_GROUP_REUSED=${group.id}`);
+            }
+            console.log(`INTERNAL_GROUP_NAME=${group.attributes?.name || groupName}`);
+
+            let groupBuilds = await api('GET', `/v1/betaGroups/${group.id}/relationships/builds?limit=200`);
+            if (!(groupBuilds.data || []).some(x => x.id === build.id)) {
+              await api('POST', `/v1/betaGroups/${group.id}/relationships/builds`, {
+                data: [{ type: 'builds', id: build.id }]
+              });
+              console.log('BUILD_ADDED_TO_INTERNAL_GROUP=yes');
+            } else {
+              console.log('BUILD_ADDED_TO_INTERNAL_GROUP=already_present');
+            }
+
+            let testers = await api('GET', `/v1/betaTesters?fields%5BbetaTesters%5D=firstName,lastName,email,inviteType,state&limit=200`);
+            let tester = testers.data.find(t => String(t.attributes?.email || '').toLowerCase() === String(holderEmail).toLowerCase());
+            if (!tester) {
+              const createdTester = await api('POST', '/v1/betaTesters', {
+                data: {
+                  type: 'betaTesters',
+                  attributes: {
+                    email: holderEmail,
+                    firstName: holder.attributes.firstName || undefined,
+                    lastName: holder.attributes.lastName || undefined
+                  },
+                  relationships: {
+                    betaGroups: { data: [{ type: 'betaGroups', id: group.id }] }
+                  }
+                }
+              });
+              tester = createdTester.data;
+              console.log(`INTERNAL_TESTER_CREATED=${tester.id}`);
+            } else {
+              console.log(`INTERNAL_TESTER_REUSED=${tester.id}`);
+              const testerGroups = await api('GET', `/v1/betaTesters/${tester.id}/relationships/betaGroups?limit=200`);
+              if (!(testerGroups.data || []).some(x => x.id === group.id)) {
+                await api('POST', `/v1/betaTesters/${tester.id}/relationships/betaGroups`, {
+                  data: [{ type: 'betaGroups', id: group.id }]
+                });
+                console.log('TESTER_ADDED_TO_INTERNAL_GROUP=yes');
+              } else {
+                console.log('TESTER_ADDED_TO_INTERNAL_GROUP=already_present');
+              }
+            }
+
+            const invitationBody = {
+              data: {
+                type: 'betaTesterInvitations',
+                relationships: {
+                  app: { data: { type: 'apps', id: appId } },
+                  betaTester: { data: { type: 'betaTesters', id: tester.id } }
+                }
+              }
+            };
+            try {
+              const invitation = await api('POST', '/v1/betaTesterInvitations', invitationBody);
+              console.log(`TESTFLIGHT_INVITATION_SENT=${invitation?.data?.id || 'yes'}`);
+            } catch (e) {
+              console.log(`TESTFLIGHT_INVITATION_WARNING=${e.message}`);
+            }
+
+            const verifyBuilds = await api('GET', `/v1/betaGroups/${group.id}/relationships/builds?limit=200`);
+            const verifyTesters = await api('GET', `/v1/betaGroups/${group.id}/betaTesters?fields%5BbetaTesters%5D=firstName,lastName,email,inviteType,state&limit=200`);
+            const buildLinked = (verifyBuilds.data || []).some(x => x.id === build.id);
+            const verifiedTester = (verifyTesters.data || []).find(t => String(t.attributes?.email || '').toLowerCase() === String(holderEmail).toLowerCase());
+            if (!buildLinked) throw new Error('Verification failed: build is not linked to the internal group.');
+            if (!verifiedTester) throw new Error('Verification failed: Account Holder is not in the internal TestFlight group.');
+
+            console.log(`TESTFLIGHT_DISTRIBUTION_READY=yes`);
+            console.log(`TESTFLIGHT_TESTER_EMAIL=${holderEmail}`);
+            console.log(`TESTFLIGHT_TESTER_STATE=${verifiedTester.attributes?.state || 'UNKNOWN'}`);
+            console.log(`TESTFLIGHT_GROUP_ID=${group.id}`);
+            console.log(`TESTFLIGHT_BUILD_ID=${build.id}`);
+            console.log(`TESTFLIGHT_URL=https://appstoreconnect.apple.com/apps/${appId}/testflight/ios`);
+          })().catch(err => {
+            console.error(err.stack || err.message || String(err));
+            process.exit(1);
+          });
           NODE
 
       - name: Destroy temporary credentials
         if: always()
         shell: bash
-        run: rm -f /tmp/asc-key.raw /tmp/asc-key.p8 /tmp/eas-build-view.json /tmp/eas-submit.log
+        run: rm -f /tmp/asc-key.raw /tmp/asc-key.p8
