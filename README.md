@@ -1,54 +1,98 @@
-# Watershed Monitoring Platform
+# PA Watershed Watch
 
-A watershed data platform for field collection, automated validation, supervisor QC, authoritative ArcGIS publication, and public/research dashboards.
+Native watershed field collection, Firebase validation and trusted QC, approved ArcGIS publication, and public water-quality visualization.
 
-## Product flow
+![CI](https://github.com/UnbrokenMango21/watershed-water-quality-dashboard/actions/workflows/mobile-ci.yml/badge.svg?branch=main)
+![Phase](https://img.shields.io/badge/phase-11%20release%20candidate-blue)
+![TestFlight](https://img.shields.io/badge/TestFlight-next-lightgrey)
 
-Field App → Firebase Staging → Automated Validation → ArcGIS Workflow Manager Review → Publishing Service → ArcGIS Authoritative Data → Dashboard & Analytics
+## Current product flow
 
-Correction requests loop back to Firebase staging as a new collector revision; submitted scientific values are not silently overwritten.
+```mermaid
+flowchart LR
+  A[Native iOS / Android collection] --> B[Durable local data]
+  B --> C[Firebase Authentication]
+  C --> D[Private Firestore staging]
+  D --> E[Trusted automated validation]
+  E --> F[PENDING_REVIEW]
+  F --> G[Trusted QC Console]
+  G -->|Approve| H[Approved-only ArcGIS publisher]
+  G -->|Request correction| I[Immutable revision N+1]
+  I --> D
+  G -->|Reject| J[Rejected]
+  H --> K[ArcGIS authoritative / public-safe views]
+  K --> L[Public & research dashboard]
+```
 
-## Data ownership
+Firebase/Firestore is the private pre-publication scientific workflow system. The QC Console is the authoritative human review surface. ArcGIS Workflow Manager is not a release dependency. The retired Expo/React Native client is preserved in Git history, not in the active tree.
 
-- **Firebase:** unapproved/staging submissions, immutable collector revisions, validation state, and workflow state
-- **ArcGIS:** approved authoritative sampling sites and observations
-- **GitHub:** source code, schemas, validation rules, documentation, changelog, issues, and releases
+## Current state
 
-## Development roadmap
+Status vocabulary: **LIVE** means operating in a connected environment; **VERIFIED** means implemented and covered by current automated verification; **NEXT** is the active release sequence; **DEFERRED** is intentionally excluded.
 
-1. Architecture + mind map — complete
-2. GitHub repository — complete
-3. GitHub documentation / CHANGELOG / Issues / Projects — complete
-4. Formal data dictionary — complete
-5. ArcGIS Pro geodatabase prototype — complete
-6. ArcGIS domains + relationships + IDs — complete
-7. Publish clean ArcGIS Online staging environment — complete
-8. Design Workflow Manager — design complete; Penn State organization privilege required for item creation
-9. Create Firebase project and production schema — complete
-10. Build validation engine — complete
-11. Build mobile app — **in progress**
-12. Connect Firebase → Workflow Manager
-13. Connect approval → ArcGIS publication
-14. Build dashboard
-15. End-to-end testing
-16. v1.0 release
+| Component | Status | Current reality |
+| --- | --- | --- |
+| Native iOS / SwiftUI | VERIFIED | Shipping architecture; Firebase Auth/Firestore, durable local records, GPS, revisions, App Attest in Release |
+| Native Android / Jetpack Compose | VERIFIED | Native collector kept healthy by unit, lint, build and emulator instrumentation CI |
+| Firebase Authentication | VERIFIED | Native and QC authentication integration present |
+| Firestore private staging | VERIFIED | Security Rules and persistence contracts are emulator-tested |
+| Automated validation | VERIFIED | Engine, persistence and trigger integration are tested; live development trigger proof is the next release gate |
+| Trusted QC Console | VERIFIED | Authenticated reviewer UI and review lifecycle tests are green |
+| ArcGIS private staging | VERIFIED | Existing ArcGIS schema/staging foundation remains; it is not the human QC system |
+| Approved-only ArcGIS publisher | NEXT | Next engineering phase after TestFlight/live lifecycle proof |
+| Public/research dashboard | NEXT | Consumes approved public-safe ArcGIS views after publisher completion |
+| iOS TestFlight | NEXT | Internal distribution and physical-device lifecycle proof |
+| Photo/audio/media capture | DEFERRED | Zero scientific attachments in the current production candidate |
 
-## Core principles
+## Repository map
 
-- Preserve original field submissions.
-- Record who changed what, when, and why.
-- Version schemas, validation rules, and applications.
-- Flag unusual measurements without automatically treating them as invalid.
-- Treat quality scores as data-confidence signals, not water-health grades.
-- Publish only data that has been approved and successfully written to ArcGIS.
-- Keep sampling sites separate from time-stamped observations.
-- Make all important state transitions auditable.
-- Never expose landowner/private access information in the collector-safe catalog or public views.
+- `Phone App/iPhone App/PAWatershedWatch` — native SwiftUI iPhone application.
+- `Phone App/Android App` — native Jetpack Compose Android application.
+- `web` — authenticated trusted QC Console.
+- `functions` — Firebase Cloud Function entry points.
+- `firebase` — Firestore/Storage rules and indexes.
+- `validation` — trusted validation engine, orchestration and persistence.
+- `config` — scientific/workflow contracts and catalogs.
+- `tests` — contract, rules, validation and review lifecycle tests.
+- `scripts` — controlled environment/bootstrap utilities.
+- `docs` — current authoritative technical documentation.
 
-## Current phase
+## Scientific principles
 
-**v0.1 — Phase 11 mobile collector**
+- Submitted scientific revisions are immutable.
+- Entered value and entered unit provenance are preserved alongside canonical values.
+- Validation, workflow, review and publication state are server-owned.
+- An unusual measurement is not automatically invalid science.
+- Human approval is required before publication.
+- Corrections create a new immutable revision rather than mutating old submitted science.
+- Private collector/reviewer fields must never enter public ArcGIS views.
+- Water Temperature is the only currently confirmed mandatory science measurement for the first release.
+- Media capture/upload is deliberately deferred.
 
-The active Phase 11 work delivers the Expo/React Native iOS and Android collector, Firebase Email/Password authentication, mobile-safe site catalog, offline-first drafts, GPS and provenance capture, configured water-quality measurements, immutable submission revisions, correction/resubmission, validation feedback, and privacy-safe product telemetry.
+## Current development target
 
-Phase 11 remains open until the release-candidate native builds and remaining iOS/Android runtime, offline, and accessibility gates are complete. See `docs/PHASE11_EXECUTION_LOG.md` and `docs/PHASE11_FLOW_MATRIX.md` for evidence and remaining checks.
+Finish the Phase 11 release lock by proving the development iPhone → Firebase → live validation → QC Console roundtrip through internal TestFlight. After that, build the **approved-only ArcGIS publisher** as a trusted, server-side, idempotent publication boundary.
+
+## Developing
+
+Backend/contracts:
+
+```bash
+npm ci
+npm run test:contracts
+```
+
+QC Console:
+
+```bash
+cd web
+npm ci
+npm run typecheck
+npm run build
+```
+
+Android and iOS are verified in `.github/workflows/mobile-ci.yml`; platform-specific setup is documented beside each native project. Do not commit credentials, private keys, local build state, DerivedData, Gradle outputs or App Store Connect keys.
+
+## Documentation
+
+Start with [`docs/README.md`](docs/README.md). Architecture, roadmap, scientific contracts, QC operations and deferred-feature decisions are indexed there.

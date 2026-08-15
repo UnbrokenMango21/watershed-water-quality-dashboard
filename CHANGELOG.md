@@ -1,40 +1,37 @@
 # Changelog
 
-All notable changes to the Watershed Monitoring Platform will be documented here.
+All notable repository-level changes are recorded here. Git history remains the detailed implementation record.
 
-## [Unreleased]
+## Unreleased — Phase 11 release lock
 
-### Added
-- End-to-end platform architecture and ownership boundaries between Firebase, Workflow Manager, ArcGIS, and GitHub.
-- Formal data dictionary, parameter catalog, workflow state machine, validation configuration, and versioned contracts.
-- ArcGIS Pro geodatabase prototype with sites, events, measurements, validation flags, audit events, domains, relationships, global IDs, and editor tracking.
-- Private ArcGIS Online QC staging service for sites, events, measurements, flags, and audit records.
-- Workflow Manager Phase 8 review/approval design; implementation awaits the required Penn State organization privilege/item.
-- Firebase development project, production-oriented Firestore schema, ownership/security rules, revision model, audit boundaries, and emulator coverage.
-- Phase 10 automated validation, persistence, Firestore orchestration, confidence scoring, anomaly handling, and regression coverage.
-- Phase 11 Expo/React Native collector for iOS and Android with Firebase Email/Password authentication and native Firestore offline support.
-- Mobile-safe site catalog, five-step field observation workflow, GPS/accuracy capture, method/instrument provenance, required and optional measurements, entered-unit-first temperature handling, field notes, review, local drafts, sync status, recent submissions, and immutable revision history.
-- Collector correction/resubmission workflow for `NEEDS_CORRECTION -> RESUBMITTED` without overwriting prior scientific revisions.
-- Creekline Field System design language, project-owned watershed brand assets, light/dark themes, outdoor-readable controls, and accessibility semantics.
-- Privacy-safe coarse Firebase Analytics with CI guards, iOS no-Ad-ID support, blocked Android advertising ID permission, and disabled automatic native screen reporting.
-- Mobile CI for repository hygiene, Phase 9/10 contract drift, Expo dependency compatibility, TypeScript, lint, privacy, iOS/Android JavaScript bundles, and Expo Doctor.
-- EAS development, iOS Simulator, preview, and production build profiles with remote developer-facing version management.
+### Consolidation
+- Promoted the native SwiftUI + Jetpack Compose architecture and trusted QC Console as the sole current product path.
+- Retired the superseded Expo/React Native application from the active tree; its history remains recoverable from Git.
+- Removed obsolete Workflow Manager-as-required architecture material. Workflow Manager is optional future integration only.
+- Removed stale Phase 11 remediation/audit/readiness documents and the obsolete camera-permission preview.
+- Replaced the repository landing page, architecture, roadmap and documentation index with current-state documentation.
 
-### Changed
-- Collector user-facing version aligned to the v0.1 development cycle (`0.1.0`).
-- Collector deep-link scheme changed from the Expo-template `mobile` scheme to `centralpawatershed`.
-- Mobile numeric handling now accepts standard decimal/scientific notation only and rejects permissive JavaScript-only numeric forms before Firestore serialization.
-- Submission detail can present the server-owned overall data-confidence result while explicitly distinguishing confidence from water health.
+### CI and hygiene
+- CI now targets pull requests and `main`, covering backend contracts/rules/validation/review lifecycle, QC web build, native Android, native iOS and repository hygiene.
+- Removed the legacy Expo regression job.
+- Added tracked-secret/private-key guards and expanded generated/local artifact checks.
+- Added `*.patch` and `*.diff` handoff artifacts plus private signing/admin credential patterns to `.gitignore`.
 
-### Security and privacy
-- Landowner/private access information remains outside the collector-safe site catalog and public-data path.
-- Collectors cannot write validation, confidence/quality, review, or publication fields.
-- Submitted scientific revisions remain immutable; corrections create new revisions.
-- Firebase client configuration files and generated native projects remain untracked.
+### Native iOS
+- Current release candidate bundle identifier: `org.watershed.pawatershedwatch`.
+- Release uses App Attest; the App Check debug provider is compiled only in Debug.
+- Camera and microphone permissions/capture remain absent. Media is deferred.
 
-## [0.1.0] - Foundation
+### Trusted QC
+- The QC Console remains the authoritative human review surface with Approve, Request Correction and Reject lifecycle protection.
+- Review decisions do not mutate submitted scientific revisions.
 
-### In progress
-- Complete Phase 11 release-candidate native runtime verification.
-- Implement Workflow Manager item when Penn State organization privileges are available.
-- Continue Phases 12–16: workflow integration, authoritative ArcGIS publication, dashboard, end-to-end testing, and v1.0 release.
+### Next release gates
+- Prove the validation trigger in live development Firebase.
+- Upload/process the iOS Release archive in App Store Connect and enable internal TestFlight.
+- Complete a real iPhone submission, QC decision and correction revision roundtrip.
+- Record the successful evidence in `docs/PHASE11_RELEASE_LOCK.md` and tag the tested commit.
+
+## Phase 10 baseline
+
+Phase 10 established the pre-native-mobile project baseline. The exact milestone is retained in Git history and is intended to receive a permanent milestone tag during repository consolidation.

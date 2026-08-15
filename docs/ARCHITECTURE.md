@@ -1,61 +1,71 @@
-# Platform Architecture
+# PA Watershed Watch Architecture
 
-## End-to-end flow
+## Authoritative product architecture
 
-1. Field collector records measurements in a minimal mobile application.
-2. The application stores the raw submission in Firebase staging.
-3. Automated validation checks schema, required fields, location, ranges, duplicates, plausibility, and completeness.
-4. Validation produces flags and a quality score without silently discarding unusual observations.
-5. ArcGIS Workflow Manager creates or manages the human QC review step.
-6. A supervisor approves, rejects, or requests correction with recorded comments.
-7. Approved submissions enter the publishing service.
-8. The publishing service transforms the submission to the ArcGIS schema, writes the observation, verifies success, and stores the ArcGIS record identifier.
-9. ArcGIS contains the authoritative approved sampling sites and time-stamped observations.
-10. Dashboards and analytics read approved ArcGIS data.
-11. Correction requests return to staging for revision and resubmission.
+```mermaid
+flowchart TD
+  IOS[Native iPhone / SwiftUI]
+  AND[Native Android / Jetpack Compose]
+  LOCAL[Durable local scientific record]
+  AUTH[Firebase Authentication]
+  STAGE[Private Firestore staging]
+  VALIDATE[Trusted automated validation]
+  PENDING[PENDING_REVIEW]
+  QC[Authenticated trusted QC Console]
+  APPROVE[APPROVED]
+  CORRECT[NEEDS_CORRECTION]
+  REJECT[REJECTED]
+  PUB[Approved-only trusted ArcGIS publisher]
+  ARCGIS[ArcGIS authoritative / public-safe views]
+  DASH[Public and research dashboard]
 
-## State machine
+  IOS --> LOCAL
+  AND --> LOCAL
+  LOCAL --> AUTH --> STAGE --> VALIDATE
+  VALIDATE --> PENDING --> QC
+  QC --> APPROVE --> PUB --> ARCGIS --> DASH
+  QC --> CORRECT --> LOCAL
+  QC --> REJECT
+```
 
-DRAFT → SUBMITTED → VALIDATING → PENDING_REVIEW
+Firebase/Firestore is the private pre-publication scientific workflow system. The QC Console is the authoritative human review surface. ArcGIS begins only after trusted approval.
 
-From PENDING_REVIEW:
-- APPROVED → PUBLISHING → PUBLISHED
-- NEEDS_CORRECTION → RESUBMITTED → VALIDATING
-- REJECTED
+## Trust boundaries
 
-Publishing failures use PUBLISH_FAILED and must be retried safely without duplicating observations.
+### Collector clients
+Native clients may authenticate a collector, maintain durable drafts, acquire location, select catalog data, capture supported scientific measurements and submit a new revision. A collector cannot author trusted validation results, reviewer decisions, audit identities, publication state or public ArcGIS records.
 
-## System responsibilities
+### Trusted backend
+Server-owned code validates submitted immutable revisions, persists validation output, advances workflow state according to the contract and enforces reviewer/publication authorization. Security Rules are a hard boundary, not a UI convention.
 
-### Mobile application
-Field entry, offline drafts, site selection, GPS capture, timestamps, notes, attachments, and submission.
+### Trusted QC Console
+Only authenticated reviewer/admin roles may invoke human review actions. The console displays submitted science read-only. Approve, Request Correction and Reject act on the current revision and are guarded against stale revisions and non-idempotent retries.
 
-### Firebase
-Unapproved submissions, staging workflow state, audit events, and synchronization with the mobile application.
+### Publication boundary
+The approved-only ArcGIS publisher is the next engineering phase. It must run server-side, publish only APPROVED immutable revisions, be idempotent by stable event/revision identity, verify ArcGIS readback and never expose mobile ArcGIS credentials.
 
-### Validation engine
-Schema checks, spatial checks, measurement checks, duplicate detection, quality flags, completeness scoring, and confidence scoring.
+## Scientific record model
 
-### ArcGIS Workflow Manager
-Human review assignment, supervisor decision, review comments, and controlled approval state.
+- A submission has stable identity across revisions.
+- A submitted revision is immutable.
+- A correction produces revision N+1; revision N remains historical evidence.
+- Entered values/units are retained as provenance; canonical values are stored rather than silently recomputed by review UI.
+- Water Temperature is the only confirmed mandatory science measurement for the first release.
+- Unusual/plausibility-warning observations are not automatically invalid.
+- Media/photo/audio scientific attachments are intentionally absent from the current candidate.
 
-### Publishing service
-Transformation, ArcGIS writes, retries, idempotency, verification, and storage of authoritative ArcGIS identifiers.
+## Workflow
 
-### ArcGIS
-Authoritative sampling sites and approved observations. A site has many time-stamped observations.
+The expected first-release path is:
 
-### Dashboard
-Map, latest measurements, historical trends, comparisons, quality indicators, exports, and research/decision-support views based only on approved data.
+`DRAFT → SUBMITTED → validation → PENDING_REVIEW → APPROVED | NEEDS_CORRECTION | REJECTED`
 
-### GitHub
-Source code, schemas, configuration templates, documentation, validation rules, issues, pull requests, changelog, and releases. GitHub is not a live environmental measurement database.
+A correction creates a new draft/revision and re-enters submission and validation. Publication is separate from review: APPROVED means eligible to publish, not proof that ArcGIS publication succeeded.
 
-## Non-negotiable provenance rules
+## Retired architecture
 
-- Never silently overwrite the original field submission.
-- Every meaningful workflow transition records actor, timestamp, prior state, new state, and context.
-- Reviewer changes preserve original and reviewed values plus reason.
-- Store schema version, validation-rule version, and application version with submissions.
-- A record becomes authoritative only after supervisor approval and confirmed ArcGIS publication.
-- Abnormal environmental values may be important observations and must not be rejected merely because they are unusual.
+The historical Expo/React Native collector is not a shipping application and is removed from the active tree. ArcGIS Workflow Manager Online is not the QC release dependency; it may return later only as an optional adapter if it adds value without weakening the trusted review contract.
+
+## Current release boundary
+
+Phase 11 is locked only after a processed internal TestFlight build completes a real development iPhone → Firebase → validation → QC decision lifecycle, including a correction revision when practical. The resulting evidence belongs in `PHASE11_RELEASE_LOCK.md`; it must not contain credentials.
