@@ -51,12 +51,21 @@ jobs:
       - name: Install backend dependencies
         run: npm ci
 
-      - name: Deploy validation functions codebase only
-        run: >-
-          npx firebase-tools@15.26.0 deploy
-          --project "$PROJECT_ID"
-          --only functions:validation
-          --non-interactive
+      - name: Ensure validation function exists
+        run: |
+          set -euo pipefail
+          if gcloud functions describe validateSubmittedObservation \
+              --gen2 \
+              --region=us-east4 \
+              --project="$PROJECT_ID" >/dev/null 2>&1; then
+            echo "VALIDATION_FUNCTION_ALREADY_DEPLOYED=yes"
+          else
+            npx firebase-tools@15.26.0 deploy \
+              --project "$PROJECT_ID" \
+              --only functions:validation \
+              --non-interactive \
+              --force
+          fi
 
       - name: Verify deployed validation function
         run: |
