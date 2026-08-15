@@ -1,8 +1,10 @@
 'use client';
 
 /**
- * The three reviewer decisions. This component never touches Firestore: it POSTs
- * to /api/submissions/{id}/review with the reviewer's ID token, and the server
+ * The three reviewer decisions.
+ *
+ * This component never touches Firestore: it POSTs to
+ * /api/submissions/{id}/review with the reviewer's ID token, and the server
  * calls the already-tested review/reviewSubmission.mjs domain module.
  *
  * `expectedRevisionId` is the revision that was actually loaded and read on
@@ -11,19 +13,22 @@
  *
  * Visual contract: the three decisions read as three distinct commitments —
  * approve is positive but restrained, request-correction is the primary caution
- * path, reject is unmistakably destructive. Selection state is carried by a
- * radio mark and a border, never by colour alone.
+ * path, reject is unmistakably destructive. Selection is carried by a radio
+ * mark, an icon and a border, never by colour alone.
  */
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import type { User } from 'firebase/auth';
 
-import { Badge, Glyph, Uuid } from '@/components/ui';
+import { Icon, type IconName } from '@/components/icons';
+import { useQueue } from '@/components/QueueProvider';
+import { Badge, Notice, Uuid } from '@/components/ui';
 import type { ReviewDecision, ReviewResult } from '@/lib/types';
 
 const DECISIONS: {
   value: ReviewDecision;
   label: string;
+  icon: IconName;
   reasonRequired: boolean;
   hint: string;
   buttonClass: string;
@@ -32,25 +37,28 @@ const DECISIONS: {
   {
     value: 'APPROVE',
     label: 'Approve',
+    icon: 'checkCircle',
     reasonRequired: false,
-    hint: 'Accept this revision as valid science. A comment is optional and is recorded in the audit trail.',
-    buttonClass: 'approve',
+    hint: 'Accept this revision as valid science. It leaves the queue and continues to publication.',
+    buttonClass: 'btn-approve',
     verb: 'Approve submission',
   },
   {
     value: 'NEEDS_CORRECTION',
     label: 'Request correction',
+    icon: 'history',
     reasonRequired: true,
-    hint: 'Send back to the collector for a correction revision. Your reason is required and is shown to them.',
-    buttonClass: 'caution',
+    hint: 'Send back to the collector for a correction revision. Your reason is shown to them.',
+    buttonClass: 'btn-caution',
     verb: 'Request correction',
   },
   {
     value: 'REJECT',
     label: 'Reject',
+    icon: 'ban',
     reasonRequired: true,
-    hint: 'Reject this submission outright. A reason is required and is recorded permanently.',
-    buttonClass: 'danger',
+    hint: 'Reject this submission outright. This is permanent and is recorded in the audit trail.',
+    buttonClass: 'btn-danger',
     verb: 'Reject submission',
   },
 ];
@@ -75,6 +83,7 @@ export default function ReviewActions({
   currentStatus: string;
 }) {
   const router = useRouter();
+  const { reload } = useQueue();
   const [decision, setDecision] = useState<ReviewDecision>('APPROVE');
   const [reason, setReason] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -132,6 +141,7 @@ export default function ReviewActions({
 
       setOutcome({ kind: 'done', result: payload as ReviewResult });
       // The submission has left PENDING_REVIEW, so it drops out of the queue.
+      void reload();
       router.push(`/review?reviewed=${encodeURIComponent((payload as ReviewResult).decision)}`);
       router.refresh();
     } catch {
@@ -145,72 +155,70 @@ export default function ReviewActions({
   }
 
   return (
-    <section className="card" id="review-decision">
-      <div className="card-head">
-        <h2>Review decision</h2>
-        <div className="card-head-note">
-          {blocked ? <Badge tone="neutral">No decision available</Badge> : <Badge tone="brand">Awaiting your decision</Badge>}
+    <section className="panel panel-emphasis" id="review-decision">
+      <div className="panel-head">
+        <h2 className="panel-title">
+          <Icon name="shield" size={15} />
+          Review decision
+        </h2>
+        <div className="panel-note">
+          {blocked ? <Badge tone="neutral">Unavailable</Badge> : <Badge tone="brand">Awaiting you</Badge>}
         </div>
       </div>
 
-      <div className="card-body">
-        <p className="decision-context">
-          Acting on revision <Uuid value={expectedRevisionId} label="Revision ID" chars={16} />. If the collector files a
-          new revision before you submit, the decision is refused rather than applied to the wrong record.
-        </p>
+      <div className="panel-body">
+        <div className="decision-target">
+          <Icon name="layers" size={14} />
+          <span>
+            <strong style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>Acting on revision</strong>{' '}
+            <Uuid value={expectedRevisionId} label="Revision ID" chars={10} />
+            <br />
+            If the collector files a newer revision first, the decision is refused rather than applied to the wrong
+            record.
+          </span>
+        </div>
 
         {!reviewable ? (
-          <div className="notice notice-conflict" role="status">
-            <Glyph char="!" />
-            <span>
-              This submission is <strong>{currentStatus}</strong>, not pending review, so no decision can be applied.
-            </span>
-          </div>
+          <Notice kind="warning">
+            This submission is <strong>{currentStatus}</strong>, not pending review, so no decision can be applied.
+          </Notice>
         ) : null}
 
         {!expectedRevisionId ? (
-          <div className="notice notice-error" role="alert">
-            <Glyph char="✕" />
-            <span>This submission has no current revision id, so a revision-safe decision cannot be made.</span>
-          </div>
+          <Notice kind="error" role="alert">
+            This submission has no current revision id, so a revision-safe decision cannot be made.
+          </Notice>
         ) : null}
 
         {outcome.kind === 'error' ? (
-          <div className="notice notice-error" role="alert">
-            <Glyph char="✕" />
-            <span>{outcome.message}</span>
-          </div>
+          <Notice kind="error" role="alert">
+            {outcome.message}
+          </Notice>
         ) : null}
 
         {outcome.kind === 'conflict' ? (
-          <div className="notice notice-conflict" role="alert">
-            <Glyph char="!" />
-            <span>
-              {outcome.message}{' '}
-              <button type="button" className="link" onClick={() => window.location.reload()}>
-                Refresh now
-              </button>
-            </span>
-          </div>
+          <Notice kind="warning" role="alert">
+            {outcome.message}{' '}
+            <button type="button" className="btn-link" onClick={() => window.location.reload()}>
+              Refresh now
+            </button>
+          </Notice>
         ) : null}
 
         {outcome.kind === 'done' ? (
-          <div className="notice notice-ok" role="status">
-            <Glyph char="✓" />
-            <span>
-              Recorded <strong>{outcome.result.decision}</strong> — this submission is now {outcome.result.status}
-              {outcome.result.idempotent ? ' (already applied; no duplicate audit event written)' : ''}. Returning to the
-              queue…
-            </span>
-          </div>
+          <Notice kind="ok">
+            Recorded <strong>{outcome.result.decision}</strong> — this submission is now {outcome.result.status}
+            {outcome.result.idempotent ? ' (already applied; no duplicate audit event written)' : ''}. Returning to the
+            queue…
+          </Notice>
         ) : null}
 
-        <div className="decision-options" role="group" aria-label="Review decision">
+        <div className="decision-choices" role="group" aria-label="Review decision">
           {DECISIONS.map((entry) => (
             <button
               key={entry.value}
               type="button"
-              className="decision-option"
+              className="decision-choice"
               data-decision={entry.value}
               aria-pressed={decision === entry.value}
               disabled={disabled}
@@ -219,13 +227,16 @@ export default function ReviewActions({
                 setOutcome({ kind: 'idle' });
               }}
             >
-              <span className="decision-option-label">
-                <span className="decision-option-mark" aria-hidden="true">
-                  ✓
-                </span>
-                {entry.label}
+              <span className="decision-mark" aria-hidden="true">
+                <Icon name="check" size={10} strokeWidth={3} />
               </span>
-              <span className="decision-option-hint">{entry.hint}</span>
+              <span className="decision-text">
+                <strong>
+                  <Icon name={entry.icon} size={15} strokeWidth={1.9} />
+                  {entry.label}
+                </strong>
+                <span>{entry.hint}</span>
+              </span>
             </button>
           ))}
         </div>
@@ -238,7 +249,10 @@ export default function ReviewActions({
           }}
         >
           <label className="field">
-            <span>{spec.reasonRequired ? `Reason for “${spec.label}” (required)` : 'Comment (optional)'}</span>
+            <span className="field-label">
+              Reviewer comments
+              {spec.reasonRequired ? <span className="req">Required</span> : <span className="opt">Optional</span>}
+            </span>
             <textarea
               value={reason}
               required={spec.reasonRequired}
@@ -252,35 +266,42 @@ export default function ReviewActions({
               onChange={(event) => setReason(event.target.value)}
             />
           </label>
-          <p id="decision-reason-help" className="small muted" style={{ marginTop: -6 }}>
+          <p id="decision-reason-help" className="field-help">
             {spec.reasonRequired
-              ? 'This text is stored in the audit trail and is visible to the collector.'
+              ? 'Stored in the audit trail and visible to the collector.'
               : 'Any comment you leave is stored in the audit trail.'}
           </p>
 
-          <div className="button-row" style={{ marginTop: 14 }}>
-            <button
-              type="submit"
-              className={spec.buttonClass}
-              disabled={disabled || reasonMissing}
-            >
-              {submitting ? 'Submitting…' : spec.verb}
+          <div style={{ marginTop: 14 }}>
+            <button type="submit" className={`btn btn-lg ${spec.buttonClass}`} disabled={disabled || reasonMissing}>
+              {submitting ? (
+                'Submitting…'
+              ) : (
+                <>
+                  <Icon name={spec.icon} size={16} strokeWidth={2} />
+                  {spec.verb}
+                </>
+              )}
             </button>
             {reasonMissing && !blocked ? (
-              <span className="small muted" role="status">
+              <p className="field-help" role="status">
                 A reason is required before you can {spec.label.toLowerCase()}.
-              </span>
+              </p>
             ) : null}
             {applied ? (
-              <span className="small muted" role="status">
+              <p className="field-help" role="status">
                 Decision applied. Returning to the queue.
-              </span>
+              </p>
             ) : null}
           </div>
         </form>
 
-        <p className="decision-footnote">
-          Reviewers cannot edit scientific data. A decision changes the workflow state and adds exactly one audit event.
+        <p className="decision-foot">
+          <Icon name="info" size={14} />
+          <span>
+            Reviewers cannot edit scientific data. A decision changes the workflow state and adds exactly one audit
+            event.
+          </span>
         </p>
       </div>
     </section>

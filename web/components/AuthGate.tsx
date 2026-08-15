@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * Email/Password sign-in plus the reviewer role gate.
+ * Email/Password sign-in, the reviewer role gate, and the application chrome.
  *
  * There is deliberately NO signup form: reviewer accounts and the `role` custom
  * claim are provisioned server-side.
@@ -10,10 +10,11 @@
  * actually enforced by firebase/firestore.rules and writes by the API route's own
  * Admin-SDK token verification. Hiding the UI proves nothing on its own.
  */
-import Link from 'next/link';
-import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import { onAuthStateChanged, signInWithEmailAndPassword, signOut, type User } from 'firebase/auth';
 
+import { Icon } from '@/components/icons';
+import { Notice } from '@/components/ui';
 import { clientAuth, isFirebaseConfigured } from '@/lib/firebase-client';
 
 const REVIEWER_ROLES = new Set(['QC_REVIEWER', 'ADMIN']);
@@ -28,6 +29,17 @@ type GateState =
 export interface ReviewerSession {
   user: User;
   role: string;
+}
+
+const SessionContext = createContext<ReviewerSession | null>(null);
+
+/** Available to anything rendered inside a signed-in AuthGate. */
+export function useSession(): ReviewerSession {
+  const session = useContext(SessionContext);
+  if (!session) {
+    throw new Error('useSession must be used inside a signed-in AuthGate.');
+  }
+  return session;
 }
 
 function friendlyAuthError(error: unknown): string {
@@ -50,34 +62,64 @@ function friendlyAuthError(error: unknown): string {
   }
 }
 
-function Topbar({ session }: { session: ReviewerSession | null }) {
+function initials(session: ReviewerSession): string {
+  const source = session.user.email ?? session.user.uid;
+  const name = source.split('@')[0] ?? source;
+  const parts = name.split(/[.\-_]+/).filter(Boolean);
+  const letters = parts.length >= 2 ? `${parts[0][0]}${parts[1][0]}` : name.slice(0, 2);
+  return letters.toUpperCase();
+}
+
+function AppBar({ session }: { session: ReviewerSession | null }) {
   return (
-    <header className="topbar">
-      <div className="topbar-inner">
-        <div className="topbar-brand">
-          <Link href="/review" style={{ color: 'inherit', textDecoration: 'none' }}>
-            Watershed Watch QC Console
-          </Link>
-          <small>Central Pennsylvania · scientific submission review</small>
-        </div>
-        {session ? (
-          <div className="topbar-user">
-            <span className="topbar-email">{session.user.email ?? session.user.uid}</span>
-            <span className="topbar-role" title={`Signed in with the ${session.role} role`}>
-              <span className="sr-only">Role: </span>
-              {session.role}
+    <header className="appbar">
+      <a className="brand" href="/review">
+        <span className="brand-mark" aria-hidden="true">
+          <Icon name="waves" size={17} strokeWidth={2} />
+        </span>
+        <span className="brand-text">
+          <strong>Watershed Watch QC Console</strong>
+          <span>Central Pennsylvania · Scientific submission review</span>
+        </span>
+      </a>
+
+      <div className="appbar-spacer" />
+
+      {session ? (
+        <div className="appbar-actions">
+          <a
+            className="icon-btn"
+            href="https://docs.firebase.google.com"
+            target="_blank"
+            rel="noreferrer"
+            aria-label="Help and documentation"
+            title="Help and documentation"
+          >
+            <Icon name="help" size={17} />
+          </a>
+          <div className="user-chip">
+            <span className="avatar" aria-hidden="true">
+              {initials(session)}
             </span>
-            <button type="button" onClick={() => void signOut(clientAuth())}>
-              Sign out
-            </button>
+            <span className="user-chip-text">
+              <strong>{session.user.email ?? session.user.uid}</strong>
+              <span>
+                <span className="sr-only">Role: </span>
+                {session.role.replace(/_/g, ' ')}
+              </span>
+            </span>
           </div>
-        ) : null}
-      </div>
+          <button type="button" className="signout" onClick={() => void signOut(clientAuth())}>
+            <Icon name="logOut" size={14} />
+            Sign out
+          </button>
+        </div>
+      ) : null}
     </header>
   );
 }
 
-export default function AuthGate({ children }: { children: (session: ReviewerSession) => ReactNode }) {
+export default function AuthGate({ children }: { children: ReactNode }) {
   const [state, setState] = useState<GateState>({ kind: 'loading' });
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -129,57 +171,54 @@ export default function AuthGate({ children }: { children: (session: ReviewerSes
 
   if (state.kind === 'loading') {
     return (
-      <>
-        <Topbar session={null} />
-        <main className="shell">
-          <p className="loading-state" role="status" aria-live="polite">
-            Loading reviewer workspace…
-          </p>
-        </main>
-      </>
+      <div className="app">
+        <AppBar session={null} />
+        <div className="loading-pane" role="status" aria-live="polite">
+          Loading reviewer workspace…
+        </div>
+      </div>
     );
   }
 
   if (state.kind === 'misconfigured') {
     return (
-      <>
-        <Topbar session={null} />
-        <main className="shell">
-          <div className="card centered-state">
-            <div className="card-body">
-              <h1>Not configured</h1>
-              <p className="muted">{state.message}</p>
-            </div>
+      <div className="app">
+        <AppBar session={null} />
+        <div className="auth-wrap">
+          <div className="state-card">
+            <h1>Not configured</h1>
+            <p className="muted">{state.message}</p>
           </div>
-        </main>
-      </>
+        </div>
+      </div>
     );
   }
 
   if (state.kind === 'signed-out') {
     return (
-      <>
-        <Topbar session={null} />
-        <main className="shell">
-          <div className="card auth-panel">
-            <div className="card-body">
-            <div className="auth-kicker">Scientific review workspace</div>
+      <div className="app">
+        <AppBar session={null} />
+        <div className="auth-wrap">
+          <div className="auth-card">
+            <p className="auth-kicker">
+              <Icon name="shield" size={13} strokeWidth={2} />
+              Scientific review workspace
+            </p>
             <h1>Reviewer sign-in</h1>
-            <p className="muted" style={{ marginTop: 0 }}>
+            <p className="muted">
               Review submitted watershed observations, validation results, and revision history. Access is limited to
               administrator-provisioned reviewers.
             </p>
+
             {formError ? (
-              <div className="notice notice-error" role="alert">
-                <span className="glyph" aria-hidden="true">
-                  ✕
-                </span>
-                <span>{formError}</span>
-              </div>
+              <Notice kind="error" role="alert">
+                {formError}
+              </Notice>
             ) : null}
+
             <form onSubmit={handleSignIn} aria-busy={signingIn}>
               <label className="field">
-                <span>Email</span>
+                <span className="field-label">Email</span>
                 <input
                   type="email"
                   name="email"
@@ -190,7 +229,7 @@ export default function AuthGate({ children }: { children: (session: ReviewerSes
                 />
               </label>
               <label className="field">
-                <span>Password</span>
+                <span className="field-label">Password</span>
                 <input
                   type="password"
                   name="password"
@@ -200,48 +239,52 @@ export default function AuthGate({ children }: { children: (session: ReviewerSes
                   onChange={(event) => setPassword(event.target.value)}
                 />
               </label>
-              <button type="submit" className="primary" disabled={signingIn || !email.trim() || !password}>
+              <button type="submit" className="btn btn-primary btn-lg" disabled={signingIn || !email.trim() || !password}>
                 {signingIn ? 'Signing in…' : 'Sign in'}
               </button>
-              <p className="auth-footnote">No public sign-up. Credentials are managed by the watershed program.</p>
             </form>
-            </div>
+
+            <p className="auth-foot">
+              <Icon name="info" size={14} />
+              <span>No public sign-up. Credentials are managed by the watershed program.</span>
+            </p>
           </div>
-        </main>
-      </>
+        </div>
+      </div>
     );
   }
 
   if (state.kind === 'unauthorized') {
     return (
-      <>
-        <Topbar session={{ user: state.user, role: state.role }} />
-        <main className="shell">
-          <div className="card centered-state">
-            <div className="card-body">
-              <h1>Not authorized</h1>
-              <p>Your account does not have reviewer access.</p>
-              <p className="muted">
-                Signed in as {state.user.email ?? state.user.uid}. Ask an administrator to verify your access, then sign
-                out and back in.
-              </p>
-              <p style={{ marginTop: 18 }}>
-                <button type="button" onClick={() => void signOut(clientAuth())}>
-                  Sign out
-                </button>
-              </p>
-            </div>
+      <div className="app">
+        <AppBar session={{ user: state.user, role: state.role }} />
+        <div className="auth-wrap">
+          <div className="state-card">
+            <h1>Not authorized</h1>
+            <p>Your account does not have reviewer access.</p>
+            <p className="muted">
+              Signed in as {state.user.email ?? state.user.uid}. Ask an administrator to verify your access, then sign
+              out and back in.
+            </p>
+            <p style={{ marginTop: 18 }}>
+              <button type="button" className="btn" onClick={() => void signOut(clientAuth())}>
+                <Icon name="logOut" size={15} />
+                Sign out
+              </button>
+            </p>
           </div>
-        </main>
-      </>
+        </div>
+      </div>
     );
   }
 
   const session: ReviewerSession = { user: state.user, role: state.role };
   return (
-    <>
-      <Topbar session={session} />
-      <main className="shell">{children(session)}</main>
-    </>
+    <SessionContext.Provider value={session}>
+      <div className="app">
+        <AppBar session={session} />
+        {children}
+      </div>
+    </SessionContext.Provider>
   );
 }

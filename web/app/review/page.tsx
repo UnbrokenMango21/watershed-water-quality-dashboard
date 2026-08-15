@@ -1,82 +1,33 @@
 'use client';
 
 /**
- * /review — the PENDING_REVIEW queue, oldest wait first.
+ * /review — the record pane before anything is selected.
  *
- * Scanning model: a reviewer reads a row left-to-right as a sentence —
- * *which site*, *when it was collected*, *who collected it*, *what test*,
- * *what validation found*, *what state it is in*, *how long it has waited*.
- * The submission UUID is provenance, not identity, so it is present but quiet.
+ * The queue itself lives in the layout, so this page's only job is to orient
+ * the reviewer: confirm a decision that has just been recorded, summarise what
+ * is waiting, and point at the rail.
  */
-import { useRouter } from 'next/navigation';
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 
-import AuthGate from '@/components/AuthGate';
-import { Badge, FlagSummary, QualityMeter, StatusBadge, Uuid } from '@/components/ui';
-import { fetchQueue } from '@/lib/data';
-import {
-  EMPTY,
-  formatEasternDate,
-  formatEasternTime,
-  formatElapsed,
-  formatText,
-} from '@/lib/format';
+import { Icon } from '@/components/icons';
+import { useQueue } from '@/components/QueueProvider';
+import { Notice, splitCounts } from '@/components/ui';
+import { EMPTY, formatElapsed, humanizeCode } from '@/lib/format';
 import type { QueueRow } from '@/lib/types';
 
-function siteName(row: QueueRow): string {
-  return row.site?.site_name_display ?? row.site?.site_code ?? row.submission.site_id ?? 'Unnamed site';
+function counts(row: QueueRow) {
+  const validation = row.currentRevision?.validation ?? null;
+  return splitCounts(
+    validation?.warning_flag_count ?? row.submission.warning_flag_count,
+    validation?.environmental_alert_count,
+    validation?.error_flag_count ?? row.submission.error_flag_count,
+    validation?.info_flag_count ?? row.submission.info_flag_count,
+  );
 }
 
-/** Site code · county · watershed, with only the parts that actually exist. */
-function siteContext(row: QueueRow): string {
-  const parts = [
-    row.site?.site_code,
-    row.site?.county ? `${row.site.county} County` : null,
-    row.site?.watershed_name ?? null,
-  ].filter((part): part is string => Boolean(part && String(part).trim().length > 0));
-  return parts.join(' · ');
-}
-
-/**
- * Display-only split of the stored counts.
- *
- * The validation engine stores `warning_flag_count` as plausibility warnings
- * *plus* environmental alerts (validation/engine.mjs counts them together), and
- * stores the alert subtotal separately. Showing both raw numbers side by side
- * would count the alerts twice, so the plausibility subtotal is derived here.
- * Nothing is written back — this only affects what the badge row reads.
- */
-function splitFlagCounts(row: QueueRow) {
-  const errors = row.submission.error_flag_count ?? 0;
-  const info = row.submission.info_flag_count ?? 0;
-  const alerts = row.currentRevision?.validation?.environmental_alert_count ?? 0;
-  const combinedWarnings =
-    row.currentRevision?.validation?.warning_flag_count ?? row.submission.warning_flag_count ?? 0;
-  return { errors, warnings: Math.max(0, combinedWarnings - alerts), alerts, info };
-}
-
-function QueueTable() {
-  const router = useRouter();
-  const [rows, setRows] = useState<QueueRow[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
+export default function ReviewIndexPage() {
+  const { rows, now } = useQueue();
   const [reviewed, setReviewed] = useState<string | null>(null);
-  const [reloading, setReloading] = useState(false);
-  // Captured once per load so every row's age is measured against one clock.
-  const [now, setNow] = useState<number | null>(null);
-
-  const load = useCallback(async () => {
-    setReloading(true);
-    setError(null);
-    try {
-      const result = await fetchQueue();
-      setRows(result);
-      setNow(Date.now());
-    } catch {
-      setError('The review queue could not be loaded. Refresh the page or try again in a moment.');
-    } finally {
-      setReloading(false);
-    }
-  }, []);
 
   useEffect(() => {
     const decision = new URLSearchParams(window.location.search).get('reviewed');
@@ -84,198 +35,58 @@ function QueueTable() {
       setReviewed(decision);
       window.history.replaceState(null, '', '/review');
     }
-    void load();
-  }, [load]);
+  }, []);
 
   const waiting = rows?.length ?? 0;
-  const blocking = rows?.filter((row) => (row.submission.error_flag_count ?? 0) > 0).length ?? 0;
+  const needsAttention =
+    rows?.filter((row) => {
+      const c = counts(row);
+      return c.errors > 0 || c.warnings > 0;
+    }).length ?? 0;
+  const oldest = rows && rows.length > 0 && now !== null ? formatElapsed(rows[0].submission.updated_at, now) : EMPTY;
 
   return (
-    <>
-      <div className="page-head">
-        <p className="eyebrow">Quality control</p>
-        <h1>Review queue</h1>
-        <p>
-          Submissions awaiting quality-control review, longest wait first.
-          {rows
-            ? ` ${waiting} waiting${blocking > 0 ? ` · ${blocking} with validation errors` : ''}.`
-            : null}
-        </p>
-      </div>
-
-      {error ? (
-        <div className="notice notice-error" role="alert">
-          <span className="glyph" aria-hidden="true">
-            ✕
-          </span>
-          <span>{error}</span>
-        </div>
-      ) : null}
-
+    <div className="record-inner">
       {reviewed ? (
-        <div className="notice notice-ok" role="status">
-          <span className="glyph" aria-hidden="true">
-            ✓
-          </span>
-          <span>
-            Review recorded (<strong>{reviewed}</strong>). That submission has left the queue.
-          </span>
-        </div>
+        <Notice kind="ok">
+          Decision recorded — <strong>{humanizeCode(reviewed)}</strong>. That submission has left the queue.
+        </Notice>
       ) : null}
 
-      <section className="card" aria-busy={reloading}>
-        <div className="card-head">
-          <h2>Pending review</h2>
-          <div className="button-row">
-            {rows ? (
-              <span className="card-head-note">
-                {waiting === 0 ? 'Queue empty' : `${waiting} submission${waiting === 1 ? '' : 's'}`}
-              </span>
-            ) : null}
-            <button type="button" onClick={() => void load()} disabled={reloading}>
-              {reloading ? 'Refreshing…' : 'Refresh'}
-            </button>
-          </div>
-        </div>
-
-        <div className="card-body">
-          {rows === null && !error ? (
-            <p className="inline-empty" role="status">
-              Loading queue…
+      <div className="picker">
+        <div className="panel picker-card">
+          <div className="panel-body">
+            <div className="empty-mark" style={{ margin: '0 auto 14px' }}>
+              <Icon name="inbox" size={22} />
+            </div>
+            <h1 style={{ fontSize: 'var(--fs-xl)', fontWeight: 600, margin: '0 0 6px' }}>
+              {waiting === 0 ? 'Nothing is waiting for review' : 'Select a submission to review'}
+            </h1>
+            <p className="muted" style={{ maxWidth: '44ch', margin: '0 auto' }}>
+              {waiting === 0
+                ? 'Submissions appear in the queue as soon as validation finishes and they enter pending review.'
+                : 'Pick a record from the queue on the left. The full scientific record, validation findings and decision controls open here.'}
             </p>
-          ) : null}
+          </div>
 
-          {rows !== null && rows.length === 0 ? (
-            <div className="empty-state">
-              <strong>Nothing is waiting for review.</strong>
-              Submissions appear here as soon as validation finishes and they enter pending review.
-            </div>
-          ) : null}
-
-          {rows !== null && rows.length > 0 ? (
-            <div className="table-scroll">
-              <table className="queue-table stack-table">
-                <colgroup>
-                  <col className="col-site" />
-                  <col className="col-collected" />
-                  <col className="col-collector" />
-                  <col className="col-test" />
-                  <col className="col-flags" />
-                  <col className="col-status" />
-                  <col className="col-waiting" />
-                </colgroup>
-                <caption className="sr-only">
-                  Submissions pending quality-control review, ordered by longest wait first. Select a row to open the
-                  full record.
-                </caption>
-                <thead>
-                  <tr>
-                    <th scope="col">Site</th>
-                    <th scope="col">Collected</th>
-                    <th scope="col">Collector</th>
-                    <th scope="col">Test type</th>
-                    <th scope="col">Quality &amp; flags</th>
-                    <th scope="col">Status</th>
-                    <th scope="col">Waiting</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map((row) => {
-                    const href = `/review/${encodeURIComponent(row.submission.submission_id)}`;
-                    const context = siteContext(row);
-                    const revisionNo = row.submission.current_revision_no;
-                    return (
-                      <tr
-                        key={row.submission.submission_id}
-                        className="row-link"
-                        tabIndex={0}
-                        role="link"
-                        aria-label={`Open review record for ${siteName(row)}`}
-                        onClick={() => router.push(href)}
-                        onKeyDown={(event) => {
-                          if (event.key === 'Enter' || event.key === ' ') {
-                            event.preventDefault();
-                            router.push(href);
-                          }
-                        }}
-                      >
-                        <td data-label="Site">
-                          <span className="queue-site-name">{siteName(row)}</span>
-                          {context ? <span className="queue-site-meta">{context}</span> : null}
-                          <Uuid value={row.submission.submission_id} label="Submission ID" block />
-                        </td>
-
-                        <td data-label="Collected" className="datestack">
-                          <span className="cell-primary">
-                            {formatEasternDate(row.currentRevision?.collected_at)}
-                          </span>
-                          <span className="cell-secondary">
-                            {formatEasternTime(row.currentRevision?.collected_at)}
-                          </span>
-                        </td>
-
-                        <td data-label="Collector">
-                          <span className="queue-person">
-                            {formatText(row.currentRevision?.data_collected_by)}
-                          </span>
-                          <Uuid value={row.submission.collector_user_id} label="Collector user ID" block />
-                        </td>
-
-                        <td data-label="Test type">
-                          <span className="cell-primary">{formatText(row.currentRevision?.test_type)}</span>
-                          <span className="cell-secondary">
-                            {revisionNo == null ? EMPTY : `Revision ${revisionNo}`}
-                          </span>
-                        </td>
-
-                        <td data-label="Quality & flags">
-                          <FlagSummary {...splitFlagCounts(row)} />
-                          <span className="queue-quality">
-                            Quality{' '}
-                            <QualityMeter
-                              small
-                              showLabel={false}
-                              value={
-                                row.currentRevision?.validation?.overall_quality_score ??
-                                row.submission.overall_quality_score
-                              }
-                            />
-                          </span>
-                        </td>
-
-                        <td data-label="Status">
-                          <StatusBadge status={row.submission.status} />
-                        </td>
-
-                        <td data-label="Waiting" className="datestack">
-                          <span className="cell-wait">
-                            {now === null ? EMPTY : formatElapsed(row.submission.updated_at, now)}
-                          </span>
-                          <span className="cell-secondary">
-                            since {formatEasternDate(row.submission.updated_at)}
-                          </span>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+          {waiting > 0 ? (
+            <div className="picker-stats">
+              <div>
+                <span className="metric-label">Awaiting review</span>
+                <span className="metric-value">{waiting}</span>
+              </div>
+              <div>
+                <span className="metric-label">Need attention</span>
+                <span className="metric-value">{needsAttention}</span>
+              </div>
+              <div>
+                <span className="metric-label">Longest wait</span>
+                <span className="metric-value">{oldest}</span>
+              </div>
             </div>
           ) : null}
         </div>
-      </section>
-
-      {rows !== null && rows.length > 0 ? (
-        <p className="small muted">
-          <Badge tone="neutral">Reading the flags</Badge>{' '}
-          Errors block approval. Warnings are unusual-but-possible values. Environmental alerts describe a real condition
-          in the water, not a problem with the data.
-        </p>
-      ) : null}
-    </>
+      </div>
+    </div>
   );
-}
-
-export default function ReviewQueuePage() {
-  return <AuthGate>{() => <QueueTable />}</AuthGate>;
 }
