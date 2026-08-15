@@ -31,40 +31,13 @@ jobs:
           fi
           chmod 600 /tmp/AuthKey.p8
           openssl pkey -in /tmp/AuthKey.p8 -check -noout
-          python3 - <<'PY'
-          import json, os
-          with open('/tmp/AuthKey.p8', 'r', encoding='utf-8') as f:
-              key = f.read()
-          with open('/tmp/asc-api-key.json', 'w', encoding='utf-8') as f:
-              json.dump({
-                  'key_id': os.environ['ASC_KEY_ID'],
-                  'issuer_id': None,
-                  'key': key,
-                  'duration': 1200,
-                  'in_house': False,
-              }, f)
-          PY
-      - name: Install Fastlane
+      - name: Install current Fastlane
         shell: bash
         run: |
           set -euo pipefail
-          if ! command -v fastlane >/dev/null 2>&1; then
-            gem install fastlane --no-document
-          fi
+          gem install fastlane -v 2.238.0 --no-document
           fastlane --version
-      - name: Query existing App Store Connect record
-        shell: bash
-        run: |
-          set -euo pipefail
-          echo "Checking historical bundle ID: $ASC_OLD_BUNDLE_ID"
-          fastlane pilot builds --api_key_path /tmp/asc-api-key.json --app_identifier "$ASC_OLD_BUNDLE_ID"
-          echo "Checking current native bundle ID: $ASC_NEW_BUNDLE_ID"
-          set +e
-          fastlane pilot builds --api_key_path /tmp/asc-api-key.json --app_identifier "$ASC_NEW_BUNDLE_ID"
-          new_status=$?
-          set -e
-          echo "CURRENT_NATIVE_LOOKUP_EXIT=$new_status"
-      - name: Resolve exact existing app metadata
+      - name: Resolve exact App Store Connect metadata
         shell: bash
         run: |
           set -euo pipefail
@@ -78,16 +51,18 @@ jobs:
             in_house: false
           )
           Spaceship::ConnectAPI.token = token
-          target = ENV.fetch('ASC_OLD_BUNDLE_ID')
-          app = Spaceship::ConnectAPI::App.all.find { |candidate| candidate.bundle_id == target }
-          abort("EXISTING_APP_NOT_FOUND bundle_id=#{target}") unless app
-          puts "EXISTING_APP_FOUND"
-          puts "name=#{app.name}"
-          puts "bundle_id=#{app.bundle_id}"
-          puts "apple_id=#{app.id}"
-          puts "sku=#{app.sku}" if app.respond_to?(:sku)
+          apps = Spaceship::ConnectAPI::App.all
+          [ENV.fetch('ASC_OLD_BUNDLE_ID'), ENV.fetch('ASC_NEW_BUNDLE_ID')].each do |target|
+            app = apps.find { |candidate| candidate.bundle_id == target }
+            if app
+              puts "APP_FOUND bundle_id=#{app.bundle_id} apple_id=#{app.id} name=#{app.name.inspect}"
+              puts "APP_SKU bundle_id=#{app.bundle_id} sku=#{app.sku.inspect}" if app.respond_to?(:sku)
+            else
+              puts "APP_NOT_FOUND bundle_id=#{target}"
+            end
+          end
           RUBY
       - name: Remove key material
         if: always()
         shell: bash
-        run: rm -f /tmp/asc-key.bin /tmp/AuthKey.p8 /tmp/asc-api-key.json
+        run: rm -f /tmp/asc-key.bin /tmp/AuthKey.p8
