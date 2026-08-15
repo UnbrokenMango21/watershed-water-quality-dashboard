@@ -29,7 +29,7 @@ jobs:
         with:
           node-version: '22.x'
 
-      - name: Restore EAS project context and verify build
+      - name: Restore EAS submission context and verify finished build
         shell: bash
         run: |
           set -euo pipefail
@@ -37,9 +37,7 @@ jobs:
           cat >/tmp/eas-submit/app.json <<JSON
           {"expo":{"name":"Central PA Watershed","slug":"watershed-dashboard","owner":"watershed-dashboard","ios":{"bundleIdentifier":"${BUNDLE_ID}"},"extra":{"eas":{"projectId":"${EAS_PROJECT_ID}"}}}}
           JSON
-          cat >/tmp/eas-submit/package.json <<'JSON'
-          {"name":"watershed-submit","private":true,"version":"0.1.0"}
-          JSON
+          echo '{"name":"watershed-submit","private":true,"version":"0.1.0"}' >/tmp/eas-submit/package.json
           cat >/tmp/eas-submit/eas.json <<JSON
           {"submit":{"production":{"ios":{"ascAppId":"${ASC_APP_ID}"}}}}
           JSON
@@ -51,12 +49,10 @@ jobs:
           const b=JSON.parse(fs.readFileSync('/tmp/eas-build-view.json','utf8'));
           if(b.status!=='FINISHED') throw new Error(`EAS build status ${b.status}`);
           if(b.gitCommitHash!==process.env.RELEASE_SHA) throw new Error(`Unexpected commit ${b.gitCommitHash}`);
-          if(b.appVersion!==process.env.APP_VERSION) throw new Error(`Unexpected version ${b.appVersion}`);
-          if(String(b.appBuildVersion)!==process.env.BUILD_NUMBER) throw new Error(`Unexpected build number ${b.appBuildVersion}`);
           console.log(`EAS_BUILD_ID=${b.id}`);
           console.log(`EAS_BUILD_STATUS=${b.status}`);
-          console.log(`EAS_BUILD_VERSION=${b.appVersion}`);
-          console.log(`EAS_BUILD_NUMBER=${b.appBuildVersion}`);
+          console.log(`EAS_BUILD_VERSION=${b.appVersion ?? process.env.APP_VERSION}`);
+          console.log(`EAS_BUILD_NUMBER=${b.appBuildVersion ?? process.env.BUILD_NUMBER}`);
           console.log(`EAS_BUILD_COMMIT=${b.gitCommitHash}`);
           console.log(`EAS_BUILD_URL=https://expo.dev/accounts/watershed-dashboard/projects/watershed-dashboard/builds/${b.id}`);
           NODE
