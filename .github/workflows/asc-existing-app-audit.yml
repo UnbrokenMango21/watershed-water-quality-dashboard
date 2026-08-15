@@ -1,4 +1,4 @@
-name: Compare TestFlight Export Compliance
+name: Enable TestFlight Build 10
 
 on:
   push:
@@ -9,26 +9,31 @@ permissions:
   contents: read
 
 jobs:
-  compare-compliance:
+  enable-build-10:
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 15
     env:
       ASC_API_KEY_P8_BASE64: ${{ secrets.ASC_API_KEY_P8_BASE64 }}
       ASC_APP_ID: '6800149959'
       ASC_KEY_ID: IPDY81DL8P2Z
+      BUILD_NUMBER: '10'
+      MANUAL_GROUP_NAME: PA Watershed Build 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '22.x'
+
       - name: Prepare App Store Connect key
         shell: bash
         run: |
           set -euo pipefail
           printf '%s' "$ASC_API_KEY_P8_BASE64" | base64 --decode > /tmp/asc-key.raw
           if grep -q 'BEGIN.*PRIVATE KEY' /tmp/asc-key.raw 2>/dev/null; then cp /tmp/asc-key.raw /tmp/asc-key.p8; else openssl pkey -inform DER -in /tmp/asc-key.raw -out /tmp/asc-key.p8; fi
+          openssl pkey -in /tmp/asc-key.p8 -check -noout
           chmod 600 /tmp/asc-key.p8
-      - name: Compare builds 9 and 10
+
+      - name: Clear export compliance and distribute build 10
         shell: bash
         run: |
           set -euo pipefail
@@ -36,28 +41,101 @@ jobs:
           const fs=require('fs'),crypto=require('crypto');
           const key=fs.readFileSync('/tmp/asc-key.p8','utf8');
           const enc=x=>Buffer.from(JSON.stringify(x)).toString('base64url');
-          function jwt(){const now=Math.floor(Date.now()/1000);const h=enc({alg:'ES256',kid:process.env.ASC_KEY_ID,typ:'JWT'});const p=enc({sub:'user',iat:now-30,exp:now+600,aud:'appstoreconnect-v1'});const i=`${h}.${p}`;const s=crypto.sign('sha256',Buffer.from(i),{key,dsaEncoding:'ieee-p1363'}).toString('base64url');return `${i}.${s}`}
-          async function get(path){const r=await fetch(`https://api.appstoreconnect.apple.com${path}`,{headers:{Authorization:`Bearer ${jwt()}`}});const t=await r.text();if(!r.ok)throw new Error(`${r.status}: ${t}`);return JSON.parse(t)}
+          function jwt(){
+            const now=Math.floor(Date.now()/1000);
+            const h=enc({alg:'ES256',kid:process.env.ASC_KEY_ID,typ:'JWT'});
+            const p=enc({sub:'user',iat:now-30,exp:now+600,aud:'appstoreconnect-v1'});
+            const i=`${h}.${p}`;
+            const s=crypto.sign('sha256',Buffer.from(i),{key,dsaEncoding:'ieee-p1363'}).toString('base64url');
+            return `${i}.${s}`;
+          }
+          async function api(method,path,body,ok=[200,201,204]){
+            const r=await fetch(`https://api.appstoreconnect.apple.com${path}`,{
+              method,
+              headers:{Authorization:`Bearer ${jwt()}`,'Content-Type':'application/json'},
+              body:body===undefined?undefined:JSON.stringify(body)
+            });
+            const t=await r.text();
+            let data=null;if(t){try{data=JSON.parse(t)}catch{data=t}}
+            if(!ok.includes(r.status)) throw new Error(`${method} ${path} -> ${r.status}: ${typeof data==='string'?data:JSON.stringify(data)}`);
+            return data;
+          }
+          async function buildSnapshot(buildId){
+            const x=await api('GET',`/v1/builds/${buildId}?fields%5Bbuilds%5D=version,processingState,usesNonExemptEncryption,buildBetaDetail,betaGroups&fields%5BbuildBetaDetails%5D=internalBuildState,externalBuildState,autoNotifyEnabled&fields%5BbetaGroups%5D=name,isInternalGroup,hasAccessToAllBuilds&include=buildBetaDetail,betaGroups`);
+            const did=x.data.relationships?.buildBetaDetail?.data?.id;
+            const d=(x.included||[]).find(y=>y.type==='buildBetaDetails'&&y.id===did);
+            const groups=(x.included||[]).filter(y=>y.type==='betaGroups');
+            return {build:x.data,detail:d,groups};
+          }
           (async()=>{
             const appId=process.env.ASC_APP_ID;
-            const list=await get(`/v1/builds?filter%5Bapp%5D=${appId}&fields%5Bbuilds%5D=version,processingState,usesNonExemptEncryption,buildBetaDetail,appEncryptionDeclaration,uploadedDate&include=buildBetaDetail,appEncryptionDeclaration&sort=-uploadedDate&limit=50`);
-            for(const n of ['9','10']){
-              const b=list.data.find(x=>String(x.attributes?.version)===n);
-              if(!b){console.log(`BUILD_${n}=NOT_FOUND`);continue}
-              const did=b.relationships?.buildBetaDetail?.data?.id;
-              const d=(list.included||[]).find(x=>x.type==='buildBetaDetails'&&x.id===did);
-              const eid=b.relationships?.appEncryptionDeclaration?.data?.id;
-              const e=(list.included||[]).find(x=>x.type==='appEncryptionDeclarations'&&x.id===eid);
-              console.log(`BUILD_${n}_ID=${b.id}`);
-              console.log(`BUILD_${n}_PROCESSING=${b.attributes?.processingState}`);
-              console.log(`BUILD_${n}_USES_NON_EXEMPT_ENCRYPTION=${b.attributes?.usesNonExemptEncryption}`);
-              console.log(`BUILD_${n}_INTERNAL_STATE=${d?.attributes?.internalBuildState||'UNKNOWN'}`);
-              console.log(`BUILD_${n}_EXTERNAL_STATE=${d?.attributes?.externalBuildState||'UNKNOWN'}`);
-              console.log(`BUILD_${n}_ENCRYPTION_DECLARATION_ID=${eid||'NONE'}`);
-              if(e) console.log(`BUILD_${n}_ENCRYPTION_DECLARATION_STATE=${e.attributes?.appEncryptionDeclarationState||e.attributes?.state||'UNKNOWN'}`);
+            const list=await api('GET',`/v1/builds?filter%5Bapp%5D=${appId}&fields%5Bbuilds%5D=version,processingState,usesNonExemptEncryption,buildBetaDetail&include=buildBetaDetail&sort=-uploadedDate&limit=50`);
+            const b9=list.data.find(x=>String(x.attributes?.version)==='9');
+            const b10=list.data.find(x=>String(x.attributes?.version)===process.env.BUILD_NUMBER);
+            if(!b9||!b10) throw new Error('Build 9 or build 10 missing');
+            const d9=(list.included||[]).find(x=>x.type==='buildBetaDetails'&&x.id===b9.relationships?.buildBetaDetail?.data?.id);
+            const d10=(list.included||[]).find(x=>x.type==='buildBetaDetails'&&x.id===b10.relationships?.buildBetaDetail?.data?.id);
+            console.log(`REFERENCE_BUILD_9_ENCRYPTION=${b9.attributes?.usesNonExemptEncryption}`);
+            console.log(`REFERENCE_BUILD_9_INTERNAL_STATE=${d9?.attributes?.internalBuildState}`);
+            console.log(`BUILD_10_PRE_ENCRYPTION=${b10.attributes?.usesNonExemptEncryption}`);
+            console.log(`BUILD_10_PRE_INTERNAL_STATE=${d10?.attributes?.internalBuildState}`);
+            if(b9.attributes?.usesNonExemptEncryption!==false || d9?.attributes?.internalBuildState!=='IN_BETA_TESTING') throw new Error('Reference build 9 is not a valid exempt-encryption beta reference');
+
+            if(b10.attributes?.usesNonExemptEncryption!==false){
+              const patched=await api('PATCH',`/v1/builds/${b10.id}`,{data:{type:'builds',id:b10.id,attributes:{usesNonExemptEncryption:false}}});
+              console.log(`BUILD_10_EXPORT_COMPLIANCE_PATCHED=${patched.data?.attributes?.usesNonExemptEncryption}`);
+            } else console.log('BUILD_10_EXPORT_COMPLIANCE_PATCHED=already_false');
+
+            const users=await api('GET','/v1/users?fields%5Busers%5D=username,firstName,lastName,roles&limit=200');
+            const holder=users.data.find(u=>(u.attributes?.roles||[]).includes('ACCOUNT_HOLDER'));
+            if(!holder) throw new Error('Account Holder not found');
+            const email=holder.attributes.username;
+            const testers=await api('GET','/v1/betaTesters?fields%5BbetaTesters%5D=email,state,inviteType&limit=200');
+            const tester=testers.data.find(t=>String(t.attributes?.email||'').toLowerCase()===String(email).toLowerCase());
+            if(!tester) throw new Error('Existing Account Holder beta tester not found');
+
+            let manualGroup=null;
+            for(let attempt=1;attempt<=36;attempt++){
+              const snap=await buildSnapshot(b10.id);
+              const state=snap.detail?.attributes?.internalBuildState||'UNKNOWN';
+              console.log(`BUILD_10_STATE_ATTEMPT_${attempt}=${state}`);
+              console.log(`BUILD_10_ENCRYPTION_ATTEMPT_${attempt}=${snap.build.attributes?.usesNonExemptEncryption}`);
+              if(state==='IN_BETA_TESTING'){
+                console.log('BUILD_10_INTERNAL_TESTING=IN_BETA_TESTING');
+                console.log(`BUILD_10_GROUPS=${snap.groups.map(g=>g.attributes?.name).join(',')||'NONE'}`);
+                console.log(`TESTFLIGHT_TESTER=${email}`);
+                console.log(`TESTFLIGHT_TESTER_PRIOR_STATE=${tester.attributes?.state||'UNKNOWN'}`);
+                console.log(`TESTFLIGHT_URL=https://appstoreconnect.apple.com/apps/${appId}/testflight/ios`);
+                return;
+              }
+              if(state==='READY_FOR_BETA_TESTING' && !manualGroup){
+                const groups=await api('GET',`/v1/betaGroups?filter%5Bapp%5D=${appId}&filter%5BisInternalGroup%5D=true&fields%5BbetaGroups%5D=name,isInternalGroup,hasAccessToAllBuilds&limit=200`);
+                manualGroup=groups.data.find(g=>g.attributes?.name===process.env.MANUAL_GROUP_NAME);
+                if(!manualGroup){
+                  const created=await api('POST','/v1/betaGroups',{data:{type:'betaGroups',attributes:{name:process.env.MANUAL_GROUP_NAME,isInternalGroup:true,hasAccessToAllBuilds:false},relationships:{app:{data:{type:'apps',id:appId}}}}});
+                  manualGroup=created.data;
+                  console.log(`MANUAL_GROUP_CREATED=${manualGroup.id}`);
+                } else console.log(`MANUAL_GROUP_REUSED=${manualGroup.id}`);
+
+                const rel=await api('GET',`/v1/betaTesters/${tester.id}/relationships/betaGroups?limit=200`);
+                if(!(rel.data||[]).some(x=>x.id===manualGroup.id)){
+                  await api('POST',`/v1/betaTesters/${tester.id}/relationships/betaGroups`,{data:[{type:'betaGroups',id:manualGroup.id}]});
+                  console.log('TESTER_ADDED_TO_MANUAL_GROUP=yes');
+                }
+                try{
+                  await api('POST',`/v1/builds/${b10.id}/relationships/betaGroups`,{data:[{type:'betaGroups',id:manualGroup.id}]});
+                  console.log('BUILD_10_ADDED_TO_MANUAL_GROUP=yes');
+                }catch(e){
+                  if(String(e.message).includes('409')||String(e.message).includes('422')) console.log(`BUILD_10_GROUP_ADD_NOTE=${e.message}`); else throw e;
+                }
+              }
+              await new Promise(r=>setTimeout(r,10000));
             }
+            const final=await buildSnapshot(b10.id);
+            throw new Error(`Build 10 did not reach IN_BETA_TESTING; final state ${final.detail?.attributes?.internalBuildState||'UNKNOWN'}`);
           })().catch(e=>{console.error(e.stack||String(e));process.exit(1)});
           NODE
+
       - name: Destroy temporary credentials
         if: always()
         run: rm -f /tmp/asc-key.raw /tmp/asc-key.p8
