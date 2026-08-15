@@ -97,11 +97,14 @@ jobs:
           }
           JSON
 
+          (cd "$app" && npm install --package-lock-only --ignore-scripts --no-audit --no-fund)
+
           pbx="$app/ios/PAWatershedWatch.xcodeproj/project.pbxproj"
           grep -q "PRODUCT_BUNDLE_IDENTIFIER = ${BUNDLE_ID};" "$pbx"
           grep -q "MARKETING_VERSION = ${APP_VERSION};" "$pbx"
           grep -q "CURRENT_PROJECT_VERSION = ${BUILD_NUMBER};" "$pbx"
           ! grep -q 'com.apple.developer.devicecheck.appattest-environment' "$app/ios/PAWatershedWatch/PAWatershedWatch.entitlements"
+          test -f "$app/package-lock.json"
           echo "RELEASE_SHA=${RELEASE_SHA}"
           echo "RELEASE_IDENTITY=${BUNDLE_ID} ${APP_VERSION} (${BUILD_NUMBER})"
 
