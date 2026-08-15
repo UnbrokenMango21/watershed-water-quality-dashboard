@@ -1,0 +1,75 @@
+name: Prepare Existing App Store iOS Identity
+
+on:
+  push:
+    branches:
+      - release/ios-existing-app-v0.1.0-b10
+
+permissions:
+  contents: write
+
+jobs:
+  prepare:
+    runs-on: macos-14
+    env:
+      GOOGLE_SERVICE_INFO_PLIST_BASE64: ${{ secrets.GOOGLE_SERVICE_INFO_PLIST_BASE64 }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: release/ios-existing-app-v0.1.0-b10
+          fetch-depth: 0
+      - name: Align native iOS identity with existing App Store record
+        shell: bash
+        run: |
+          set -euo pipefail
+          project='Phone App/iPhone App/PAWatershedWatch/PAWatershedWatch.xcodeproj/project.pbxproj'
+          plist='Phone App/iPhone App/PAWatershedWatch/PAWatershedWatch/GoogleService-Info.plist'
+          test -n "${GOOGLE_SERVICE_INFO_PLIST_BASE64:-}" || { echo 'Missing GOOGLE_SERVICE_INFO_PLIST_BASE64'; exit 1; }
+
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('Phone App/iPhone App/PAWatershedWatch/PAWatershedWatch.xcodeproj/project.pbxproj')
+          text = p.read_text()
+          old_id = 'PRODUCT_BUNDLE_IDENTIFIER = org.watershed.pawatershedwatch;'
+          new_id = 'PRODUCT_BUNDLE_IDENTIFIER = org.centralpawatershed.mobile;'
+          count_id = text.count(old_id)
+          if count_id < 2:
+              raise SystemExit(f'Expected at least 2 app bundle-id settings, found {count_id}')
+          text = text.replace(old_id, new_id)
+          count_version = text.count('MARKETING_VERSION = 1.0.0;')
+          if count_version < 2:
+              raise SystemExit(f'Expected at least 2 marketing-version settings, found {count_version}')
+          text = text.replace('MARKETING_VERSION = 1.0.0;', 'MARKETING_VERSION = 0.1.0;')
+          count_build = text.count('CURRENT_PROJECT_VERSION = 1;')
+          if count_build < 2:
+              raise SystemExit(f'Expected at least 2 project-version settings, found {count_build}')
+          text = text.replace('CURRENT_PROJECT_VERSION = 1;', 'CURRENT_PROJECT_VERSION = 10;')
+          p.write_text(text)
+          print(f'Updated {count_id} app bundle-id settings, {count_version} marketing versions, {count_build} build versions.')
+          PY
+
+          printf '%s' "$GOOGLE_SERVICE_INFO_PLIST_BASE64" | base64 --decode > "$plist"
+          bundle_id="$(/usr/libexec/PlistBuddy -c 'Print :BUNDLE_ID' "$plist")"
+          project_id="$(/usr/libexec/PlistBuddy -c 'Print :PROJECT_ID' "$plist")"
+          google_app_id="$(/usr/libexec/PlistBuddy -c 'Print :GOOGLE_APP_ID' "$plist")"
+          test "$bundle_id" = 'org.centralpawatershed.mobile'
+          test "$project_id" = 'central-pa-watershed-dev'
+          echo "Firebase config verified: $bundle_id / $project_id / $google_app_id"
+
+          grep -q 'PRODUCT_BUNDLE_IDENTIFIER = org.centralpawatershed.mobile;' "$project"
+          grep -q 'MARKETING_VERSION = 0.1.0;' "$project"
+          grep -q 'CURRENT_PROJECT_VERSION = 10;' "$project"
+      - name: Remove one-time workflow artifacts and commit product changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f .github/workflows/prepare-existing-ios-app.yml .github/prepare-existing-ios-app-trigger.txt
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          if git diff --cached --quiet; then
+            echo 'No changes to commit.'
+            exit 1
+          fi
+          git commit -m 'fix(ios): target existing App Store application'
+          git push origin HEAD:release/ios-existing-app-v0.1.0-b10
