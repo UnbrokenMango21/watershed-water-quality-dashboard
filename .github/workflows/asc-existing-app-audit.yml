@@ -31,31 +31,22 @@ jobs:
           fi
           chmod 600 /tmp/AuthKey.p8
           openssl pkey -in /tmp/AuthKey.p8 -check -noout
-          python3 - <<'PY'
-          import json, os
-          with open('/tmp/AuthKey.p8', 'r', encoding='utf-8') as f:
-              key = f.read()
-          with open('/tmp/asc-api-key.json', 'w', encoding='utf-8') as f:
-              json.dump({
-                  'key_id': os.environ['ASC_KEY_ID'],
-                  'issuer_id': None,
-                  'key': key,
-                  'duration': 1200,
-                  'in_house': False,
-              }, f)
-          PY
       - name: Install current Fastlane
         shell: bash
         run: |
           set -euo pipefail
           gem install fastlane -v 2.238.0 --no-document
           fastlane --version
-      - name: Resolve exact App Store Connect metadata
+      - name: Resolve exact App Store Connect metadata and builds
         shell: bash
         run: |
           set -euo pipefail
           ruby <<'RUBY'
           require 'spaceship'
+          require 'net/http'
+          require 'json'
+          require 'uri'
+
           token = Spaceship::ConnectAPI::Token.create(
             key_id: ENV.fetch('ASC_KEY_ID'),
             issuer_id: nil,
@@ -65,22 +56,40 @@ jobs:
           )
           Spaceship::ConnectAPI.token = token
           apps = Spaceship::ConnectAPI::App.all
-          [ENV.fetch('ASC_OLD_BUNDLE_ID'), ENV.fetch('ASC_NEW_BUNDLE_ID')].each do |target|
-            app = apps.find { |candidate| candidate.bundle_id == target }
-            if app
-              puts "APP_FOUND bundle_id=#{app.bundle_id} apple_id=#{app.id} name=#{app.name.inspect}"
-              puts "APP_SKU bundle_id=#{app.bundle_id} sku=#{app.sku.inspect}" if app.respond_to?(:sku)
-            else
-              puts "APP_NOT_FOUND bundle_id=#{target}"
-            end
+          old_bundle = ENV.fetch('ASC_OLD_BUNDLE_ID')
+          new_bundle = ENV.fetch('ASC_NEW_BUNDLE_ID')
+          old_app = apps.find { |candidate| candidate.bundle_id == old_bundle }
+          new_app = apps.find { |candidate| candidate.bundle_id == new_bundle }
+
+          abort("EXISTING_APP_NOT_FOUND bundle_id=#{old_bundle}") unless old_app
+          puts "APP_FOUND bundle_id=#{old_app.bundle_id} apple_id=#{old_app.id} name=#{old_app.name.inspect}"
+          puts "APP_SKU bundle_id=#{old_app.bundle_id} sku=#{old_app.sku.inspect}" if old_app.respond_to?(:sku)
+          puts(new_app ? "APP_FOUND bundle_id=#{new_app.bundle_id} apple_id=#{new_app.id} name=#{new_app.name.inspect}" : "APP_NOT_FOUND bundle_id=#{new_bundle}")
+
+          query = URI.encode_www_form({
+            'filter[app]' => old_app.id,
+            'include' => 'preReleaseVersion',
+            'limit' => '50',
+            'sort' => '-uploadedDate'
+          })
+          uri = URI("https://api.appstoreconnect.apple.com/v1/builds?#{query}")
+          req = Net::HTTP::Get.new(uri)
+          req['Authorization'] = "Bearer #{token.text}"
+          req['Accept'] = 'application/json'
+          res = Net::HTTP.start(uri.hostname, uri.port, use_ssl: true) { |http| http.request(req) }
+          abort("BUILDS_API_FAILED status=#{res.code} body=#{res.body[0,500]}") unless res.is_a?(Net::HTTPSuccess)
+
+          payload = JSON.parse(res.body)
+          versions = (payload['included'] || []).select { |x| x['type'] == 'preReleaseVersions' }.to_h { |x| [x['id'], x.dig('attributes', 'version')] }
+          builds = payload['data'] || []
+          puts "BUILD_COUNT=#{builds.length}"
+          builds.each do |build|
+            a = build['attributes'] || {}
+            pre_id = build.dig('relationships', 'preReleaseVersion', 'data', 'id')
+            puts "BUILD version=#{versions[pre_id].inspect} build=#{a['version'].inspect} uploaded=#{a['uploadedDate'].inspect} processing=#{a['processingState'].inspect} expired=#{a['expired'].inspect} id=#{build['id']}"
           end
           RUBY
-      - name: List prior TestFlight builds
-        shell: bash
-        run: |
-          set -euo pipefail
-          fastlane pilot builds --api_key_path /tmp/asc-api-key.json --app_identifier "$ASC_OLD_BUNDLE_ID"
       - name: Remove key material
         if: always()
         shell: bash
-        run: rm -f /tmp/asc-key.bin /tmp/AuthKey.p8 /tmp/asc-api-key.json
+        run: rm -f /tmp/asc-key.bin /tmp/AuthKey.p8
