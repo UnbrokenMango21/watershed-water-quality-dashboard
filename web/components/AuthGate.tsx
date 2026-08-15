@@ -62,8 +62,11 @@ function Topbar({ session }: { session: ReviewerSession | null }) {
         </div>
         {session ? (
           <div className="topbar-user">
-            <span>{session.user.email ?? session.user.uid}</span>
-            <code>{session.role}</code>
+            <span className="topbar-email">{session.user.email ?? session.user.uid}</span>
+            <span className="topbar-role" title={`Signed in with the ${session.role} role`}>
+              <span className="sr-only">Role: </span>
+              {session.role}
+            </span>
             <button type="button" onClick={() => void signOut(clientAuth())}>
               Sign out
             </button>
@@ -129,7 +132,9 @@ export default function AuthGate({ children }: { children: (session: ReviewerSes
       <>
         <Topbar session={null} />
         <main className="shell">
-          <p className="muted" role="status" aria-live="polite">Loading reviewer workspace…</p>
+          <p className="loading-state" role="status" aria-live="polite">
+            Loading reviewer workspace…
+          </p>
         </main>
       </>
     );
@@ -141,8 +146,10 @@ export default function AuthGate({ children }: { children: (session: ReviewerSes
         <Topbar session={null} />
         <main className="shell">
           <div className="card centered-state">
-            <h1>Not configured</h1>
-            <p className="muted">{state.message}</p>
+            <div className="card-body">
+              <h1>Not configured</h1>
+              <p className="muted">{state.message}</p>
+            </div>
           </div>
         </main>
       </>
@@ -155,13 +162,21 @@ export default function AuthGate({ children }: { children: (session: ReviewerSes
         <Topbar session={null} />
         <main className="shell">
           <div className="card auth-panel">
+            <div className="card-body">
             <div className="auth-kicker">Scientific review workspace</div>
             <h1>Reviewer sign-in</h1>
             <p className="muted" style={{ marginTop: 0 }}>
               Review submitted watershed observations, validation results, and revision history. Access is limited to
               administrator-provisioned reviewers.
             </p>
-            {formError ? <div className="notice notice-error" role="alert">{formError}</div> : null}
+            {formError ? (
+              <div className="notice notice-error" role="alert">
+                <span className="glyph" aria-hidden="true">
+                  ✕
+                </span>
+                <span>{formError}</span>
+              </div>
+            ) : null}
             <form onSubmit={handleSignIn} aria-busy={signingIn}>
               <label className="field">
                 <span>Email</span>
@@ -190,6 +205,7 @@ export default function AuthGate({ children }: { children: (session: ReviewerSes
               </button>
               <p className="auth-footnote">No public sign-up. Credentials are managed by the watershed program.</p>
             </form>
+            </div>
           </div>
         </main>
       </>
@@ -202,15 +218,19 @@ export default function AuthGate({ children }: { children: (session: ReviewerSes
         <Topbar session={{ user: state.user, role: state.role }} />
         <main className="shell">
           <div className="card centered-state">
-            <h1>Not authorized</h1>
-            <p>Your account does not have reviewer access.</p>
-            <p className="muted">
-              Signed in as {state.user.email ?? state.user.uid}. Ask an administrator to verify your access, then sign
-              out and back in.
-            </p>
-            <button type="button" onClick={() => void signOut(clientAuth())}>
-              Sign out
-            </button>
+            <div className="card-body">
+              <h1>Not authorized</h1>
+              <p>Your account does not have reviewer access.</p>
+              <p className="muted">
+                Signed in as {state.user.email ?? state.user.uid}. Ask an administrator to verify your access, then sign
+                out and back in.
+              </p>
+              <p style={{ marginTop: 18 }}>
+                <button type="button" onClick={() => void signOut(clientAuth())}>
+                  Sign out
+                </button>
+              </p>
+            </div>
           </div>
         </main>
       </>

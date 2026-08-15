@@ -14,6 +14,19 @@ const easternDateTime = new Intl.DateTimeFormat('en-US', {
   timeStyle: 'short',
 });
 
+const easternDateOnly = new Intl.DateTimeFormat('en-US', {
+  timeZone: EASTERN,
+  month: 'short',
+  day: 'numeric',
+  year: 'numeric',
+});
+
+const easternTimeOnly = new Intl.DateTimeFormat('en-US', {
+  timeZone: EASTERN,
+  hour: 'numeric',
+  minute: '2-digit',
+});
+
 /** Firestore Timestamp | Date | epoch-millis | ISO string -> Date, or null. */
 export function toDate(value: unknown): Date | null {
   if (value == null) return null;
@@ -33,6 +46,43 @@ export function toDate(value: unknown): Date | null {
 export function formatEastern(value: unknown): string {
   const date = toDate(value);
   return date ? `${easternDateTime.format(date)} ET` : EMPTY;
+}
+
+/**
+ * The date half of a timestamp, e.g. "Aug 13, 2026". Pairs with
+ * `formatEasternTime` so a reviewer can scan dates down a column without the
+ * clock time competing for attention.
+ */
+export function formatEasternDate(value: unknown): string {
+  const date = toDate(value);
+  return date ? easternDateOnly.format(date) : EMPTY;
+}
+
+/** The clock half of a timestamp, e.g. "4:05 PM ET". */
+export function formatEasternTime(value: unknown): string {
+  const date = toDate(value);
+  return date ? `${easternTimeOnly.format(date)} ET` : EMPTY;
+}
+
+/**
+ * A short, recognisable prefix of a UUID for display. The full value is always
+ * kept alongside it (title / aria-label) so nothing is actually hidden — this
+ * only stops 36-character identifiers from dominating a row.
+ */
+export function shortId(value: Nullable<string>, length = 8): string {
+  const text = value == null ? '' : String(value).trim();
+  if (text.length === 0) return EMPTY;
+  return text.length <= length + 1 ? text : `${text.slice(0, length)}…`;
+}
+
+/**
+ * Quality scores are stored 0–100. Returns a 0–100 percentage for the meter
+ * bar, defensively normalising a 0–1 fraction if one ever appears.
+ */
+export function qualityPercent(value: Nullable<number>): number | null {
+  if (value == null || typeof value !== 'number' || Number.isNaN(value)) return null;
+  const scaled = value > 0 && value <= 1 ? value * 100 : value;
+  return Math.max(0, Math.min(100, scaled));
 }
 
 /**
@@ -115,5 +165,28 @@ export function humanizeCode(value: Nullable<string>): string {
   return value
     .split('_')
     .map((part) => (part.length > 0 ? part[0].toUpperCase() + part.slice(1).toLowerCase() : part))
+    .join(' ');
+}
+
+/**
+ * Sentence case rather than title case: VALIDATION_COMPLETED -> "Validation
+ * completed". Used for audit event names and other prose-like labels, where
+ * Title Case Reads Like A Headline instead of a log entry.
+ *
+ * Known acronyms are preserved so "QC reviewer" does not become "Qc reviewer".
+ */
+const ACRONYMS = new Set(['QC', 'ID', 'GPS', 'API', 'ET', 'PH']);
+
+export function humanizeSentence(value: Nullable<string>): string {
+  if (!value) return EMPTY;
+  const words = value.split('_').filter((part) => part.length > 0);
+  if (words.length === 0) return EMPTY;
+  return words
+    .map((word, index) => {
+      const upper = word.toUpperCase();
+      if (ACRONYMS.has(upper)) return upper === 'PH' ? 'pH' : upper;
+      const lower = word.toLowerCase();
+      return index === 0 ? lower[0].toUpperCase() + lower.slice(1) : lower;
+    })
     .join(' ');
 }
