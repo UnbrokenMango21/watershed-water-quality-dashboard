@@ -69,7 +69,7 @@ jobs:
           console.log(`SUBMISSION id=${id}`);
           console.log(`STATUS=${d.status ?? 'null'}`);
           console.log(`CURRENT_REVISION_ID=${d.current_revision_id ?? 'null'}`);
-          console.log(`CURRENT_REVISION_NUMBER=${d.current_revision_number ?? d.revision_number ?? 'null'}`);
+          console.log(`CURRENT_REVISION_NO=${d.current_revision_no ?? 'null'}`);
           console.log(`REVIEW_DECISION=${d.review_decision ?? 'null'}`);
           console.log(`REVIEW_COMMENT=${d.review_comment ?? 'null'}`);
           console.log(`REVIEWER=${short(d.reviewer_user_id) ?? 'null'}`);
@@ -94,13 +94,13 @@ jobs:
           const revisions = await ref.collection('revisions').get();
           console.log(`REVISION_COUNT=${revisions.size}`);
           const rows = revisions.docs.map(x => ({snap:x, data:x.data()})).sort((a,b) => {
-            const an = a.data.revision_number ?? 0; const bn = b.data.revision_number ?? 0;
+            const an = a.data.revision_no ?? 0; const bn = b.data.revision_no ?? 0;
             return an - bn || (a.snap.createTime?.toMillis?.() ?? 0) - (b.snap.createTime?.toMillis?.() ?? 0);
           });
           for (const {snap:r, data:x} of rows) {
             const m = await r.ref.collection('measurements').get();
             const measurementPairs = m.docs.map(md => [md.id, stable(md.data())]).sort((a,b) => a[0].localeCompare(b[0]));
-            console.log(`REVISION id=${r.id} number=${x.revision_number ?? 'null'} state=${x.status ?? x.state ?? 'null'} created=${r.createTime?.toDate?.().toISOString?.() ?? 'null'} updated=${r.updateTime?.toDate?.().toISOString?.() ?? 'null'} submitted=${iso(x.submitted_at)} supersedes=${x.supersedes_revision_id ?? x.parent_revision_id ?? 'null'} measurements=${m.size} revision_hash=${hash(x)} measurements_hash=${hash(measurementPairs)}`);
+            console.log(`REVISION id=${r.id} number=${x.revision_no ?? 'null'} state=${x.revision_status ?? 'null'} created=${r.createTime?.toDate?.().toISOString?.() ?? 'null'} updated=${r.updateTime?.toDate?.().toISOString?.() ?? 'null'} submitted=${iso(x.submitted_at)} measurements=${m.size} revision_hash=${hash(x)} measurements_hash=${hash(measurementPairs)}`);
           }
 
           const audit = await ref.collection('audit').get();
@@ -110,6 +110,51 @@ jobs:
             console.log(`AUDIT id=${a.id} type=${a.event_type ?? 'null'} actor_type=${a.actor_type ?? 'null'} actor=${short(a.actor_id) ?? 'null'} at=${iso(a.occurred_at)} from=${a.previous_state ?? 'null'} to=${a.new_state ?? 'null'} revision=${a.revision_id ?? 'null'} reason=${a.reason ?? 'null'}`);
           }
           NODE
+
+      - name: Compare deployed Firestore rules with repository
+        run: |
+          set -euo pipefail
+          TOKEN="$(gcloud auth print-access-token)"
+          RELEASE_JSON="$(mktemp)"
+          RULESET_JSON="$(mktemp)"
+          trap 'rm -f "$RELEASE_JSON" "$RULESET_JSON"' EXIT
+
+          curl --fail --silent --show-error \
+            -H "Authorization: Bearer ${TOKEN}" \
+            "https://firebaserules.googleapis.com/v1/projects/${PROJECT_ID}/releases/cloud.firestore" \
+            > "$RELEASE_JSON"
+
+          RULESET_NAME="$(python3 - "$RELEASE_JSON" <<'PY'
+          import json, sys
+          with open(sys.argv[1]) as f: data=json.load(f)
+          print(data['rulesetName'])
+          PY
+          )"
+
+          curl --fail --silent --show-error \
+            -H "Authorization: Bearer ${TOKEN}" \
+            "https://firebaserules.googleapis.com/v1/${RULESET_NAME}" \
+            > "$RULESET_JSON"
+
+          python3 - "$RULESET_JSON" firebase/firestore.rules <<'PY'
+          import hashlib, json, pathlib, sys
+          with open(sys.argv[1]) as f: data=json.load(f)
+          files=data.get('source',{}).get('files',[])
+          live='\n'.join(f.get('content','') for f in files)
+          repo=pathlib.Path(sys.argv[2]).read_text()
+          norm=lambda s: s.replace('\r\n','\n').rstrip()+"\n"
+          live_n,repo_n=norm(live),norm(repo)
+          print('LIVE_RULESET='+data.get('name','unknown'))
+          print('LIVE_RULES_SHA256='+hashlib.sha256(live_n.encode()).hexdigest())
+          print('REPO_RULES_SHA256='+hashlib.sha256(repo_n.encode()).hexdigest())
+          print('LIVE_RULES_MATCH_REPO='+('yes' if live_n==repo_n else 'no'))
+          for marker in [
+              'resource.data.status == "NEEDS_CORRECTION"',
+              'request.resource.data.status in ["NEEDS_CORRECTION", "RESUBMITTED"]',
+              'request.resource.data.revision_no == get(submissionPath(submissionId)).data.current_revision_no + 1'
+          ]:
+              print(f'LIVE_HAS_{hashlib.sha1(marker.encode()).hexdigest()[:8]}='+('yes' if marker in live_n else 'no')+' marker='+marker)
+          PY
 
       - name: Show recent validation trigger logs
         run: |
