@@ -1,0 +1,148 @@
+name: Patch iOS Correction Resubmit
+
+on:
+  push:
+    branches: [ops/firebase-control]
+    paths:
+      - '.github/workflows/patch-ios-correction-resubmit.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  TARGET_BRANCH: fix/ios-correction-resubmit-ack
+
+jobs:
+  patch:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout target branch
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ env.TARGET_BRANCH }}
+          fetch-depth: 0
+
+      - name: Patch iOS acknowledgement ordering and add regression test
+        run: |
+          set -euo pipefail
+          python3 <<'PY'
+          from pathlib import Path
+
+          production = Path('Phone App/iPhone App/PAWatershedWatch/PAWatershedWatch/ProductionData.swift')
+          text = production.read_text()
+          old = '''            if let status = existing.get("status") as? String, Self.acknowledged.contains(status) {
+                guard existing.get("current_revision_id") as? String == snapshot.revisionID.uuidString.lowercased(), let workflow = WorkflowState.backend(status) else { throw CanonicalizationError.invalid("Server acknowledged a different revision") }
+                return workflow
+            }
+            if snapshot.correction, existing.get("status") as? String != "NEEDS_CORRECTION" { throw CanonicalizationError.invalid("Correction is not currently requested") }
+'''
+          new = '''            if let workflow = try Self.acknowledgedWorkflow(
+                status: existing.get("status") as? String,
+                remoteRevisionID: existing.get("current_revision_id") as? String,
+                snapshotRevisionID: snapshot.revisionID.uuidString.lowercased(),
+                isCorrection: snapshot.correction
+            ) {
+                return workflow
+            }
+            if snapshot.correction, existing.get("status") as? String != "NEEDS_CORRECTION" { throw CanonicalizationError.invalid("Correction is not currently requested") }
+'''
+          if old not in text:
+              raise SystemExit('Expected iOS sync acknowledgement block not found; refusing broad edit')
+          text = text.replace(old, new, 1)
+
+          marker = '''    private static let acknowledged: Set<String> = ["SUBMITTED", "VALIDATING", "PENDING_REVIEW", "NEEDS_CORRECTION", "RESUBMITTED", "APPROVED", "REJECTED", "PUBLISHING", "PUBLISH_FAILED", "PUBLISHED"]
+'''
+          helper = '''    /// Returns a server workflow only when the server already points at the same immutable revision.
+    /// A correction is the one intentional mismatch: while the parent is NEEDS_CORRECTION the server must
+    /// still point at revision N until the collector appends revision N+1. That state must continue into the
+    /// upload path instead of being mistaken for an acknowledgement of the new revision.
+    static func acknowledgedWorkflow(
+        status: String?,
+        remoteRevisionID: String?,
+        snapshotRevisionID: String,
+        isCorrection: Bool
+    ) throws -> WorkflowState? {
+        guard let status, acknowledged.contains(status) else { return nil }
+        if remoteRevisionID == snapshotRevisionID {
+            guard let workflow = WorkflowState.backend(status) else {
+                throw CanonicalizationError.invalid("Server workflow state is unsupported")
+            }
+            return workflow
+        }
+        if isCorrection && status == "NEEDS_CORRECTION" { return nil }
+        throw CanonicalizationError.invalid("Server acknowledged a different revision")
+    }
+
+    private static let acknowledged: Set<String> = ["SUBMITTED", "VALIDATING", "PENDING_REVIEW", "NEEDS_CORRECTION", "RESUBMITTED", "APPROVED", "REJECTED", "PUBLISHING", "PUBLISH_FAILED", "PUBLISHED"]
+'''
+          if marker not in text:
+              raise SystemExit('Expected acknowledged status marker not found; refusing broad edit')
+          text = text.replace(marker, helper, 1)
+          production.write_text(text)
+
+          tests = Path('Phone App/iPhone App/PAWatershedWatch/PAWatershedWatchTests/ModelTests.swift')
+          test_text = tests.read_text()
+          insertion_marker = '''    func testSharedGoldenFixtureRemainsAvailableToBothNativeSuites() throws {
+'''
+          test_case = '''    @MainActor
+    func testCorrectionResubmitAcknowledgementAllowsParentRevisionMismatchOnlyWhileCorrectionIsRequested() throws {
+        let revision1 = "11111111-1111-4111-8111-111111111111"
+        let revision2 = "22222222-2222-4222-8222-222222222222"
+
+        XCTAssertNil(try FirebaseMobileService.acknowledgedWorkflow(
+            status: "NEEDS_CORRECTION",
+            remoteRevisionID: revision1,
+            snapshotRevisionID: revision2,
+            isCorrection: true
+        ), "A new correction revision must be allowed to append while the server still points at the retained parent revision")
+
+        XCTAssertEqual(try FirebaseMobileService.acknowledgedWorkflow(
+            status: "PENDING_REVIEW",
+            remoteRevisionID: revision2,
+            snapshotRevisionID: revision2,
+            isCorrection: true
+        ), .pendingReview, "A retry after revision 2 reaches the server must remain idempotent")
+
+        XCTAssertThrowsError(try FirebaseMobileService.acknowledgedWorkflow(
+            status: "PENDING_REVIEW",
+            remoteRevisionID: revision1,
+            snapshotRevisionID: revision2,
+            isCorrection: true
+        ), "A mismatched revision outside the correction-request state must still be rejected")
+
+        XCTAssertThrowsError(try FirebaseMobileService.acknowledgedWorkflow(
+            status: "NEEDS_CORRECTION",
+            remoteRevisionID: revision1,
+            snapshotRevisionID: revision2,
+            isCorrection: false
+        ), "A non-correction write must never inherit the correction mismatch exception")
+    }
+
+'''
+          if insertion_marker not in test_text:
+              raise SystemExit('Expected ModelTests insertion point not found')
+          if 'testCorrectionResubmitAcknowledgementAllowsParentRevisionMismatchOnlyWhileCorrectionIsRequested' not in test_text:
+              test_text = test_text.replace(insertion_marker, test_case + insertion_marker, 1)
+          tests.write_text(test_text)
+          PY
+
+      - name: Verify focused diff
+        run: |
+          set -euo pipefail
+          git diff --check
+          git diff --stat
+          git diff -- 'Phone App/iPhone App/PAWatershedWatch/PAWatershedWatch/ProductionData.swift' 'Phone App/iPhone App/PAWatershedWatch/PAWatershedWatchTests/ModelTests.swift'
+
+      - name: Commit and push fix
+        run: |
+          set -euo pipefail
+          if git diff --quiet; then
+            echo 'No changes required'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add 'Phone App/iPhone App/PAWatershedWatch/PAWatershedWatch/ProductionData.swift' 'Phone App/iPhone App/PAWatershedWatch/PAWatershedWatchTests/ModelTests.swift'
+          git commit -m 'fix(ios): allow correction revision resubmission'
+          git push origin "HEAD:${TARGET_BRANCH}"
