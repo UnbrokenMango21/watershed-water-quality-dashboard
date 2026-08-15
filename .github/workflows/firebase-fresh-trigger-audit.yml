@@ -1,0 +1,115 @@
+name: Firebase Fresh Trigger Audit
+
+on:
+  push:
+    branches: [ops/firebase-control]
+    paths:
+      - '.github/workflows/firebase-fresh-trigger-audit.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  PROJECT_ID: central-pa-watershed-dev
+  WIF_PROVIDER: projects/652403958133/locations/global/workloadIdentityPools/github-watershed/providers/watershed-github
+  WIF_SERVICE_ACCOUNT: github-watershed-ops@central-pa-watershed-dev.iam.gserviceaccount.com
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v3
+        with:
+          project_id: ${{ env.PROJECT_ID }}
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: ${{ env.WIF_SERVICE_ACCOUNT }}
+          create_credentials_file: true
+          export_environment_variables: true
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v3
+        with:
+          project_id: ${{ env.PROJECT_ID }}
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Inspect newest Firestore submissions
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import { initializeApp } from 'firebase-admin/app';
+          import { getFirestore } from 'firebase-admin/firestore';
+
+          initializeApp({ projectId: process.env.PROJECT_ID });
+          const db = getFirestore();
+          const snap = await db.collection('submissions').get();
+          const rows = snap.docs.map(doc => {
+            const d = doc.data();
+            return {
+              id: doc.id,
+              createMs: doc.createTime?.toMillis?.() ?? 0,
+              updateMs: doc.updateTime?.toMillis?.() ?? 0,
+              createIso: doc.createTime?.toDate?.().toISOString?.() ?? 'unknown',
+              updateIso: doc.updateTime?.toDate?.().toISOString?.() ?? 'unknown',
+              site: d.site_id ?? 'unknown',
+              status: d.status ?? 'unknown',
+              app: d.mobile_app_version ?? 'unknown',
+              quality: d.overall_quality_score ?? null,
+              errors: d.error_flag_count ?? null,
+              warnings: d.warning_flag_count ?? null,
+              revision: d.current_revision ?? d.revision_number ?? d.revision ?? null,
+            };
+          }).sort((a,b) => b.createMs - a.createMs);
+
+          console.log(`SUBMISSIONS_TOTAL=${rows.length}`);
+          console.log('NEWEST_SUBMISSIONS_BEGIN');
+          for (const r of rows.slice(0, 10)) {
+            console.log(`SUBMISSION id=${r.id} created=${r.createIso} updated=${r.updateIso} site=${r.site} status=${r.status} app=${r.app} quality=${r.quality ?? 'null'} errors=${r.errors ?? 'null'} warnings=${r.warnings ?? 'null'} revision=${r.revision ?? 'null'}`);
+          }
+          console.log('NEWEST_SUBMISSIONS_END');
+
+          const knownBackfilled = new Set([
+            '51723538-c8ac-4ef8-9329-014487997bd5',
+            'a29670d1-7c00-46d1-96bb-3d0d845495d3',
+          ]);
+          const fresh = rows.find(r => !knownBackfilled.has(r.id) && r.app === '0.1.0');
+          if (!fresh) throw new Error('No fresh iOS 0.1.0 submission found beyond the two backfilled records');
+
+          console.log(`FRESH_TARGET_ID=${fresh.id}`);
+          console.log(`FRESH_TARGET_SITE=${fresh.site}`);
+          console.log(`FRESH_TARGET_STATUS=${fresh.status}`);
+          console.log(`FRESH_TARGET_CREATED=${fresh.createIso}`);
+          console.log(`FRESH_TARGET_UPDATED=${fresh.updateIso}`);
+          console.log(`FRESH_TARGET_QUALITY=${fresh.quality ?? 'null'}`);
+
+          if (fresh.status !== 'PENDING_REVIEW') {
+            throw new Error(`Fresh target has not automatically reached PENDING_REVIEW; current status=${fresh.status}`);
+          }
+
+          const queue = await db.collection('submissions').where('status', '==', 'PENDING_REVIEW').get();
+          console.log(`QC_PENDING_REVIEW_TOTAL=${queue.size}`);
+          console.log('FRESH_AUTOMATIC_TRIGGER_PROVEN=yes');
+          NODE
+
+      - name: Show recent validator logs
+        if: always()
+        run: |
+          gcloud functions logs read validateSubmittedObservation \
+            --gen2 \
+            --region=us-east4 \
+            --project="$PROJECT_ID" \
+            --limit=60 2>&1 || true
