@@ -1,0 +1,120 @@
+name: Firebase Correction Roundtrip Audit
+
+on:
+  push:
+    branches: [ops/firebase-control]
+    paths:
+      - '.github/workflows/firebase-correction-roundtrip-audit.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  PROJECT_ID: central-pa-watershed-dev
+  WIF_PROVIDER: projects/652403958133/locations/global/workloadIdentityPools/github-watershed/providers/watershed-github
+  WIF_SERVICE_ACCOUNT: github-watershed-ops@central-pa-watershed-dev.iam.gserviceaccount.com
+  SUBMISSION_ID: 7b355327-8552-4d70-a953-d551b578da54
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v3
+        with:
+          project_id: ${{ env.PROJECT_ID }}
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: ${{ env.WIF_SERVICE_ACCOUNT }}
+          create_credentials_file: true
+          export_environment_variables: true
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v3
+        with:
+          project_id: ${{ env.PROJECT_ID }}
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Inspect correction submission, revisions and audit
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import crypto from 'node:crypto';
+          import { initializeApp } from 'firebase-admin/app';
+          import { getFirestore, Timestamp, GeoPoint } from 'firebase-admin/firestore';
+
+          initializeApp({ projectId: process.env.PROJECT_ID });
+          const db = getFirestore();
+          const id = process.env.SUBMISSION_ID;
+          const ref = db.collection('submissions').doc(id);
+          const snap = await ref.get();
+          if (!snap.exists) throw new Error(`Submission ${id} not found`);
+          const d = snap.data();
+
+          const iso = v => v?.toDate?.().toISOString?.() ?? v ?? null;
+          const short = v => typeof v === 'string' ? `${v.slice(0,8)}…` : v;
+          console.log(`SUBMISSION id=${id}`);
+          console.log(`STATUS=${d.status ?? 'null'}`);
+          console.log(`CURRENT_REVISION_ID=${d.current_revision_id ?? 'null'}`);
+          console.log(`CURRENT_REVISION_NUMBER=${d.current_revision_number ?? d.revision_number ?? 'null'}`);
+          console.log(`REVIEW_DECISION=${d.review_decision ?? 'null'}`);
+          console.log(`REVIEW_COMMENT=${d.review_comment ?? 'null'}`);
+          console.log(`REVIEWER=${short(d.reviewer_user_id) ?? 'null'}`);
+          console.log(`REVIEWED_AT=${iso(d.reviewed_at)}`);
+          console.log(`REVIEWED_REVISION_ID=${d.reviewed_revision_id ?? 'null'}`);
+          console.log(`UPDATED_AT=${iso(d.updated_at)}`);
+          console.log(`DOC_UPDATE_TIME=${snap.updateTime?.toDate?.().toISOString?.() ?? 'null'}`);
+
+          const collections = await ref.listCollections();
+          console.log(`SUBCOLLECTIONS=${collections.map(c => c.id).sort().join(',')}`);
+
+          const stable = value => {
+            if (value == null) return value;
+            if (value instanceof Timestamp) return {__timestamp:value.toDate().toISOString()};
+            if (value instanceof GeoPoint) return {__geopoint:[value.latitude,value.longitude]};
+            if (Array.isArray(value)) return value.map(stable);
+            if (typeof value === 'object') return Object.fromEntries(Object.keys(value).sort().map(k => [k, stable(value[k])]));
+            return value;
+          };
+          const hash = value => crypto.createHash('sha256').update(JSON.stringify(stable(value))).digest('hex');
+
+          const revisions = await ref.collection('revisions').get();
+          console.log(`REVISION_COUNT=${revisions.size}`);
+          const rows = revisions.docs.map(x => ({snap:x, data:x.data()})).sort((a,b) => {
+            const an = a.data.revision_number ?? 0; const bn = b.data.revision_number ?? 0;
+            return an - bn || (a.snap.createTime?.toMillis?.() ?? 0) - (b.snap.createTime?.toMillis?.() ?? 0);
+          });
+          for (const {snap:r, data:x} of rows) {
+            const m = await r.ref.collection('measurements').get();
+            const measurementPairs = m.docs.map(md => [md.id, stable(md.data())]).sort((a,b) => a[0].localeCompare(b[0]));
+            console.log(`REVISION id=${r.id} number=${x.revision_number ?? 'null'} state=${x.status ?? x.state ?? 'null'} created=${r.createTime?.toDate?.().toISOString?.() ?? 'null'} updated=${r.updateTime?.toDate?.().toISOString?.() ?? 'null'} submitted=${iso(x.submitted_at)} supersedes=${x.supersedes_revision_id ?? x.parent_revision_id ?? 'null'} measurements=${m.size} revision_hash=${hash(x)} measurements_hash=${hash(measurementPairs)}`);
+          }
+
+          const audit = await ref.collection('audit').get();
+          console.log(`AUDIT_COUNT=${audit.size}`);
+          const events = audit.docs.map(a => ({id:a.id,...a.data()})).sort((a,b) => (a.occurred_at?.toMillis?.() ?? 0) - (b.occurred_at?.toMillis?.() ?? 0));
+          for (const a of events) {
+            console.log(`AUDIT id=${a.id} type=${a.event_type ?? 'null'} actor_type=${a.actor_type ?? 'null'} actor=${short(a.actor_id) ?? 'null'} at=${iso(a.occurred_at)} from=${a.previous_state ?? 'null'} to=${a.new_state ?? 'null'} revision=${a.revision_id ?? 'null'} reason=${a.reason ?? 'null'}`);
+          }
+          NODE
+
+      - name: Show recent validation trigger logs
+        run: |
+          gcloud functions logs read validateSubmittedObservation \
+            --gen2 \
+            --region=us-east4 \
+            --project="$PROJECT_ID" \
+            --limit=80 2>&1 || true
