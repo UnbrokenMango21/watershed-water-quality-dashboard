@@ -1,0 +1,123 @@
+name: Firebase Live Audit
+
+on:
+  push:
+    branches:
+      - ops/firebase-control
+    paths:
+      - .github/workflows/firebase-live-audit.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      PROJECT_ID: central-pa-watershed-dev
+      WIF_PROVIDER: projects/652403958133/locations/global/workloadIdentityPools/github-watershed/providers/watershed-github
+      WIF_SERVICE_ACCOUNT: github-watershed-ops@central-pa-watershed-dev.iam.gserviceaccount.com
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Authenticate to Google Cloud
+        id: auth
+        uses: google-github-actions/auth@v3
+        with:
+          project_id: ${{ env.PROJECT_ID }}
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: ${{ env.WIF_SERVICE_ACCOUNT }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v3
+        with:
+          project_id: ${{ env.PROJECT_ID }}
+
+      - name: Verify federated identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "ACTIVE_ACCOUNT=$(gcloud auth list --filter=status:ACTIVE --format='value(account)')"
+          echo "ACTIVE_PROJECT=$(gcloud config get-value project 2>/dev/null)"
+          gcloud projects describe "$PROJECT_ID" --format='value(projectId,projectNumber)'
+
+      - name: Audit recent Firestore submissions
+        shell: bash
+        run: |
+          set -euo pipefail
+          TOKEN="$(gcloud auth print-access-token)"
+          URL="https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/databases/(default)/documents/submissions?pageSize=100"
+          curl -fsS -H "Authorization: Bearer ${TOKEN}" "$URL" -o /tmp/submissions.json
+
+          node <<'NODE'
+          const fs = require('fs');
+          const body = JSON.parse(fs.readFileSync('/tmp/submissions.json','utf8'));
+          const docs = Array.isArray(body.documents) ? body.documents : [];
+          const scalar = (v) => {
+            if (!v || typeof v !== 'object') return null;
+            for (const k of ['stringValue','timestampValue','integerValue','doubleValue','booleanValue']) {
+              if (Object.prototype.hasOwnProperty.call(v,k)) return v[k];
+            }
+            return null;
+          };
+          const rows = docs.map(d => {
+            const f = d.fields || {};
+            return {
+              id: String(d.name || '').split('/').pop(),
+              status: scalar(f.status),
+              site: scalar(f.site_id),
+              mobile: scalar(f.mobile_app_version),
+              submitted: scalar(f.submitted_at),
+              updated: scalar(f.updated_at),
+              created: scalar(f.created_at),
+              revision: scalar(f.current_revision_id),
+              revisionNo: scalar(f.current_revision_no),
+              updateTime: d.updateTime || null,
+            };
+          }).sort((a,b)=>String(b.updateTime||b.updated||'').localeCompare(String(a.updateTime||a.updated||'')));
+
+          console.log(`FIRESTORE_SUBMISSION_COUNT=${rows.length}`);
+          console.log('RECENT_SUBMISSIONS_BEGIN');
+          for (const r of rows.slice(0,25)) {
+            console.log(JSON.stringify(r));
+          }
+          console.log('RECENT_SUBMISSIONS_END');
+
+          const real = rows.filter(r => !String(r.site || '').startsWith('TEST-'));
+          console.log(`NON_TEST_SUBMISSION_COUNT=${real.length}`);
+          console.log('RECENT_NON_TEST_BEGIN');
+          for (const r of real.slice(0,10)) console.log(JSON.stringify(r));
+          console.log('RECENT_NON_TEST_END');
+          NODE
+
+      - name: Audit validation function deployment
+        shell: bash
+        run: |
+          set -u
+          echo 'FUNCTION_DESCRIBE_BEGIN'
+          if gcloud functions describe validateSubmittedObservation \
+              --gen2 \
+              --region=us-east4 \
+              --project="$PROJECT_ID" \
+              --format='yaml(name,state,updateTime,buildConfig.runtime,serviceConfig.uri,eventTrigger.eventType,eventTrigger.triggerRegion,eventTrigger.eventFilters)'; then
+            echo 'FUNCTION_PRESENT=yes'
+          else
+            echo 'FUNCTION_PRESENT=no'
+          fi
+          echo 'FUNCTION_DESCRIBE_END'
+
+      - name: Audit recent validation logs
+        shell: bash
+        run: |
+          set -u
+          echo 'VALIDATION_LOGS_BEGIN'
+          gcloud functions logs read validateSubmittedObservation \
+            --gen2 \
+            --region=us-east4 \
+            --project="$PROJECT_ID" \
+            --limit=100 2>&1 || true
+          echo 'VALIDATION_LOGS_END'
