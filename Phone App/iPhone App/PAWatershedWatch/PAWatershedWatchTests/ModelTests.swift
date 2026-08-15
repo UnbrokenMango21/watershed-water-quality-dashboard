@@ -124,6 +124,40 @@ final class ModelTests: XCTestCase {
         )
     }
 
+    @MainActor
+    func testCorrectionResubmitAcknowledgementAllowsParentRevisionMismatchOnlyWhileCorrectionIsRequested() throws {
+        let revision1 = "11111111-1111-4111-8111-111111111111"
+        let revision2 = "22222222-2222-4222-8222-222222222222"
+
+        XCTAssertNil(try FirebaseMobileService.acknowledgedWorkflow(
+            status: "NEEDS_CORRECTION",
+            remoteRevisionID: revision1,
+            snapshotRevisionID: revision2,
+            isCorrection: true
+        ), "A new correction revision must be allowed to append while the server still points at the retained parent revision")
+
+        XCTAssertEqual(try FirebaseMobileService.acknowledgedWorkflow(
+            status: "PENDING_REVIEW",
+            remoteRevisionID: revision2,
+            snapshotRevisionID: revision2,
+            isCorrection: true
+        ), .pendingReview, "A retry after revision 2 reaches the server must remain idempotent")
+
+        XCTAssertThrowsError(try FirebaseMobileService.acknowledgedWorkflow(
+            status: "PENDING_REVIEW",
+            remoteRevisionID: revision1,
+            snapshotRevisionID: revision2,
+            isCorrection: true
+        ), "A mismatched revision outside the correction-request state must still be rejected")
+
+        XCTAssertThrowsError(try FirebaseMobileService.acknowledgedWorkflow(
+            status: "NEEDS_CORRECTION",
+            remoteRevisionID: revision1,
+            snapshotRevisionID: revision2,
+            isCorrection: false
+        ), "A non-correction write must never inherit the correction mismatch exception")
+    }
+
     func testSharedGoldenFixtureRemainsAvailableToBothNativeSuites() throws {
         let json = try Self.goldenFixture()
         XCTAssertEqual(json["fixtureVersion"] as? String, "1.0.0")
