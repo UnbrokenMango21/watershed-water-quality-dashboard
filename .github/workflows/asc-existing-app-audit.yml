@@ -54,37 +54,43 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 - <<'PY'
-          import json, os, urllib.request
-          token=os.environ['EXPO_TOKEN']
-          app_id=os.environ['EAS_PROJECT_ID']
-          def gql(query, variables):
-              body=json.dumps({'query':query,'variables':variables}).encode()
-              req=urllib.request.Request('https://api.expo.dev/graphql', data=body, method='POST', headers={'Authorization':'Bearer '+token,'Content-Type':'application/json'})
-              with urllib.request.urlopen(req, timeout=60) as r: data=json.load(r)
-              if data.get('errors'):
-                  raise RuntimeError(data['errors'])
-              return data['data']
-          q1='''query AppAsc($appId: String!) { app { byId(appId: $appId) { iosAppCredentials { appleAppIdentifier { bundleIdentifier } appStoreConnectApiKeyForSubmissions { id keyIdentifier issuerIdentifier } } } } }'''
-          creds=gql(q1, {'appId':app_id})['app']['byId']['iosAppCredentials'] or []
-          target=next((c for c in creds if (c.get('appleAppIdentifier') or {}).get('bundleIdentifier')=='org.centralpawatershed.mobile'), None)
-          if not target or not target.get('appStoreConnectApiKeyForSubmissions'):
-              raise SystemExit('No EAS submission API key attached to org.centralpawatershed.mobile')
-          meta=target['appStoreConnectApiKeyForSubmissions']
-          q2='''query AppStoreConnectApiKeyById($ascApiKeyId: ID!) { appStoreConnectApiKey { byId(id: $ascApiKeyId) { issuerIdentifier keyIdentifier keyP8 } } }'''
-          key=gql(q2, {'ascApiKeyId':meta['id']})['appStoreConnectApiKey']['byId']
-          open('/tmp/eas-team-asc.p8','w').write(key['keyP8'])
-          os.chmod('/tmp/eas-team-asc.p8',0o600)
-          with open(os.environ['GITHUB_ENV'],'a') as f:
-              f.write('EXPO_ASC_API_KEY_PATH=/tmp/eas-team-asc.p8\n')
-              f.write('EXPO_ASC_KEY_ID='+key['keyIdentifier']+'\n')
-              f.write('EXPO_ASC_ISSUER_ID='+key['issuerIdentifier']+'\n')
-              f.write('EXPO_APPLE_TEAM_ID=DL4B9RRLYP\n')
-              f.write('EXPO_APPLE_TEAM_TYPE=INDIVIDUAL\n')
-          print('EAS_TEAM_ASC_KEY=ready')
-          print('EAS_TEAM_ASC_KEY_ID='+key['keyIdentifier'])
-          print('EAS_TEAM_ASC_ISSUER_ID='+key['issuerIdentifier'])
-          PY
+          node <<'NODE'
+          const fs = require('fs');
+          const token = process.env.EXPO_TOKEN;
+          const appId = process.env.EAS_PROJECT_ID;
+          async function gql(query, variables) {
+            const res = await fetch('https://api.expo.dev/graphql', {
+              method: 'POST',
+              headers: {
+                authorization: `Bearer ${token}`,
+                'content-type': 'application/json',
+                'user-agent': 'eas-cli-release-automation'
+              },
+              body: JSON.stringify({query, variables})
+            });
+            const text = await res.text();
+            if (!res.ok) throw new Error(`EAS GraphQL HTTP ${res.status}: ${text.slice(0, 500)}`);
+            const data = JSON.parse(text);
+            if (data.errors) throw new Error(JSON.stringify(data.errors));
+            return data.data;
+          }
+          (async () => {
+            const q1 = `query AppAsc($appId: String!) { app { byId(appId: $appId) { iosAppCredentials { appleAppIdentifier { bundleIdentifier } appStoreConnectApiKeyForSubmissions { id keyIdentifier issuerIdentifier } } } } }`;
+            const d1 = await gql(q1, {appId});
+            const creds = d1.app.byId.iosAppCredentials || [];
+            const target = creds.find(c => c.appleAppIdentifier?.bundleIdentifier === 'org.centralpawatershed.mobile');
+            if (!target?.appStoreConnectApiKeyForSubmissions) throw new Error('No EAS submission API key attached to org.centralpawatershed.mobile');
+            const meta = target.appStoreConnectApiKeyForSubmissions;
+            const q2 = `query AppStoreConnectApiKeyById($ascApiKeyId: ID!) { appStoreConnectApiKey { byId(id: $ascApiKeyId) { issuerIdentifier keyIdentifier keyP8 } } }`;
+            const key = (await gql(q2, {ascApiKeyId: meta.id})).appStoreConnectApiKey.byId;
+            fs.writeFileSync('/tmp/eas-team-asc.p8', key.keyP8, {mode: 0o600});
+            fs.appendFileSync(process.env.GITHUB_ENV,
+              `EXPO_ASC_API_KEY_PATH=/tmp/eas-team-asc.p8\nEXPO_ASC_KEY_ID=${key.keyIdentifier}\nEXPO_ASC_ISSUER_ID=${key.issuerIdentifier}\nEXPO_APPLE_TEAM_ID=DL4B9RRLYP\nEXPO_APPLE_TEAM_TYPE=INDIVIDUAL\n`);
+            console.log('EAS_TEAM_ASC_KEY=ready');
+            console.log(`EAS_TEAM_ASC_KEY_ID=${key.keyIdentifier}`);
+            console.log(`EAS_TEAM_ASC_ISSUER_ID=${key.issuerIdentifier}`);
+          })().catch(err => { console.error(err.message); process.exit(1); });
+          NODE
       - name: Sync Apple capability and regenerate App Store profile
         working-directory: mobile
         shell: bash
