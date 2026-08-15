@@ -1,4 +1,4 @@
-name: Inspect Failed Native iOS EAS Build
+name: Native iOS TestFlight Release
 
 on:
   push:
@@ -9,67 +9,292 @@ permissions:
   contents: read
 
 jobs:
-  inspect-eas-build:
+  release-testflight:
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 90
     env:
       EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
       EAS_PROJECT_ID: 3b378200-8390-4b03-9fea-ca42413e7fa5
-      FAILED_BUILD_ID: b3547d19-0646-4968-98a4-fc79d2a10561
+      RELEASE_SHA: c80e1183a3e5ac5488ea687bfcfa3dc9c6b1716d
+      ASC_APP_ID: '6800149959'
+      BUNDLE_ID: org.centralpawatershed.mobile
+      APP_VERSION: '0.1.0'
+      BUILD_NUMBER: '10'
+      EXPO_NO_CAPABILITY_SYNC: '1'
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
       - uses: actions/setup-node@v4
         with:
           node-version: '22.x'
-      - name: Restore EAS project context
+
+      - name: Prepare exact native SwiftUI release for EAS
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p /tmp/eas-inspect
-          cat >/tmp/eas-inspect/app.json <<JSON
+          test -n "${EXPO_TOKEN:-}"
+          git cat-file -e "${RELEASE_SHA}^{commit}"
+          rm -rf /tmp/watershed-release
+          git worktree add --detach /tmp/watershed-release "${RELEASE_SHA}"
+          test "$(git -C /tmp/watershed-release rev-parse HEAD)" = "${RELEASE_SHA}"
+
+          app=/tmp/watershed-release/eas-native-ios
+          mkdir -p "$app/ios"
+          cp -R "/tmp/watershed-release/Phone App/iPhone App/PAWatershedWatch/." "$app/ios/"
+
+          cat >"$app/package.json" <<'JSON'
+          {
+            "name": "watershed-native-ios-release",
+            "private": true,
+            "version": "0.1.0"
+          }
+          JSON
+
+          cat >"$app/app.json" <<JSON
           {
             "expo": {
               "name": "Central PA Watershed",
               "slug": "watershed-dashboard",
               "owner": "watershed-dashboard",
-              "extra": {"eas": {"projectId": "${EAS_PROJECT_ID}"}}
+              "version": "${APP_VERSION}",
+              "ios": {
+                "bundleIdentifier": "${BUNDLE_ID}",
+                "buildNumber": "${BUILD_NUMBER}"
+              },
+              "extra": {
+                "eas": {
+                  "projectId": "${EAS_PROJECT_ID}"
+                }
+              }
             }
           }
           JSON
-          cat >/tmp/eas-inspect/package.json <<'JSON'
-          {"name":"eas-inspect","private":true,"version":"0.0.0"}
+
+          cat >"$app/eas.json" <<JSON
+          {
+            "cli": {
+              "version": ">= 16.18.0",
+              "appVersionSource": "local"
+            },
+            "build": {
+              "production": {
+                "distribution": "store",
+                "ios": {
+                  "scheme": "PAWatershedWatch",
+                  "buildConfiguration": "Release",
+                  "image": "latest"
+                }
+              }
+            },
+            "submit": {
+              "production": {
+                "ios": {
+                  "ascAppId": "${ASC_APP_ID}"
+                }
+              }
+            }
+          }
           JSON
-      - name: Fetch exact EAS build failure
-        working-directory: /tmp/eas-inspect
+
+          # EAS's generic iOS worker always executes `pod install` for an ios/ tree.
+          # The production app uses Swift Package Manager only, so provide an empty
+          # CocoaPods integration target solely to satisfy that build-worker phase.
+          cat >"$app/ios/Podfile" <<'RUBY'
+          platform :ios, '18.0'
+          project 'PAWatershedWatch.xcodeproj'
+          target 'PAWatershedWatch' do
+          end
+          RUBY
+
+          (cd "$app" && npm install --package-lock-only --ignore-scripts --no-audit --no-fund)
+
+          pbx="$app/ios/PAWatershedWatch.xcodeproj/project.pbxproj"
+          grep -q "PRODUCT_BUNDLE_IDENTIFIER = ${BUNDLE_ID};" "$pbx"
+          grep -q "MARKETING_VERSION = ${APP_VERSION};" "$pbx"
+          grep -q "CURRENT_PROJECT_VERSION = ${BUILD_NUMBER};" "$pbx"
+          ! grep -q 'com.apple.developer.devicecheck.appattest-environment' "$app/ios/PAWatershedWatch/PAWatershedWatch.entitlements"
+          test -f "$app/package-lock.json"
+          test -f "$app/ios/Podfile"
+          echo "RELEASE_SHA=${RELEASE_SHA}"
+          echo "RELEASE_IDENTITY=${BUNDLE_ID} ${APP_VERSION} (${BUILD_NUMBER})"
+
+      - name: Confirm no exact finished EAS release already exists
+        working-directory: /tmp/watershed-release/eas-native-ios
         shell: bash
         run: |
           set -euo pipefail
           npx --yes eas-cli@latest whoami
-          npx --yes eas-cli@latest build:view "${FAILED_BUILD_ID}" --json > /tmp/build.json
+          npx --yes eas-cli@latest build:list \
+            --platform ios \
+            --app-identifier "${BUNDLE_ID}" \
+            --limit 20 \
+            --json \
+            --non-interactive > /tmp/eas-existing-builds.json
           node <<'NODE'
           const fs = require('fs');
-          const b = JSON.parse(fs.readFileSync('/tmp/build.json','utf8'));
-          console.log(`EAS_BUILD_ID=${b.id}`);
-          console.log(`EAS_BUILD_STATUS=${b.status}`);
-          console.log(`EAS_BUILD_PLATFORM=${b.platform}`);
-          console.log(`EAS_BUILD_VERSION=${b.appVersion}`);
-          console.log(`EAS_BUILD_NUMBER=${b.appBuildVersion}`);
-          console.log(`EAS_BUILD_COMMIT=${b.gitCommitHash || 'unknown'}`);
-          console.log(`EAS_BUILD_ERROR_CODE=${b.error?.errorCode || 'none'}`);
-          console.log(`EAS_BUILD_ERROR_MESSAGE=${b.error?.message || 'none'}`);
-          console.log(`EAS_BUILD_ARTIFACTS=${JSON.stringify(b.artifacts || {})}`);
-          console.log(`EAS_BUILD_LOG_FILES=${JSON.stringify(b.logFiles || [])}`);
-          fs.writeFileSync('/tmp/log-urls.txt', (b.logFiles || []).join('\n') + '\n');
+          const builds = JSON.parse(fs.readFileSync('/tmp/eas-existing-builds.json','utf8'));
+          const exact = builds.find(b => b.gitCommitHash === process.env.RELEASE_SHA && String(b.appBuildVersion) === process.env.BUILD_NUMBER && b.status === 'FINISHED');
+          console.log(`EAS_VALID_EXACT_RELEASE_EXISTS=${exact ? 'yes' : 'no'}`);
+          if (exact) {
+            fs.appendFileSync(process.env.GITHUB_ENV, `REUSE_EAS_BUILD_ID=${exact.id}\n`);
+            console.log(`REUSE_EAS_BUILD_ID=${exact.id}`);
+          }
           NODE
-      - name: Print decoded EAS build logs
+
+      - name: Build exact native SwiftUI release on EAS
+        if: env.REUSE_EAS_BUILD_ID == ''
+        working-directory: /tmp/watershed-release/eas-native-ios
         shell: bash
         run: |
           set -euo pipefail
-          i=0
-          while IFS= read -r url || [ -n "$url" ]; do
-            [ -n "$url" ] || continue
-            i=$((i+1))
-            echo "===== EAS REMOTE LOG $i ====="
-            curl --compressed --fail --location --silent --show-error "$url" | tail -n 900
-          done < /tmp/log-urls.txt
-          test "$i" -gt 0 || { echo "No remote logFiles were returned by EAS."; exit 1; }
+          npx --yes eas-cli@latest build \
+            --platform ios \
+            --profile production \
+            --message "Native SwiftUI TestFlight ${APP_VERSION} (${BUILD_NUMBER}) from ${RELEASE_SHA}" \
+            --non-interactive \
+            --wait \
+            --json > /tmp/eas-new-build.json
+          node <<'NODE'
+          const fs = require('fs');
+          const raw = JSON.parse(fs.readFileSync('/tmp/eas-new-build.json','utf8'));
+          const b = Array.isArray(raw) ? raw[0] : raw;
+          if (!b?.id) throw new Error('EAS build output did not contain a build ID');
+          if (b.status !== 'FINISHED') throw new Error(`EAS build did not finish successfully: ${b.status}`);
+          fs.appendFileSync(process.env.GITHUB_ENV, `EAS_BUILD_ID=${b.id}\n`);
+          console.log(`EAS_BUILD_ID=${b.id}`);
+          console.log(`EAS_BUILD_STATUS=${b.status}`);
+          console.log(`EAS_BUILD_VERSION=${b.appVersion ?? process.env.APP_VERSION}`);
+          console.log(`EAS_BUILD_NUMBER=${b.appBuildVersion ?? process.env.BUILD_NUMBER}`);
+          console.log(`EAS_BUILD_COMMIT=${b.gitCommitHash || process.env.RELEASE_SHA}`);
+          console.log(`EAS_BUILD_URL=https://expo.dev/accounts/watershed-dashboard/projects/watershed-dashboard/builds/${b.id}`);
+          NODE
+
+      - name: Reuse exact finished EAS build
+        if: env.REUSE_EAS_BUILD_ID != ''
+        shell: bash
+        run: |
+          echo "EAS_BUILD_ID=${REUSE_EAS_BUILD_ID}" >> "$GITHUB_ENV"
+          echo "EAS_BUILD_ID=${REUSE_EAS_BUILD_ID}"
+          echo "EAS_BUILD_STATUS=FINISHED"
+          echo "EAS_BUILD_URL=https://expo.dev/accounts/watershed-dashboard/projects/watershed-dashboard/builds/${REUSE_EAS_BUILD_ID}"
+
+      - name: Submit exact build to App Store Connect TestFlight
+        working-directory: /tmp/watershed-release/eas-native-ios
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${EAS_BUILD_ID:-}"
+          npx --yes eas-cli@latest submit \
+            --platform ios \
+            --profile production \
+            --id "${EAS_BUILD_ID}" \
+            --what-to-test "Phase 11 native field collection: sign in, capture GPS, record water temperature, save draft, submit to Firebase staging, and verify QC lifecycle. Media capture remains intentionally deferred." \
+            --non-interactive \
+            --wait \
+            --verbose 2>&1 | tee /tmp/eas-submit.log
+
+          submission_id="$(grep -Eo 'submissions/[0-9a-fA-F-]{36}' /tmp/eas-submit.log | tail -1 | cut -d/ -f2 || true)"
+          if [ -z "$submission_id" ]; then
+            submission_id="$(sed -nE 's/^[[:space:]]*ID:[[:space:]]*([0-9a-fA-F-]{36})[[:space:]]*$/\1/p' /tmp/eas-submit.log | tail -1 || true)"
+          fi
+          test -n "$submission_id" || { echo 'Submission finished but EAS submission ID was not found in output'; exit 1; }
+          echo "EAS_SUBMISSION_ID=$submission_id" >> "$GITHUB_ENV"
+          echo "EAS_SUBMISSION_ID=$submission_id"
+          echo "EAS_SUBMISSION_STATUS=finished"
+          echo "EAS_SUBMISSION_URL=https://expo.dev/accounts/watershed-dashboard/projects/watershed-dashboard/submissions/$submission_id"
+
+      - name: Recover configured App Store Connect key for readback
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require('fs');
+          async function gql(query, variables) {
+            const res = await fetch('https://api.expo.dev/graphql', {
+              method: 'POST',
+              headers: {
+                authorization: `Bearer ${process.env.EXPO_TOKEN}`,
+                'content-type': 'application/json',
+                'user-agent': 'eas-cli-release-automation'
+              },
+              body: JSON.stringify({query, variables})
+            });
+            const text = await res.text();
+            if (!res.ok) throw new Error(`EAS GraphQL HTTP ${res.status}: ${text.slice(0,500)}`);
+            const data = JSON.parse(text);
+            if (data.errors) throw new Error(JSON.stringify(data.errors));
+            return data.data;
+          }
+          (async () => {
+            const q1 = `query AppAsc($appId: String!) { app { byId(appId: $appId) { iosAppCredentials { appleAppIdentifier { bundleIdentifier } appStoreConnectApiKeyForSubmissions { id keyIdentifier issuerIdentifier } } } } }`;
+            const creds = (await gql(q1, {appId: process.env.EAS_PROJECT_ID})).app.byId.iosAppCredentials || [];
+            const target = creds.find(c => c.appleAppIdentifier?.bundleIdentifier === process.env.BUNDLE_ID);
+            if (!target?.appStoreConnectApiKeyForSubmissions) throw new Error(`No EAS App Store Connect key attached to ${process.env.BUNDLE_ID}`);
+            const meta = target.appStoreConnectApiKeyForSubmissions;
+            const q2 = `query AppStoreConnectApiKeyById($ascApiKeyId: ID!) { appStoreConnectApiKey { byId(id: $ascApiKeyId) { issuerIdentifier keyIdentifier keyP8 } } }`;
+            const key = (await gql(q2, {ascApiKeyId: meta.id})).appStoreConnectApiKey.byId;
+            fs.writeFileSync('/tmp/asc-team-key.p8', key.keyP8, {mode: 0o600});
+            fs.appendFileSync(process.env.GITHUB_ENV, `ASC_TEAM_KEY_ID=${key.keyIdentifier}\nASC_TEAM_ISSUER_ID=${key.issuerIdentifier}\n`);
+            console.log('ASC_READBACK_KEY=ready');
+          })().catch(err => { console.error(err.message); process.exit(1); });
+          NODE
+
+      - name: Verify build 10 is visible in App Store Connect TestFlight
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require('fs');
+          const crypto = require('crypto');
+          const key = fs.readFileSync('/tmp/asc-team-key.p8','utf8');
+          const enc = x => Buffer.from(JSON.stringify(x)).toString('base64url');
+          function jwt() {
+            const now = Math.floor(Date.now()/1000);
+            const h = enc({alg:'ES256',kid:process.env.ASC_TEAM_KEY_ID,typ:'JWT'});
+            const p = enc({iss:process.env.ASC_TEAM_ISSUER_ID,iat:now-30,exp:now+600,aud:'appstoreconnect-v1'});
+            const input = `${h}.${p}`;
+            const sig = crypto.sign('sha256', Buffer.from(input), {key, dsaEncoding:'ieee-p1363'}).toString('base64url');
+            return `${input}.${sig}`;
+          }
+          async function getBuilds() {
+            const u = new URL('https://api.appstoreconnect.apple.com/v1/builds');
+            u.searchParams.set('filter[app]', process.env.ASC_APP_ID);
+            u.searchParams.set('include', 'preReleaseVersion');
+            u.searchParams.set('sort', '-uploadedDate');
+            u.searchParams.set('limit', '30');
+            const r = await fetch(u, {headers:{Authorization:`Bearer ${jwt()}`}});
+            const text = await r.text();
+            if (!r.ok) throw new Error(`App Store Connect ${r.status}: ${text.slice(0,800)}`);
+            return JSON.parse(text);
+          }
+          (async () => {
+            for (let attempt=1; attempt<=40; attempt++) {
+              const data = await getBuilds();
+              const b = data.data.find(x => String(x.attributes?.version) === process.env.BUILD_NUMBER);
+              if (b) {
+                const preId = b.relationships?.preReleaseVersion?.data?.id;
+                const pre = (data.included || []).find(x => x.type === 'preReleaseVersions' && x.id === preId);
+                console.log(`ASC_BUILD_ID=${b.id}`);
+                console.log(`ASC_APP_VERSION=${pre?.attributes?.version || process.env.APP_VERSION}`);
+                console.log(`ASC_BUILD_NUMBER=${b.attributes.version}`);
+                console.log(`ASC_PROCESSING_STATE=${b.attributes.processingState}`);
+                console.log(`ASC_UPLOAD_DATE=${b.attributes.uploadedDate}`);
+                console.log(`ASC_TESTFLIGHT_URL=https://appstoreconnect.apple.com/apps/${process.env.ASC_APP_ID}/testflight/ios`);
+                if (b.attributes.processingState === 'FAILED') process.exit(2);
+                return;
+              }
+              console.log(`ASC_READBACK attempt=${attempt} build=${process.env.BUILD_NUMBER} not_visible_yet`);
+              await new Promise(r => setTimeout(r, 30000));
+            }
+            throw new Error(`Build ${process.env.BUILD_NUMBER} did not become visible in App Store Connect within 20 minutes`);
+          })().catch(err => { console.error(err.message); process.exit(1); });
+          NODE
+
+      - name: Destroy temporary release material
+        if: always()
+        shell: bash
+        run: |
+          rm -f /tmp/asc-team-key.p8 /tmp/eas-existing-builds.json /tmp/eas-new-build.json /tmp/eas-submit.log
+          git worktree remove --force /tmp/watershed-release 2>/dev/null || true
