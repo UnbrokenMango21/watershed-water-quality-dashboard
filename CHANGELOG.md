@@ -18,7 +18,8 @@ All notable repository-level changes are recorded here. Git history remains the 
 - Added `*.patch` and `*.diff` handoff artifacts plus private signing/admin credential patterns to `.gitignore`.
 
 ### Native iOS
-- Current release candidate bundle identifier: `org.watershed.pawatershedwatch`.
+- Current release candidate targets the existing App Store Connect application with bundle identifier `org.centralpawatershed.mobile`; the next internal TestFlight candidate is version `0.1.0` build `10`.
+- The matching Firebase Apple app remains registered in `central-pa-watershed-dev`.
 - Release uses App Attest; the App Check debug provider is compiled only in Debug.
 - Camera and microphone permissions/capture remain absent. Media is deferred.
 
@@ -28,7 +29,7 @@ All notable repository-level changes are recorded here. Git history remains the 
 
 ### Next release gates
 - Prove the validation trigger in live development Firebase.
-- Upload/process the iOS Release archive in App Store Connect and enable internal TestFlight.
+- Upload/process the iOS Release archive in the existing App Store Connect application and enable internal TestFlight.
 - Complete a real iPhone submission, QC decision and correction revision roundtrip.
 - Record the successful evidence in `docs/PHASE11_RELEASE_LOCK.md` and tag the tested commit.
 
