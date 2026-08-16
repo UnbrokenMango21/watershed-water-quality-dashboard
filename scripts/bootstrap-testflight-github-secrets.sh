@@ -67,7 +67,6 @@ gh secret set ASC_TEAM_KEY_ID --repo "$REPO" --body "$KEY_ID"
 gh secret set ASC_TEAM_PRIVATE_KEY --repo "$REPO" < "$KEY_FILE"
 
 echo
-echo=""
 echo "Configured secrets:"
 gh secret list --repo "$REPO" | grep -E '^ASC_TEAM_(KEY_ID|PRIVATE_KEY)[[:space:]]' || true
 
