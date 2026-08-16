@@ -1,0 +1,331 @@
+name: iOS TestFlight Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_ref:
+        description: Git ref to release
+        required: true
+        default: release/ios-existing-app-v0.1.0-b11
+      expected_sha:
+        description: Exact commit SHA expected at release_ref
+        required: true
+        default: a784395d4d30bd4b81803efa503e3227077b2a72
+      marketing_version:
+        description: Expected CFBundleShortVersionString
+        required: true
+        default: 0.1.0
+      build_number:
+        description: Expected CFBundleVersion
+        required: true
+        default: '11'
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-testflight-release
+  cancel-in-progress: false
+
+env:
+  APPLE_TEAM_ID: DL4B9RRLYP
+  ASC_ISSUER_ID: f8b781d7-2ab3-4182-8e23-9b2c2f137baa
+  ASC_APP_ID: '6800149959'
+  BUNDLE_ID: org.centralpawatershed.mobile
+  PROJECT_PATH: Phone App/iPhone App/PAWatershedWatch/PAWatershedWatch.xcodeproj
+  SCHEME: PAWatershedWatch
+
+jobs:
+  testflight:
+    name: Build, sign, and upload to TestFlight
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'issue_comment' &&
+       github.event.issue.number == 26 &&
+       github.event.comment.user.login == 'UnbrokenMango21' &&
+       startsWith(github.event.comment.body, '!testflight '))
+    runs-on: macos-26
+    timeout-minutes: 60
+
+    steps:
+      - name: Resolve release command
+        id: release
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          COMMENT_BODY: ${{ github.event.comment.body }}
+          INPUT_REF: ${{ inputs.release_ref }}
+          INPUT_SHA: ${{ inputs.expected_sha }}
+          INPUT_VERSION: ${{ inputs.marketing_version }}
+          INPUT_BUILD: ${{ inputs.build_number }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import os, re
+
+          if os.environ['EVENT_NAME'] == 'issue_comment':
+              body = os.environ.get('COMMENT_BODY', '').strip()
+              match = re.fullmatch(
+                  r'!testflight ([A-Za-z0-9._/-]+) ([0-9a-f]{40}) ([0-9]+\.[0-9]+\.[0-9]+) ([0-9]+)',
+                  body,
+              )
+              if not match:
+                  raise SystemExit(
+                      'Invalid release command. Expected: '
+                      '!testflight <ref> <40-char-sha> <version> <build>'
+                  )
+              release_ref, expected_sha, version, build = match.groups()
+          else:
+              release_ref = os.environ['INPUT_REF'].strip()
+              expected_sha = os.environ['INPUT_SHA'].strip()
+              version = os.environ['INPUT_VERSION'].strip()
+              build = os.environ['INPUT_BUILD'].strip()
+              if not re.fullmatch(r'[A-Za-z0-9._/-]+', release_ref):
+                  raise SystemExit('Invalid release_ref')
+              if not re.fullmatch(r'[0-9a-f]{40}', expected_sha):
+                  raise SystemExit('expected_sha must be a full 40-character lowercase SHA')
+              if not re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+', version):
+                  raise SystemExit('marketing_version must be x.y.z')
+              if not re.fullmatch(r'[0-9]+', build):
+                  raise SystemExit('build_number must be numeric')
+
+          print(f'release_ref={release_ref}')
+          print(f'expected_sha={expected_sha}')
+          print(f'marketing_version={version}')
+          print(f'build_number={build}')
+          PY
+
+      - name: Verify required Apple team API-key secrets
+        shell: bash
+        env:
+          ASC_TEAM_KEY_ID: ${{ secrets.ASC_TEAM_KEY_ID }}
+          ASC_TEAM_PRIVATE_KEY: ${{ secrets.ASC_TEAM_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          [ -n "$ASC_TEAM_KEY_ID" ] || { echo 'Missing repository secret ASC_TEAM_KEY_ID'; exit 1; }
+          [ -n "$ASC_TEAM_PRIVATE_KEY" ] || { echo 'Missing repository secret ASC_TEAM_PRIVATE_KEY'; exit 1; }
+          case "$ASC_TEAM_PRIVATE_KEY" in
+            *'BEGIN PRIVATE KEY'*|*'BEGIN EC PRIVATE KEY'*) ;;
+            *) echo 'ASC_TEAM_PRIVATE_KEY does not look like a .p8 private key'; exit 1 ;;
+          esac
+
+      - name: Check out exact release ref
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.release.outputs.release_ref }}
+          fetch-depth: 1
+
+      - name: Prove exact release commit
+        shell: bash
+        env:
+          EXPECTED_SHA: ${{ steps.release.outputs.expected_sha }}
+        run: |
+          set -euo pipefail
+          actual="$(git rev-parse HEAD)"
+          echo "Release ref: ${{ steps.release.outputs.release_ref }}"
+          echo "Expected:    $EXPECTED_SHA"
+          echo "Actual:      $actual"
+          [ "$actual" = "$EXPECTED_SHA" ] || {
+            echo 'Release ref moved. Refusing to build or upload an unpinned commit.'
+            exit 1
+          }
+
+      - name: Select supported Xcode 26.6
+        shell: bash
+        run: |
+          set -euo pipefail
+          XCODE='/Applications/Xcode_26.6.app/Contents/Developer'
+          [ -d "$XCODE" ] || { echo "Required Xcode not found: $XCODE"; exit 1; }
+          sudo xcode-select -s "$XCODE"
+          xcodebuild -version
+          sdk="$(xcrun --sdk iphoneos --show-sdk-version)"
+          echo "iPhoneOS SDK: $sdk"
+          python3 - "$sdk" <<'PY'
+          import sys
+          major = int(sys.argv[1].split('.')[0])
+          if major < 26:
+              raise SystemExit('App Store Connect requires the iOS 26 SDK or later')
+          PY
+
+      - name: Materialize App Store Connect Team API key
+        id: auth
+        shell: bash
+        env:
+          ASC_TEAM_KEY_ID: ${{ secrets.ASC_TEAM_KEY_ID }}
+          ASC_TEAM_PRIVATE_KEY: ${{ secrets.ASC_TEAM_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          key_dir="$RUNNER_TEMP/appstoreconnect/private_keys"
+          mkdir -p "$key_dir"
+          key_path="$key_dir/AuthKey_${ASC_TEAM_KEY_ID}.p8"
+          printf '%s' "$ASC_TEAM_PRIVATE_KEY" > "$key_path"
+          chmod 600 "$key_path"
+          echo "key_path=$key_path" >> "$GITHUB_OUTPUT"
+          echo "key_id=$ASC_TEAM_KEY_ID" >> "$GITHUB_OUTPUT"
+
+      - name: Verify source release identity
+        shell: bash
+        env:
+          EXPECTED_VERSION: ${{ steps.release.outputs.marketing_version }}
+          EXPECTED_BUILD: ${{ steps.release.outputs.build_number }}
+        run: |
+          set -euo pipefail
+          pbx="$PROJECT_PATH/project.pbxproj"
+          [ -f "$pbx" ] || { echo "Missing Xcode project file: $pbx"; exit 1; }
+          grep -q "PRODUCT_BUNDLE_IDENTIFIER = ${BUNDLE_ID};" "$pbx" || {
+            echo "Expected bundle ID $BUNDLE_ID is not configured in the release project"
+            exit 1
+          }
+          grep -q "MARKETING_VERSION = ${EXPECTED_VERSION};" "$pbx" || {
+            echo "Expected marketing version $EXPECTED_VERSION is not configured"
+            exit 1
+          }
+          grep -q "CURRENT_PROJECT_VERSION = ${EXPECTED_BUILD};" "$pbx" || {
+            echo "Expected build number $EXPECTED_BUILD is not configured"
+            exit 1
+          }
+
+      - name: Resolve Swift packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild \
+            -resolvePackageDependencies \
+            -project "$PROJECT_PATH" \
+            -scheme "$SCHEME"
+
+      - name: Run iOS unit tests on Xcode 26.6
+        shell: bash
+        run: |
+          set -euo pipefail
+          destination_id="$(xcrun simctl list devices available -j | python3 -c 'import json,sys; data=json.load(sys.stdin); print(next(d["udid"] for devices in data["devices"].values() for d in devices if d["name"].startswith("iPhone")))')"
+          xcodebuild test \
+            -project "$PROJECT_PATH" \
+            -scheme "$SCHEME" \
+            -destination "platform=iOS Simulator,id=$destination_id" \
+            -test-timeouts-enabled YES \
+            -default-test-execution-time-allowance 60 \
+            -maximum-test-execution-time-allowance 120 \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Archive with automatic CI signing
+        id: archive
+        shell: bash
+        env:
+          KEY_PATH: ${{ steps.auth.outputs.key_path }}
+          KEY_ID: ${{ steps.auth.outputs.key_id }}
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/PAWatershedWatch.xcarchive"
+          xcodebuild archive \
+            -project "$PROJECT_PATH" \
+            -scheme "$SCHEME" \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath "$archive" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$KEY_PATH" \
+            -authenticationKeyID "$KEY_ID" \
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
+            DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
+            CODE_SIGN_STYLE=Automatic
+          echo "archive=$archive" >> "$GITHUB_OUTPUT"
+
+      - name: Verify signed archive identity
+        shell: bash
+        env:
+          ARCHIVE: ${{ steps.archive.outputs.archive }}
+          EXPECTED_VERSION: ${{ steps.release.outputs.marketing_version }}
+          EXPECTED_BUILD: ${{ steps.release.outputs.build_number }}
+        run: |
+          set -euo pipefail
+          info="$ARCHIVE/Info.plist"
+          [ -f "$info" ] || { echo 'Archive Info.plist missing'; exit 1; }
+
+          archive_bundle="$(/usr/libexec/PlistBuddy -c 'Print :ApplicationProperties:CFBundleIdentifier' "$info")"
+          archive_version="$(/usr/libexec/PlistBuddy -c 'Print :ApplicationProperties:CFBundleShortVersionString' "$info")"
+          archive_build="$(/usr/libexec/PlistBuddy -c 'Print :ApplicationProperties:CFBundleVersion' "$info")"
+          signing_identity="$(/usr/libexec/PlistBuddy -c 'Print :ApplicationProperties:SigningIdentity' "$info" 2>/dev/null || true)"
+          team="$(/usr/libexec/PlistBuddy -c 'Print :ApplicationProperties:Team' "$info" 2>/dev/null || true)"
+
+          echo "Bundle:   $archive_bundle"
+          echo "Version:  $archive_version ($archive_build)"
+          echo "Team:     $team"
+          echo "Signing:  $signing_identity"
+
+          [ "$archive_bundle" = "$BUNDLE_ID" ] || { echo 'Archive bundle mismatch'; exit 1; }
+          [ "$archive_version" = "$EXPECTED_VERSION" ] || { echo 'Archive version mismatch'; exit 1; }
+          [ "$archive_build" = "$EXPECTED_BUILD" ] || { echo 'Archive build mismatch'; exit 1; }
+          [ "$team" = "$APPLE_TEAM_ID" ] || { echo 'Archive team mismatch'; exit 1; }
+
+      - name: Upload verified archive to App Store Connect / TestFlight
+        id: upload
+        shell: bash
+        env:
+          ARCHIVE: ${{ steps.archive.outputs.archive }}
+          KEY_PATH: ${{ steps.auth.outputs.key_path }}
+          KEY_ID: ${{ steps.auth.outputs.key_id }}
+        run: |
+          set -euo pipefail
+          export_plist="$RUNNER_TEMP/ExportOptions.plist"
+          export_dir="$RUNNER_TEMP/TestFlightExport"
+          cat > "$export_plist" <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "https://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key>
+            <string>app-store-connect</string>
+            <key>destination</key>
+            <string>upload</string>
+            <key>teamID</key>
+            <string>${APPLE_TEAM_ID}</string>
+            <key>signingStyle</key>
+            <string>automatic</string>
+            <key>manageAppVersionAndBuildNumber</key>
+            <false/>
+            <key>uploadSymbols</key>
+            <true/>
+          </dict>
+          </plist>
+          PLIST
+
+          xcodebuild -exportArchive \
+            -archivePath "$ARCHIVE" \
+            -exportPath "$export_dir" \
+            -exportOptionsPlist "$export_plist" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$KEY_PATH" \
+            -authenticationKeyID "$KEY_ID" \
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
+            2>&1 | tee "$RUNNER_TEMP/testflight-upload.log"
+
+      - name: Release receipt
+        if: success()
+        shell: bash
+        run: |
+          {
+            echo '### TestFlight delivery accepted'
+            echo
+            echo "- App Store Connect App ID: $ASC_APP_ID"
+            echo "- Bundle ID: $BUNDLE_ID"
+            echo "- Version: ${{ steps.release.outputs.marketing_version }}"
+            echo "- Build: ${{ steps.release.outputs.build_number }}"
+            echo "- Release ref: ${{ steps.release.outputs.release_ref }}"
+            echo "- Commit: ${{ steps.release.outputs.expected_sha }}"
+            echo '- Xcode: 26.6'
+            echo '- Apple may still show the build as Processing before it becomes available to testers.'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload release diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-testflight-release-${{ github.run_id }}
+          if-no-files-found: ignore
+          retention-days: 14
+          path: |
+            ${{ runner.temp }}/testflight-upload.log
+            ${{ runner.temp }}/PAWatershedWatch.xcarchive/Info.plist
