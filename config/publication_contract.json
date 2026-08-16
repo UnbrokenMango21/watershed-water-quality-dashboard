@@ -1,0 +1,61 @@
+{
+  "version": "1.0.0",
+  "purpose": "Server-only Firestore/ArcGIS publication contract for approved immutable revisions.",
+  "eligibility": {
+    "requiredSubmissionStatus": "APPROVED",
+    "requiredReviewDecision": "APPROVE",
+    "requiredRevisionInvariant": "reviewed_revision_id == current_revision_id == revision.revision_id",
+    "requiredRevisionStatus": "SUBMITTED"
+  },
+  "workflowTransitions": [
+    "APPROVED -> PUBLISHING",
+    "PUBLISHING -> PUBLISHED",
+    "PUBLISHING -> PUBLISH_FAILED",
+    "PUBLISH_FAILED -> PUBLISHING (automatic transient retry claim)",
+    "PUBLISH_FAILED -> APPROVED (explicit operator requeue only after remediation)"
+  ],
+  "submissionPublicationJob": {
+    "path": "submissions/{submission_id}/publication/{revision_id}",
+    "serverOnly": true,
+    "fields": {
+      "revision_id": "string",
+      "status": "PUBLISHING | PUBLISH_FAILED | PUBLISHED",
+      "attempt_count": "integer >= 1",
+      "last_attempt_at": "Timestamp",
+      "last_failed_at": "Timestamp|null",
+      "last_error_code": "string|null",
+      "last_error_message": "string|null",
+      "published_at": "Timestamp|null",
+      "arcgis_observation_object_id": "integer|null",
+      "arcgis_observation_global_id": "string|null",
+      "latest_site_object_id": "integer|null"
+    }
+  },
+  "sitePublicationLease": {
+    "path": "publicationSiteLocks/{site_id}",
+    "serverOnly": true,
+    "purpose": "Serialize latest-site materialization updates for concurrent approved observations at the same site.",
+    "fields": {
+      "site_id": "string",
+      "revision_id": "string",
+      "acquired_at": "Timestamp",
+      "expires_at": "Timestamp"
+    }
+  },
+  "idempotency": {
+    "observationKey": "source_revision_id",
+    "measurementKey": "{source_revision_id}:{measurement_id}",
+    "temperatureMeasurementKey": "{source_revision_id}:WATER_TEMP_C",
+    "immutableVerification": "SHA-256 record_hash",
+    "successAuditId": "publish-{revision_id}",
+    "failureAuditId": "publish-failed-{revision_id}-{attempt_count}",
+    "requeueAuditId": "publication-requeued-{revision_id}-{failed_attempt}"
+  },
+  "privacy": {
+    "clientReadablePublicationJobs": false,
+    "clientWritablePublicationJobs": false,
+    "clientReadableSiteLocks": false,
+    "clientWritableSiteLocks": false,
+    "note": "No Firestore Rules match is added for these server-only documents; Firebase Admin SDK is the only intended access path."
+  }
+}

@@ -39,7 +39,7 @@ Firestore remains authoritative for operational workflow, revision history, vali
 
 ## ArcGIS data model
 
-`config/arcgis_publication_schema.json` is the versioned contract.
+`config/arcgis_publication_schema.json` is the versioned GIS contract. `config/publication_contract.json` is the server-only Firestore publication job/lease/idempotency contract.
 
 `SamplingSites` is one mutable public-safe feature per official site. `ApprovedObservations` is one immutable point feature per approved revision and uses the approved revision's actual collection geometry. It carries a wide set of typed scientific fields for fast map/popup use plus internal trace IDs and a SHA-256 record hash. `Measurements` is the normalized parameter table and includes one canonical `WATER_TEMP_C` row derived from the already-stored revision temperature. `LatestSiteConditions` is a materialized one-row-per-site view derived from the newest approved observation and approved sample count; it is never the historical record.
 
@@ -55,7 +55,7 @@ Public views exclude collector account IDs, source submission/revision/event IDs
 
 `publication/orchestrator.mjs` and `publication/arcgisRest.mjs` implement an idempotent approved-only publisher. It triggers only on a transition into `APPROVED`; requires `review_decision == APPROVE`; requires `reviewed_revision_id == current_revision_id == approved revision`; requires immutable `revision_status == SUBMITTED`; claims `PUBLISHING`; serializes per-site publication with an expiring Firestore lease; upserts the site; creates the approved observation only if `source_revision_id` is absent; verifies immutable hashes on retry; inserts only missing measurement rows; recomputes latest-site state; then marks `PUBLISHED` and appends a deterministic publication audit record.
 
-Failures become `PUBLISH_FAILED` with attempt/error metadata and a failure audit event. The Firebase trigger has retry enabled. ArcGIS network/429/5xx/token-expiry errors are retryable; permanent schema/auth/immutability conflicts stop automatic retry after being recorded. `scripts/retry_arcgis_publication.mjs` provides an explicit server-side requeue after remediation and only for the same current reviewed-and-approved revision.
+Failures become `PUBLISH_FAILED` with attempt/error metadata and a failure audit event. The Firebase trigger has retry enabled. ArcGIS network/429/5xx/token-expiry errors are retryable; permanent schema/auth/immutability conflicts stop automatic retry after being recorded. `scripts/retry_arcgis_publication.mjs` provides an explicit server-side requeue after remediation and only for the same current reviewed-and-approved revision. Each requeue is keyed by the failed attempt number so it appends a new immutable audit event and refuses to overwrite a prior requeue record.
 
 ## ArcGIS authentication
 
