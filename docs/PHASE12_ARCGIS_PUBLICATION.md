@@ -65,7 +65,9 @@ Failures become `PUBLISH_FAILED` with attempt/error metadata and a failure audit
 
 ## ArcGIS authentication
 
-Use an ArcGIS OAuth application credential with `client_credentials`, scoped only to the approved-authoritative item and granted required feature-edit privileges. Firebase Functions secrets are `ARCGIS_OAUTH_CLIENT_ID` and `ARCGIS_OAUTH_CLIENT_SECRET`. Non-secret deploy parameters are `ARCGIS_PUBLICATION_FEATURE_SERVICE_URL` and `ARCGIS_PORTAL_URL=https://www.arcgis.com`.
+Use an ArcGIS OAuth application credential with `client_credentials`, scoped only to the approved-authoritative item and granted required feature-edit privileges. Firebase Functions secrets are `ARCGIS_OAUTH_CLIENT_ID` and `ARCGIS_OAUTH_CLIENT_SECRET`. Non-secret deploy parameters are `ENABLE_ARCGIS_PUBLICATION_FUNCTION`, `ARCGIS_PUBLICATION_FEATURE_SERVICE_URL`, and `ARCGIS_PORTAL_URL=https://www.arcgis.com`.
+
+`ENABLE_ARCGIS_PUBLICATION_FUNCTION` defaults to `false`. The Firebase endpoint is declared with a parameterized `omit` gate: it is omitted from deployment/emulation unless the enable flag is true and `ARCGIS_PUBLICATION_FEATURE_SERVICE_URL` is non-empty. This turns the live-publication deployment gate into executable configuration rather than relying only on operator discipline.
 
 Never commit OAuth secrets, user passwords, long-lived tokens, Firebase private keys, or App Store credentials.
 
@@ -89,7 +91,9 @@ The read-only verifier checks required fields, unique key indexes, confirms Dele
 
 ## Deployment gate
 
-Do not deploy `publishApprovedObservation` until the new ArcGIS service and views pass verification; the OAuth app is item-restricted; Firebase secrets are set; `ARCGIS_PUBLICATION_FEATURE_SERVICE_URL` points to the new approved-authoritative service and never the QC staging item; CI is green; and a controlled approved observation is explicitly selected for first live publication.
+Do not enable `publishApprovedObservation` until the new ArcGIS service and views pass verification; the OAuth app is item-restricted; Firebase secrets are set; `ARCGIS_PUBLICATION_FEATURE_SERVICE_URL` points to the new approved-authoritative service and never the QC staging item; CI is green; and a controlled approved observation is explicitly selected for first live publication.
+
+Activation requires setting `ENABLE_ARCGIS_PUBLICATION_FUNCTION=true` together with the verified FeatureServer URL. With the default `false`, the publisher endpoint is omitted and cannot react to approvals.
 
 TEST-014 must not be altered or backfilled merely to prove the publisher. Use its existing immutable data only if/when it is deliberately approved as the controlled publication candidate.
 
