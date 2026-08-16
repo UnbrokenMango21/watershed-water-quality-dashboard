@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#f6f8fa">
+  <meta name="description" content="Independent sample-data concept for exploring approved Central Pennsylvania water-quality observations.">
+  <title>Central PA Watershed — Watershed Watch</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to dashboard</a>
+  <header class="app-header">
+    <div class="header-inner">
+      <a class="brand" href="#/dashboard" aria-label="Central PA Watershed dashboard home">
+        <span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 28 28"><path d="M3 7.5c5.1 0 7.9 2.8 10.7 5.7S19.4 19 25 19"></path><path d="M4 17c3.8 0 6.2-1.7 8.5-4.2S17 7.5 24 7.5"></path></svg></span>
+        <span><strong>Central PA Watershed</strong><small>Watershed Watch</small></span>
+      </a>
+      <nav class="top-nav" aria-label="Primary">
+        <a href="#/dashboard" data-nav="dashboard">Monitoring</a>
+        <a href="#/about-data" data-nav="about-data">About the data</a>
+        <a href="#/program" data-nav="program">Monitoring program</a>
+      </nav>
+      <button class="sample-badge" type="button" id="sample-badge" aria-label="This prototype uses synthetic sample data">Sample data</button>
+      <button class="mobile-nav-button" type="button" id="mobile-nav-button" aria-expanded="false" aria-controls="mobile-nav">Menu</button>
+    </div>
+    <nav class="mobile-nav" id="mobile-nav" aria-label="Mobile primary" hidden><a href="#/dashboard">Monitoring</a><a href="#/about-data">About the data</a><a href="#/program">Monitoring program</a></nav>
+  </header>
+
+  <main id="main">
+    <section id="dashboard-page" class="route-page dashboard-page" data-route="dashboard">
+      <div class="network-intro page-shell">
+        <div><p class="eyebrow">Public monitoring network</p><h1>Water quality across Central Pennsylvania</h1><p class="intro-copy">Explore approved monitoring observations by site, watershed, county, parameter, and date.</p></div>
+        <div class="network-stat" aria-live="polite"><strong id="visible-count">324</strong><span>sites visible</span></div>
+      </div>
+
+      <section class="filter-zone" aria-label="Network filters">
+        <div class="page-shell filters-row">
+          <label class="search-field"><span>Search sites</span><span class="search-input-wrap"><svg aria-hidden="true" viewBox="0 0 20 20"><circle cx="8.5" cy="8.5" r="5.5"></circle><path d="m13 13 4 4"></path></svg><input id="site-search" type="search" autocomplete="off" placeholder="Name or site code"></span></label>
+          <label><span>Watershed</span><select id="watershed-filter"><option value="">All watersheds</option></select></label>
+          <label><span>County</span><select id="county-filter"><option value="">All counties</option></select></label>
+          <label><span>Parameter</span><select id="parameter-filter"></select></label>
+          <label><span>Date range</span><select id="date-range-filter"><option value="12m">Last 12 months</option><option value="5y" selected>Last 5 years</option><option value="full">Full record</option></select></label>
+          <button class="reset-filters" type="button" id="reset-filters">Reset network</button>
+        </div>
+      </section>
+
+      <section class="explorer page-shell" aria-label="Monitoring site explorer">
+        <div class="map-panel">
+          <div class="map-toolbar" aria-label="Map controls">
+            <div class="map-mode"><span aria-hidden="true"></span> Monitoring sites</div>
+            <div class="map-actions"><button type="button" id="fit-sites">Fit visible sites</button><button type="button" id="zoom-selected" disabled>Selected site</button></div>
+          </div>
+          <div class="map-wrap" id="map-wrap">
+            <svg id="network-map" class="network-map" viewBox="0 0 1000 700" tabindex="0" role="application" aria-label="Interactive Central Pennsylvania monitoring-site map. Use arrow keys to pan, plus and minus to zoom, and Home to fit visible sites."><g data-map-base></g><g data-map-marks></g></svg>
+            <div class="map-zoom" aria-label="Zoom controls"><button type="button" id="map-zoom-in" aria-label="Zoom in">+</button><button type="button" id="map-zoom-out" aria-label="Zoom out">−</button><button type="button" id="map-reset" aria-label="Reset map view"><svg aria-hidden="true" viewBox="0 0 20 20"><path d="M4 8a6 6 0 1 1 1 6"></path><path d="M4 4v4h4"></path></svg></button></div>
+            <div class="map-legend" aria-label="Map legend"><span><i></i> Monitoring site</span><span><i class="selected-key"></i> Selected</span><span><i class="cluster-key">12</i> Cluster</span></div>
+            <div id="map-tooltip" class="map-tooltip" role="status" hidden></div>
+            <div class="map-attribution">Representative Central PA geography · sample monitoring locations</div>
+          </div>
+        </div>
+
+        <aside class="site-browser" id="site-browser" aria-label="Monitoring site list">
+          <div class="browser-head"><div><p class="eyebrow">Site browser</p><h2>Monitoring sites</h2></div><span id="browser-count">324</span></div>
+          <div class="browser-sort"><span>Sorted by site name</span><button type="button" id="fit-filtered-list">Fit map</button></div>
+          <div id="site-list" class="site-list" role="listbox" aria-label="Filtered monitoring sites"></div>
+          <div id="site-list-empty" class="list-empty" hidden><strong>No matching sites</strong><span>Adjust the search or restore the full monitoring network.</span><button type="button" data-reset>Reset filters</button></div>
+        </aside>
+      </section>
+
+      <button class="mobile-site-trigger" type="button" id="mobile-site-trigger" aria-haspopup="dialog"><span>Browse monitoring sites</span><strong id="mobile-site-count">324</strong></button>
+
+      <section class="site-workspace page-shell" aria-live="polite">
+        <div id="no-site-state" class="no-site-state"><p class="eyebrow">Selected site</p><h2>Select a monitoring site</h2><p>Choose a point on the map or a site from the browser to inspect approved observations, latest conditions, and the time series.</p></div>
+        <div id="selected-site-content" hidden>
+          <div class="site-heading">
+            <div><div class="site-kicker"><span id="site-code"></span><span class="approval-status"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m3 8.2 3 3.1 7-7"></path></svg>Approved observations</span></div><h2 id="site-name"></h2><p id="site-location"></p></div>
+            <button class="quiet-action" type="button" id="site-on-map">Zoom to site</button>
+          </div>
+          <div class="site-facts" aria-label="Site information">
+            <div><span>Watershed</span><strong id="site-watershed"></strong></div>
+            <div><span>County</span><strong id="site-county"></strong></div>
+            <div><span>Latest approved sample</span><strong id="site-latest"></strong><small id="site-age-note"></small></div>
+            <div><span>Monitoring period</span><strong id="site-period"></strong></div>
+            <div><span>Approved observations</span><strong id="site-observation-count"></strong></div>
+          </div>
+
+          <section class="conditions-section" aria-labelledby="conditions-title">
+            <div class="section-heading-row"><div><p class="eyebrow">Latest conditions</p><h3 id="conditions-title">Most recent approved measurements</h3></div><div class="review-note"><span>Quality reviewed</span><a href="#/about-data">How is this data reviewed?</a></div></div>
+            <div id="primary-measurements" class="measurements-grid"></div>
+            <details class="more-measurements"><summary>Additional measured parameters</summary><div id="secondary-measurements" class="secondary-grid"></div></details>
+          </section>
+
+          <section class="trend-section" aria-labelledby="trend-title">
+            <div class="trend-heading"><div><p class="eyebrow">Time series</p><h3 id="trend-title"></h3><p id="trend-context"></p></div><div class="range-switch" role="group" aria-label="Time series date range"><button type="button" data-range="12m">12 months</button><button type="button" data-range="5y" class="active">5 years</button><button type="button" data-range="full">Full record</button></div></div>
+            <div id="trend-chart" class="trend-chart"></div>
+            <details class="parameter-explainer"><summary id="parameter-question"></summary><p id="parameter-description"></p></details>
+          </section>
+        </div>
+      </section>
+
+      <section class="network-context page-shell"><div><p class="eyebrow">Network context</p><h2>One public view of reviewed field observations</h2></div><p>Sites shown here represent a multi-watershed monitoring network. The public dashboard is designed to expose approved observations without exposing collector identities, internal workflow state, or private property information.</p><a href="#/program">Learn about Watershed Watch</a></section>
+    </section>
+
+    <section id="about-page" class="route-page editorial-page page-shell" data-route="about-data" hidden>
+      <div class="editorial-hero"><p class="eyebrow">About the data</p><h1>Reviewed observations, with provenance kept intact.</h1><p>This concept separates public scientific context from internal workflow complexity. The public sees approved observations and essential method context—not private collector information or an invented confidence score.</p></div>
+      <div class="editorial-grid">
+        <section><span class="editorial-index">01</span><h2>Approval is a publication boundary</h2><p>Observations appear in the public product only after review. “Approved observation” and “Quality reviewed” describe workflow state; they are not claims that a water body is safe, healthy, or compliant.</p></section>
+        <section><span class="editorial-index">02</span><h2>Missing means missing</h2><p>Measurements that were not collected remain absent. The interface does not silently replace missing values with zero or invent values between sampling events.</p></section>
+        <section><span class="editorial-index">03</span><h2>Dates are primary evidence</h2><p>Collection date is shown prominently. When a specific observation is inspected, the collection time is presented in Eastern Time when available.</p></section>
+        <section><span class="editorial-index">04</span><h2>Thresholds need scientific context</h2><p>This concept intentionally avoids generic red/yellow/green scoring. Regulatory or ecological thresholds should only appear when tied to a defensible parameter, jurisdiction, method, and purpose.</p></section>
+      </div>
+      <div class="method-band"><div><p class="eyebrow">Prototype note</p><h2>All values in this concept are synthetic.</h2></div><p>The interface uses deterministic sample observations and representative Central Pennsylvania site geography solely to test information design, mapping, accessibility, and interaction behavior.</p></div>
+    </section>
+
+    <section id="program-page" class="route-page editorial-page page-shell" data-route="program" hidden>
+      <div class="editorial-hero program-hero"><p class="eyebrow">Monitoring program</p><h1>Watershed Watch connects field collection to public understanding.</h1><p>The public experience is designed around a simple scientific question: what was measured here, when, and after what review?</p></div>
+      <div class="program-flow" aria-label="Watershed Watch public data flow"><div><span>1</span><strong>Field collection</strong><p>Monitoring observations are collected at known sites with measurement and date provenance.</p></div><div><span>2</span><strong>Validation & review</strong><p>Submitted records pass through trusted validation and human quality review before publication.</p></div><div><span>3</span><strong>Approved publication</strong><p>Only public-safe approved records cross the publication boundary.</p></div><div><span>4</span><strong>Public exploration</strong><p>People can explore sites, measurements, and trends without seeing internal workflow complexity.</p></div></div>
+      <div class="program-principles"><h2>Designed for public use without weakening scientific meaning.</h2><div><p><strong>Geography first.</strong> Monitoring sites and watershed context are the primary navigation system.</p><p><strong>Observation first.</strong> Values are always paired with units, dates, and site context.</p><p><strong>Trust without theater.</strong> Review status is visible but not exaggerated into a marketing badge or numeric confidence score.</p></div></div>
+    </section>
+  </main>
+
+  <dialog id="mobile-site-dialog" class="mobile-site-dialog" aria-labelledby="mobile-browser-title"><div class="sheet-handle" aria-hidden="true"></div><div class="mobile-browser-head"><div><p class="eyebrow">Site browser</p><h2 id="mobile-browser-title">Monitoring sites</h2></div><button type="button" id="close-mobile-sites" aria-label="Close site browser">Close</button></div><label class="mobile-sheet-search"><span>Search sites</span><input id="mobile-site-search" type="search" placeholder="Name or site code"></label><div id="mobile-site-list" class="site-list mobile-list" role="listbox"></div></dialog>
+  <dialog id="sample-dialog" class="sample-dialog" aria-labelledby="sample-dialog-title"><div class="dialog-head"><div><p class="eyebrow">Prototype disclosure</p><h2 id="sample-dialog-title">Synthetic sample data</h2></div><button type="button" id="close-sample-dialog">Close</button></div><p>No values displayed in this concept are production Watershed Watch observations. Site locations are representative Central Pennsylvania coordinates used to test mapping and interface behavior.</p></dialog>
+  <div id="app-state-layer" class="app-state-layer" hidden></div>
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
