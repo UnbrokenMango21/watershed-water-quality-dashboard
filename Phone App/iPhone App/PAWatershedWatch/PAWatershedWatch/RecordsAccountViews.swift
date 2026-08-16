@@ -143,11 +143,12 @@ struct ObservationDetailContent: View {
         .navigationTitle("Observation Detail")
         .navigationBarTitleDisplayMode(.inline)
         .safeAreaInset(edge: .bottom) {
-            if record.workflow == .needsCorrection {
+            if record.workflow == .needsCorrection && record.sync == .synced {
                 VStack(spacing: 8) {
                     PrimaryActionButton(title: "Create Correction Revision", systemImage: "doc.badge.plus") {
-                        model.startCorrection(for: record)
-                        model.recentPath.append(.correction(record.id))
+                        if model.startCorrection(for: record) {
+                            model.recentPath.append(.correction(record.id))
+                        }
                     }
                     Text("Revision \(record.revision) Retained")
                         .font(.caption)

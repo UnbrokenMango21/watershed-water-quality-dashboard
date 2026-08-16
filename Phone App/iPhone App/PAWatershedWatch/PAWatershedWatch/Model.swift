@@ -751,8 +751,17 @@ final class AppModel {
         homePath = []
     }
 
-    func startCorrection(for record: ObservationRecord) {
-        guard record.workflow == .needsCorrection, record.ownerUID == ownerUID else { workflowError = "This record cannot be corrected from the current account."; return }
+    @discardableResult
+    func startCorrection(for record: ObservationRecord) -> Bool {
+        guard record.workflow == .needsCorrection, record.ownerUID == ownerUID else {
+            workflowError = "This record cannot be corrected from the current account."
+            return false
+        }
+        guard record.sync == .synced else {
+            workflowError = "A correction revision is already saved on this phone but has not been confirmed by the archive. Retry that sync before creating another revision."
+            if connection == .online { retrySync(recordID: record.id) }
+            return false
+        }
         let correction = ObservationDraft(
             id: record.id, eventID: record.eventID, revisionID: UUID(), revisionNumber: record.revision + 1,
             ownerUID: record.ownerUID
@@ -778,6 +787,7 @@ final class AppModel {
         saveDraft(correction)
         workflowState = .needsCorrection
         syncState = .savedLocally
+        return true
     }
 
     func resubmitCorrection(recordID: UUID) {

@@ -168,6 +168,21 @@ final class ModelTests: XCTestCase {
         ), "A non-correction write must never inherit the correction mismatch exception")
     }
 
+    @MainActor
+    func testRemoteListenerDoesNotMaskPendingCorrectionSyncState() throws {
+        XCTAssertEqual(LocalMobileStore.reconciledSyncState(incoming: .synced, existing: .failed, pendingQueueState: "RETRYABLE_FAILURE"), .failed)
+        XCTAssertEqual(LocalMobileStore.reconciledSyncState(incoming: .synced, existing: .waiting, pendingQueueState: "WAITING"), .waiting)
+        XCTAssertEqual(LocalMobileStore.reconciledSyncState(incoming: .synced, existing: .syncing, pendingQueueState: "SYNCING"), .syncing)
+        XCTAssertEqual(LocalMobileStore.reconciledSyncState(incoming: .synced, existing: .failed, pendingQueueState: "CONFIRMED"), .synced)
+    }
+
+    @MainActor
+    func testCorrectionSequenceUsesServerRevisionNumberAsAuthority() throws {
+        XCTAssertNoThrow(try FirebaseMobileService.validateCorrectionSequence(remoteRevisionNumber: 1, snapshotRevisionNumber: 2))
+        XCTAssertThrowsError(try FirebaseMobileService.validateCorrectionSequence(remoteRevisionNumber: 1, snapshotRevisionNumber: 3))
+        XCTAssertThrowsError(try FirebaseMobileService.validateCorrectionSequence(remoteRevisionNumber: nil, snapshotRevisionNumber: 2))
+    }
+
     func testSharedGoldenFixtureRemainsAvailableToBothNativeSuites() throws {
         let json = try Self.goldenFixture()
         XCTAssertEqual(json["fixtureVersion"] as? String, "1.0.0")
