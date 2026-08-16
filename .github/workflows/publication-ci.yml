@@ -1,10 +1,32 @@
 name: ArcGIS Publication CI
 on:
   pull_request:
-    paths: ['publication/**','functions/index.mjs','config/arcgis_publication_schema.json','scripts/provision_arcgis_publication.py','scripts/verify_arcgis_publication.py','scripts/retry_arcgis_publication.mjs','tests/publication/**','package.json','.github/workflows/publication-ci.yml']
+    paths:
+      - 'publication/**'
+      - 'functions/index.mjs'
+      - 'config/arcgis_publication_schema.json'
+      - 'config/publication_contract.json'
+      - 'scripts/provision_arcgis_publication.py'
+      - 'scripts/verify_arcgis_publication.py'
+      - 'scripts/inventory_arcgis_legacy.py'
+      - 'scripts/retry_arcgis_publication.mjs'
+      - 'tests/publication/**'
+      - 'package.json'
+      - '.github/workflows/publication-ci.yml'
   push:
     branches: [main]
-    paths: ['publication/**','functions/index.mjs','config/arcgis_publication_schema.json','scripts/provision_arcgis_publication.py','scripts/verify_arcgis_publication.py','scripts/retry_arcgis_publication.mjs','tests/publication/**','package.json','.github/workflows/publication-ci.yml']
+    paths:
+      - 'publication/**'
+      - 'functions/index.mjs'
+      - 'config/arcgis_publication_schema.json'
+      - 'config/publication_contract.json'
+      - 'scripts/provision_arcgis_publication.py'
+      - 'scripts/verify_arcgis_publication.py'
+      - 'scripts/inventory_arcgis_legacy.py'
+      - 'scripts/retry_arcgis_publication.mjs'
+      - 'tests/publication/**'
+      - 'package.json'
+      - '.github/workflows/publication-ci.yml'
 permissions: { contents: read }
 jobs:
   publication-contract:
@@ -16,3 +38,9 @@ jobs:
       - run: npm ci
       - run: npm run test:publication
       - run: npm run test:contracts
+      - name: Parse ArcGIS Pro Python automation
+        run: >-
+          python -m py_compile
+          scripts/provision_arcgis_publication.py
+          scripts/verify_arcgis_publication.py
+          scripts/inventory_arcgis_legacy.py
