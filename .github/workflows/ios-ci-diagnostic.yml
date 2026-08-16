@@ -1,0 +1,73 @@
+name: iOS CI diagnostic
+
+on:
+  pull_request:
+    paths:
+      - 'Phone App/iPhone App/**'
+      - '.github/workflows/ios-ci-diagnostic.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-ci-diagnostic-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ios-diagnostic:
+    name: iOS diagnostic
+    runs-on: macos-15
+    defaults:
+      run:
+        working-directory: Phone App/iPhone App/PAWatershedWatch
+    steps:
+      - uses: actions/checkout@v4
+      - name: Select an available iPhone simulator
+        shell: bash
+        run: |
+          destination_id="$(xcrun simctl list devices available -j | python3 -c 'import json,sys; data=json.load(sys.stdin); print(next(d["udid"] for devices in data["devices"].values() for d in devices if d["name"].startswith("iPhone")))')"
+          echo "IOS_DESTINATION=platform=iOS Simulator,id=$destination_id" >> "$GITHUB_ENV"
+      - name: Build and unit tests with diagnostics
+        shell: bash
+        run: |
+          set -o pipefail
+          log="$RUNNER_TEMP/ios-xcodebuild.log"
+          result_bundle="$RUNNER_TEMP/PAWatershedWatchTests.xcresult"
+          set +e
+          xcodebuild test \
+            -project PAWatershedWatch.xcodeproj \
+            -scheme PAWatershedWatch \
+            -destination "$IOS_DESTINATION" \
+            -test-timeouts-enabled YES \
+            -default-test-execution-time-allowance 60 \
+            -maximum-test-execution-time-allowance 120 \
+            -resultBundlePath "$result_bundle" \
+            CODE_SIGNING_ALLOWED=NO 2>&1 | tee "$log"
+          status=${PIPESTATUS[0]}
+          set -e
+
+          if [ "$status" -ne 0 ]; then
+            matches="$RUNNER_TEMP/ios-xcodebuild-errors.log"
+            grep -E '(^|[[:space:]])(error:|fatal error:)|Testing failed:|Test Case .* failed|Executed .* with .* failure|BUILD FAILED|TEST FAILED' "$log" | tail -40 > "$matches" || true
+            if [ -s "$matches" ]; then
+              while IFS= read -r line; do
+                escaped="${line//'%'/'%25'}"
+                escaped="${escaped//$'\r'/'%0D'}"
+                escaped="${escaped//$'\n'/'%0A'}"
+                echo "::error title=xcodebuild::$escaped"
+              done < "$matches"
+            else
+              echo "::error title=xcodebuild::xcodebuild failed with exit code $status; inspect diagnostic artifact"
+            fi
+            exit "$status"
+          fi
+      - name: Upload diagnostic results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-ci-diagnostic
+          if-no-files-found: warn
+          path: |
+            ${{ runner.temp }}/ios-xcodebuild.log
+            ${{ runner.temp }}/ios-xcodebuild-errors.log
+            ${{ runner.temp }}/PAWatershedWatchTests.xcresult
