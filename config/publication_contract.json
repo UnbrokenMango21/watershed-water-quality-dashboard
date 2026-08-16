@@ -1,5 +1,5 @@
 {
-  "version": "1.0.0",
+  "version": "1.1.0",
   "purpose": "Server-only Firestore/ArcGIS publication contract for approved immutable revisions.",
   "eligibility": {
     "requiredSubmissionStatus": "APPROVED",
@@ -11,6 +11,7 @@
     "APPROVED -> PUBLISHING",
     "PUBLISHING -> PUBLISHED",
     "PUBLISHING -> PUBLISH_FAILED",
+    "PUBLISHING -> PUBLISHING (expired-lease recovery only)",
     "PUBLISH_FAILED -> PUBLISHING (automatic transient retry claim)",
     "PUBLISH_FAILED -> APPROVED (explicit operator requeue only after remediation)"
   ],
@@ -22,6 +23,8 @@
       "status": "PUBLISHING | PUBLISH_FAILED | PUBLISHED",
       "attempt_count": "integer >= 1",
       "last_attempt_at": "Timestamp",
+      "active_lease_token": "opaque random string|null",
+      "lease_expires_at": "Timestamp|null",
       "last_failed_at": "Timestamp|null",
       "last_error_code": "string|null",
       "last_error_message": "string|null",
@@ -29,7 +32,8 @@
       "arcgis_observation_object_id": "integer|null",
       "arcgis_observation_global_id": "string|null",
       "latest_site_object_id": "integer|null"
-    }
+    },
+    "concurrencyInvariant": "A second delivery cannot claim a revision while an unexpired PUBLISHING lease exists. Expired leases are recoverable. Finalization/failure writes are fenced by active_lease_token."
   },
   "sitePublicationLease": {
     "path": "publicationSiteLocks/{site_id}",
@@ -38,14 +42,17 @@
     "fields": {
       "site_id": "string",
       "revision_id": "string",
+      "lease_token": "opaque random string",
       "acquired_at": "Timestamp",
       "expires_at": "Timestamp"
-    }
+    },
+    "concurrencyInvariant": "Any different unexpired lease token blocks another publisher, even when the competing delivery references the same revision."
   },
   "idempotency": {
     "observationKey": "source_revision_id",
     "measurementKey": "{source_revision_id}:{measurement_id}",
     "temperatureMeasurementKey": "{source_revision_id}:WATER_TEMP_C",
+    "arcgisKeyConstraint": "Unique index on every dataset keyField",
     "immutableVerification": "SHA-256 record_hash",
     "successAuditId": "publish-{revision_id}",
     "failureAuditId": "publish-failed-{revision_id}-{attempt_count}",
