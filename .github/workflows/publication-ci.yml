@@ -1,10 +1,10 @@
 name: ArcGIS Publication CI
 on:
   pull_request:
-    paths: ['publication/**','functions/index.mjs','config/arcgis_publication_schema.json','scripts/provision_arcgis_publication.py','scripts/verify_arcgis_publication.py','tests/publication/**','package.json','.github/workflows/publication-ci.yml']
+    paths: ['publication/**','functions/index.mjs','config/arcgis_publication_schema.json','scripts/provision_arcgis_publication.py','scripts/verify_arcgis_publication.py','scripts/retry_arcgis_publication.mjs','tests/publication/**','package.json','.github/workflows/publication-ci.yml']
   push:
     branches: [main]
-    paths: ['publication/**','functions/index.mjs','config/arcgis_publication_schema.json','scripts/provision_arcgis_publication.py','scripts/verify_arcgis_publication.py','tests/publication/**','package.json','.github/workflows/publication-ci.yml']
+    paths: ['publication/**','functions/index.mjs','config/arcgis_publication_schema.json','scripts/provision_arcgis_publication.py','scripts/verify_arcgis_publication.py','scripts/retry_arcgis_publication.mjs','tests/publication/**','package.json','.github/workflows/publication-ci.yml']
 permissions: { contents: read }
 jobs:
   publication-contract:
