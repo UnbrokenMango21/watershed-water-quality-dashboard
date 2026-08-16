@@ -42,8 +42,8 @@ if ! [[ "$KEY_ID" =~ ^[A-Z0-9]{10}$ ]]; then
   exit 1
 fi
 
-if ! grep -qE 'BEGIN (EC )?PRIVATE KEY' "$KEY_FILE"; then
-  echo "The supplied file does not look like an Apple .p8 private key." >&2
+if ! openssl pkey -in "$KEY_FILE" -noout >/dev/null 2>&1; then
+  echo "The supplied file is not a readable private key." >&2
   exit 1
 fi
 
