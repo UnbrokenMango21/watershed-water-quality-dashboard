@@ -101,17 +101,27 @@ final class ModelTests: XCTestCase {
         // comparison as before.
         XCTAssertTrue(submission["submitted_at"] is FieldValue, "submission submitted_at must use the trusted Firestore server-timestamp sentinel, not a client timestamp")
         XCTAssertTrue(revision["submitted_at"] is FieldValue, "revision submitted_at must use the trusted Firestore server-timestamp sentinel, not a client timestamp")
+        XCTAssertEqual(submission["mobile_app_version"] as? String, snapshot.appVersion)
+        XCTAssertEqual(revision["mobile_app_version"] as? String, snapshot.appVersion)
 
         let fixture = try Self.goldenFixture()
         let fixtureCase = try XCTUnwrap((fixture["serializationCases"] as? [[String: Any]])?.first)
         let expected = try XCTUnwrap(fixtureCase["expected"] as? [String: Any])
+        let expectedSubmission = Self.normalizingExpectedMobileAppVersion(
+            try XCTUnwrap(expected["submission"] as? [String: Any]),
+            with: snapshot.appVersion
+        )
+        let expectedRevision = Self.normalizingExpectedMobileAppVersion(
+            try XCTUnwrap(expected["revision"] as? [String: Any]),
+            with: snapshot.appVersion
+        )
         XCTAssertEqual(
             try Self.jsonData(Self.droppingServerTimestampSentinel(submission)),
-            try Self.jsonData(Self.droppingServerTimestampSentinel(try XCTUnwrap(expected["submission"] as? [String: Any])))
+            try Self.jsonData(Self.droppingServerTimestampSentinel(expectedSubmission))
         )
         XCTAssertEqual(
             try Self.jsonData(Self.droppingServerTimestampSentinel(revision)),
-            try Self.jsonData(Self.droppingServerTimestampSentinel(try XCTUnwrap(expected["revision"] as? [String: Any])))
+            try Self.jsonData(Self.droppingServerTimestampSentinel(expectedRevision))
         )
         XCTAssertEqual(
             try Self.jsonData(snapshot.measurements.map { FirebaseMapper.measurement($0, in: snapshot) }),
@@ -181,6 +191,15 @@ final class ModelTests: XCTestCase {
     private static func droppingServerTimestampSentinel(_ dictionary: [String: Any]) -> [String: Any] {
         var copy = dictionary
         copy.removeValue(forKey: "submitted_at")
+        return copy
+    }
+
+    /// The golden fixture is shared with Android, whose release version can differ from iOS.
+    /// Keep the field covered explicitly above, then normalize only the expected version value
+    /// so every other contract field remains byte-for-byte identical.
+    private static func normalizingExpectedMobileAppVersion(_ dictionary: [String: Any], with appVersion: String) -> [String: Any] {
+        var copy = dictionary
+        copy["mobile_app_version"] = appVersion
         return copy
     }
 
