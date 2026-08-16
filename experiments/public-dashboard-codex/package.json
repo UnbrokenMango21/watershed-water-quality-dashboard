@@ -1,0 +1,14 @@
+{
+  "name": "central-pa-watershed-public-dashboard-concept",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "npm run build && node scripts/unit-tests.mjs",
+    "quality": "npm run typecheck && npm run test && node scripts/static-checks.mjs",
+    "dev": "node scripts/dev-server.mjs"
+  }
+}
