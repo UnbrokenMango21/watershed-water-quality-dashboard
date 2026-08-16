@@ -1,0 +1,101 @@
+name: Prepare iOS build 11
+
+on:
+  push:
+    branches:
+      - release/ios-existing-app-v0.1.0-b11
+    paths:
+      - '.github/workflows/ios-build11-bump.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: prepare-ios-build-11
+  cancel-in-progress: false
+
+jobs:
+  bump-and-verify:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: release/ios-existing-app-v0.1.0-b11
+          fetch-depth: 0
+
+      - name: Bump only the iOS app build number
+        shell: bash
+        run: |
+          set -euo pipefail
+          project='Phone App/iPhone App/PAWatershedWatch/PAWatershedWatch.xcodeproj/project.pbxproj'
+          before="$(grep -c 'CURRENT_PROJECT_VERSION = 10;' "$project" || true)"
+          if [ "$before" -ne 2 ]; then
+            echo "::error::Expected exactly two CURRENT_PROJECT_VERSION = 10 settings, found $before"
+            exit 1
+          fi
+          sed -i '' 's/CURRENT_PROJECT_VERSION = 10;/CURRENT_PROJECT_VERSION = 11;/g' "$project"
+          after11="$(grep -c 'CURRENT_PROJECT_VERSION = 11;' "$project" || true)"
+          after10="$(grep -c 'CURRENT_PROJECT_VERSION = 10;' "$project" || true)"
+          if [ "$after11" -ne 2 ] || [ "$after10" -ne 0 ]; then
+            echo "::error::Build-number bump did not produce exactly two 11 settings and zero 10 settings"
+            exit 1
+          fi
+          git diff --check
+          git diff -- "$project"
+
+      - name: Select an available iPhone simulator
+        shell: bash
+        run: |
+          destination_id="$(xcrun simctl list devices available -j | python3 -c 'import json,sys; data=json.load(sys.stdin); print(next(d["udid"] for devices in data["devices"].values() for d in devices if d["name"].startswith("iPhone")))')"
+          echo "IOS_DESTINATION=platform=iOS Simulator,id=$destination_id" >> "$GITHUB_ENV"
+
+      - name: Test build 11 source
+        working-directory: Phone App/iPhone App/PAWatershedWatch
+        shell: bash
+        run: |
+          set -o pipefail
+          xcodebuild test \
+            -project PAWatershedWatch.xcodeproj \
+            -scheme PAWatershedWatch \
+            -destination "$IOS_DESTINATION" \
+            -test-timeouts-enabled YES \
+            -default-test-execution-time-allowance 60 \
+            -maximum-test-execution-time-allowance 120 \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Verify unsigned Release archive
+        working-directory: Phone App/iPhone App/PAWatershedWatch
+        shell: bash
+        run: |
+          xcodebuild archive \
+            -project PAWatershedWatch.xcodeproj \
+            -scheme PAWatershedWatch \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath "$RUNNER_TEMP/PAWatershedWatch-build11.xcarchive" \
+            CODE_SIGNING_ALLOWED=NO
+          /usr/libexec/PlistBuddy -c 'Print :ApplicationProperties:CFBundleVersion' "$RUNNER_TEMP/PAWatershedWatch-build11.xcarchive/Info.plist" | grep -Fx '11'
+          /usr/libexec/PlistBuddy -c 'Print :ApplicationProperties:CFBundleShortVersionString' "$RUNNER_TEMP/PAWatershedWatch-build11.xcarchive/Info.plist" | grep -Fx '0.1.0'
+
+      - name: Commit verified build-number bump and remove this temporary workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          project='Phone App/iPhone App/PAWatershedWatch/PAWatershedWatch.xcodeproj/project.pbxproj'
+          workflow='.github/workflows/ios-build11-bump.yml'
+          rm "$workflow"
+          git add -A -- "$project" "$workflow"
+          changed="$(git diff --cached --name-only)"
+          expected_project="$project"
+          expected_workflow="$workflow"
+          if [ "$(printf '%s\n' "$changed" | wc -l | tr -d ' ')" -ne 2 ] || \
+             ! printf '%s\n' "$changed" | grep -Fxq "$expected_project" || \
+             ! printf '%s\n' "$changed" | grep -Fxq "$expected_workflow"; then
+            echo "::error::Refusing to commit unexpected files"
+            printf '%s\n' "$changed"
+            exit 1
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'chore(ios): bump TestFlight build to 11'
+          git push origin HEAD:release/ios-existing-app-v0.1.0-b11
