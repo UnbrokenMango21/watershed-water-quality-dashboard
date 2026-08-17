@@ -161,7 +161,7 @@ export function DashboardShell() {
             onSelectSite={handleSelectFromMap}
             onHoverSite={handleHover}
             demoMode={demoMode}
-            hasOperationalLayers={sourceConnected}
+            hasOperationalLayers={sites.length > 0}
           />
           <ChartPanel
             site={selectedSite}
