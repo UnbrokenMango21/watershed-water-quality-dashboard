@@ -1,0 +1,6 @@
+env:
+  - variable: NEXT_PUBLIC_DASHBOARD_DATA_MODE
+    value: demo
+    availability:
+      - BUILD
+      - RUNTIME
