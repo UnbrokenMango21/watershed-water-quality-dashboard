@@ -1,6 +1,6 @@
 "use client";
 
-import { createElement, useState } from "react";
+import { createElement, useEffect, useMemo, useState } from "react";
 import type { DashboardSite, LatestSiteCondition } from "@/lib/data/DashboardDataSource";
 import { CalciteIcon, type MapTool } from "./dashboard-utils";
 import { useDashboardMap } from "./useDashboardMap";
@@ -20,6 +20,7 @@ export function MapSurface({
   onSelectSite,
   onHoverSite,
   demoMode,
+  hasOperationalLayers,
 }: {
   sites: DashboardSite[];
   conditions: Record<string, LatestSiteCondition | null>;
@@ -28,16 +29,22 @@ export function MapSurface({
   onSelectSite: (siteId: string) => void;
   onHoverSite: (siteId: string | null) => void;
   demoMode: boolean;
+  hasOperationalLayers: boolean;
 }) {
   const [activeMapTool, setActiveMapTool] = useState<MapTool>(null);
   const mapHost = useDashboardMap({ sites, conditions, selectedSite, hoveredSite, onSelectSite, onHoverSite, demoMode });
+  const availableTools = useMemo<Exclude<MapTool, null>[]>(() => hasOperationalLayers ? ["layers", "legend", "basemap", "measure"] : ["basemap", "measure"], [hasOperationalLayers]);
+
+  useEffect(() => {
+    if (activeMapTool && !availableTools.includes(activeMapTool)) setActiveMapTool(null);
+  }, [activeMapTool, availableTools]);
 
   return (
     <div className="map-frame">
       <div ref={mapHost} className="map-host" />
 
-      <div className="map-tool-rail" aria-label="Map tools">
-        {(["layers", "legend", "basemap", "measure"] as Exclude<MapTool, null>[]).map((tool) => (
+      <div className="map-tool-rail" aria-label="Secondary map tools">
+        {availableTools.map((tool) => (
           <button
             key={tool}
             type="button"
@@ -45,6 +52,7 @@ export function MapSurface({
             aria-label={toolLabels[tool]}
             aria-pressed={activeMapTool === tool}
             data-tooltip={toolLabels[tool]}
+            data-map-tool={tool}
             onClick={() => setActiveMapTool((current) => current === tool ? null : tool)}
           >
             <CalciteIcon
@@ -55,8 +63,8 @@ export function MapSurface({
         ))}
       </div>
 
-      {activeMapTool && (
-        <section className="map-tool-panel" aria-label={`${toolLabels[activeMapTool]} map tool`}>
+      {activeMapTool && availableTools.includes(activeMapTool) && (
+        <section className="map-tool-panel" aria-label={`${toolLabels[activeMapTool]} map tool`} data-map-panel={activeMapTool}>
           <header>
             <strong>{toolLabels[activeMapTool]}</strong>
             <button type="button" aria-label={`Close ${toolLabels[activeMapTool]}`} onClick={() => setActiveMapTool(null)}>
