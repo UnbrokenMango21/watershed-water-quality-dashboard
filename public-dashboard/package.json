@@ -12,7 +12,7 @@
     "@arcgis/core": "^5.1.0",
     "@arcgis/map-components": "^5.1.0",
     "@esri/calcite-components": "^5.1.0",
-    "next": "16.3.0",
+    "next": "15.2.9",
     "react": "19.2.0",
     "react-dom": "19.2.0"
   },
