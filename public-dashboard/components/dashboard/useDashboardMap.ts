@@ -36,6 +36,7 @@ export function useDashboardMap({
   const mapElementRef = useRef<ArcgisMapElement | null>(null);
   const selectionUpdaterRef = useRef<((site: DashboardSite | null) => void) | null>(null);
   const hoverUpdaterRef = useRef<((site: DashboardSite | null) => void) | null>(null);
+  const waitForStableRef = useRef<(() => Promise<void>) | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -89,14 +90,21 @@ export function useDashboardMap({
         component("arcgis-scale-bar", "bottom-left", { unit: "dual" }),
       );
 
+      const syncStableState = () => {
+        const ready = Boolean(map.ready);
+        map.dataset.viewReady = ready ? "true" : "false";
+        map.dataset.viewStable = ready && Boolean(map.stationary) && !map.updating ? "true" : "false";
+      };
+
       const waitForStableView = async () => {
         map.dataset.viewStable = "false";
         await reactiveUtils.whenOnce(() => Boolean(map.ready && map.stationary && !map.updating));
-        if (!cancelled) map.dataset.viewStable = "true";
+        if (!cancelled) syncStableState();
       };
+      waitForStableRef.current = waitForStableView;
 
       const onReady = () => {
-        map.dataset.viewReady = "true";
+        syncStableState();
         void waitForStableView();
         if (!demoMode || sites.length === 0 || !map.map) return;
 
@@ -178,9 +186,7 @@ export function useDashboardMap({
       };
 
       map.addEventListener("arcgisViewReadyChange", onReady, { once: true });
-      map.addEventListener("arcgisViewChange", () => {
-        if (map.ready && (!map.stationary || map.updating)) map.dataset.viewStable = "false";
-      });
+      map.addEventListener("arcgisViewChange", syncStableState);
       map.addEventListener("arcgisViewClick", async (event) => {
         if (!demoMode) return;
         try {
@@ -206,6 +212,7 @@ export function useDashboardMap({
       cancelled = true;
       selectionUpdaterRef.current = null;
       hoverUpdaterRef.current = null;
+      waitForStableRef.current = null;
       mapElementRef.current = null;
       host.replaceChildren();
     };
@@ -214,10 +221,13 @@ export function useDashboardMap({
   useEffect(() => {
     selectionUpdaterRef.current?.(selectedSite);
     if (!selectedSite || !mapElementRef.current) return;
-    const currentZoom = mapElementRef.current.zoom ?? 8;
+    const map = mapElementRef.current;
+    const currentZoom = map.zoom ?? 8;
     const targetZoom = Math.min(Math.max(currentZoom, 9), 11);
-    mapElementRef.current.dataset.viewStable = "false";
-    void mapElementRef.current.goTo({ center: [selectedSite.longitude, selectedSite.latitude], zoom: targetZoom }, { duration: 300 }).catch(() => undefined);
+    map.dataset.viewStable = "false";
+    void map.goTo({ center: [selectedSite.longitude, selectedSite.latitude], zoom: targetZoom }, { duration: 300 })
+      .then(() => waitForStableRef.current?.())
+      .catch(() => undefined);
   }, [selectedSite]);
 
   useEffect(() => { hoverUpdaterRef.current?.(hoveredSite); }, [hoveredSite]);
