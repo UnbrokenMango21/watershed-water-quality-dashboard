@@ -37,7 +37,7 @@ for (const viewport of viewports) {
   if ((await page.locator(".site-row").count()) !== 1) failures.push(`${viewport.name}: site search did not filter to one row`);
   await search.fill("");
 
-  await page.getByRole("button", { name: /Demo Bald Eagle Creek Site/ }).click();
+  await page.locator(".site-row").filter({ hasText: "Demo Bald Eagle Creek Site" }).click();
   await page.getByRole("heading", { name: "Demo Bald Eagle Creek Site" }).last().waitFor({ state: "visible" });
   if ((await page.getByText("Not recorded").count()) < 1) failures.push(`${viewport.name}: partial sample does not expose missing measurement state`);
 
