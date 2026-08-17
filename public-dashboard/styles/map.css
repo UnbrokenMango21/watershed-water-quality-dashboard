@@ -1,0 +1,16 @@
+.map-frame { position: relative; overflow: hidden; background: #e7edf2; }
+.map-host, .map-element { width: 100%; height: 100%; min-width: 0; min-height: 0; display: block; }
+.map-tool-rail { position: absolute; z-index: 12; top: 52px; right: 10px; display: grid; gap: 3px; padding: 3px; border: 1px solid rgb(100 120 138 / 28%); border-radius: 7px; background: rgb(255 255 255 / 94%); box-shadow: 0 2px 8px rgb(30 48 62 / 10%); }
+.map-tool-button { width: 31px; height: 31px; border: 0; border-radius: 4px; display: grid; place-items: center; background: transparent; color: #40515f; cursor: pointer; }
+.map-tool-button:hover { background: #f0f4f7; color: var(--accent-deep); }
+.map-tool-button.active { background: var(--accent-soft); color: var(--accent-deep); box-shadow: inset 0 0 0 1px #acd1e7; }
+.map-tool-panel { position: absolute; z-index: 14; top: 52px; right: 50px; width: min(310px, calc(100% - 72px)); max-height: calc(100% - 66px); display: grid; grid-template-rows: auto minmax(0, 1fr); overflow: hidden; border: 1px solid var(--line); border-radius: var(--radius); background: #fff; box-shadow: 0 8px 24px rgb(23 38 52 / 16%); }
+.map-tool-panel > header { height: 36px; padding: 0 7px 0 10px; display: flex; align-items: center; justify-content: space-between; gap: 8px; border-bottom: 1px solid var(--line-soft); }
+.map-tool-panel > header strong { font-size: 11px; font-weight: 600; }
+.map-tool-panel > header button { width: 27px; height: 27px; border: 0; border-radius: 4px; display: grid; place-items: center; background: transparent; color: var(--muted); cursor: pointer; }
+.map-tool-panel > header button:hover { background: var(--surface-soft); color: var(--ink); }
+.map-tool-panel-body { min-height: 0; overflow: auto; }
+.map-tool-panel-body > * { width: 100%; min-height: 100%; }
+
+arcgis-map { --calcite-font-family: var(--font-ui); }
+arcgis-search { max-width: min(320px, 42vw); }
