@@ -1,0 +1,58 @@
+name: Public Dashboard Visual QA
+
+on:
+  push:
+    branches:
+      - final/public-dashboard-v1
+    paths:
+      - 'public-dashboard/**'
+      - '.github/workflows/public-dashboard-visual-qa.yml'
+  pull_request:
+    paths:
+      - 'public-dashboard/**'
+      - '.github/workflows/public-dashboard-visual-qa.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  visual-qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: public-dashboard
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+          cache: npm
+          cache-dependency-path: public-dashboard/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - name: Install Playwright for QA only
+        run: npm install --no-save --package-lock=false playwright@1.55.0
+      - run: npx playwright install --with-deps chromium
+      - run: npm run build
+      - name: Start dashboard
+        run: |
+          npm run start -- -H 127.0.0.1 -p 3000 > /tmp/public-dashboard.log 2>&1 &
+          echo $! > /tmp/public-dashboard.pid
+          for i in {1..60}; do
+            if curl --fail --silent http://127.0.0.1:3000 >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          cat /tmp/public-dashboard.log
+          exit 1
+      - name: Run responsive browser QA
+        run: node scripts/visual-qa.mjs
+      - name: Upload visual QA evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: public-dashboard-visual-qa
+          path: public-dashboard/artifacts/visual-qa
+          if-no-files-found: warn
+          retention-days: 14
