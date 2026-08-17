@@ -45,9 +45,11 @@ async function collectLayoutMetrics(page) {
       })
       .map((element) => {
         const rect = element.getBoundingClientRect();
+        const visibleText = (element.textContent || "").trim();
         return {
           tag: element.tagName,
-          text: (element.textContent || element.getAttribute("aria-label") || "").trim(),
+          label: (element.getAttribute("aria-label") || visibleText || element.tagName).trim(),
+          visibleText,
           left: rect.left,
           right: rect.right,
           top: rect.top,
@@ -86,8 +88,8 @@ function assertNoDocumentOverflow(viewportName, metrics, stage) {
   if (metrics.shellScrollHeight > metrics.shellClientHeight + 1) failures.push(`${viewportName}/${stage}: application shell has vertical overflow`);
   if (metrics.shellRect && (metrics.shellRect.top < -1 || metrics.shellRect.left < -1 || metrics.shellRect.right > metrics.viewportWidth + 1 || metrics.shellRect.bottom > metrics.viewportHeight + 1)) failures.push(`${viewportName}/${stage}: application shell extends outside viewport`);
   for (const control of metrics.visibleControls) {
-    if (control.left < -1 || control.right > metrics.viewportWidth + 1 || control.top < -1 || control.bottom > metrics.viewportHeight + 1) failures.push(`${viewportName}/${stage}: visible control outside viewport (${control.text || control.tag})`);
-    if (control.clientWidth > 0 && control.scrollWidth > control.clientWidth + 2 && control.tag !== "INPUT") failures.push(`${viewportName}/${stage}: clipped control text (${control.text || control.tag})`);
+    if (control.left < -1 || control.right > metrics.viewportWidth + 1 || control.top < -1 || control.bottom > metrics.viewportHeight + 1) failures.push(`${viewportName}/${stage}: visible control outside viewport (${control.label})`);
+    if (control.visibleText && control.clientWidth > 0 && control.scrollWidth > control.clientWidth + 2 && control.tag !== "INPUT" && control.tag !== "SELECT") failures.push(`${viewportName}/${stage}: clipped visible control text (${control.visibleText})`);
   }
 }
 
@@ -102,7 +104,6 @@ for (const viewport of viewports) {
   await waitForMapStable(page, viewport.name);
 
   const compact = viewport.width <= 960;
-  const phone = viewport.width <= 640;
 
   if ((await page.getByText("Synthetic demonstration geography", { exact: false }).count()) > 0) failures.push(`${viewport.name}: obsolete map instruction overlay remains`);
   if ((await page.locator(".map-status").count()) > 0) failures.push(`${viewport.name}: obsolete map status overlay remains`);
@@ -123,6 +124,7 @@ for (const viewport of viewports) {
 
     if (compact) await page.getByRole("button", { name: "Sites", exact: true }).click();
     await page.locator(".site-row").first().waitFor({ state: "visible", timeout: 30000 });
+    if (compact) await page.screenshot({ path: `${outDir}/${viewport.name}-sites.png`, fullPage: false });
     if ((await page.locator(".site-row").count()) !== 8) failures.push(`${viewport.name}: expected 8 demo sites`);
 
     const search = page.locator('.site-search-input[aria-label="Search monitoring sites"]');
@@ -139,13 +141,14 @@ for (const viewport of viewports) {
 
     await page.getByRole("heading", { name: "Demo Bald Eagle Creek Site" }).waitFor({ state: "visible" });
     if (!(await page.locator(".missing-summary").innerText()).includes("1 of 5")) failures.push(`${viewport.name}: partial-sample summary is missing`);
+    if (compact) await page.screenshot({ path: `${outDir}/${viewport.name}-readings.png`, fullPage: false });
 
     if (compact) await page.getByRole("button", { name: "Time series", exact: true }).click();
-    if (phone) {
+    if (compact) {
       const parameterSelect = page.locator('.parameter-select-wrap select[aria-label="Water quality parameter"]');
       await parameterSelect.waitFor({ state: "visible" });
       await parameterSelect.selectOption("ph");
-      if ((await page.locator(".parameter-tabs:visible").count()) !== 0) failures.push(`${viewport.name}: phone still shows clipping desktop parameter tabs`);
+      if ((await page.locator(".parameter-tabs:visible").count()) !== 0) failures.push(`${viewport.name}: compact layout still shows desktop parameter tabs`);
     } else {
       await page.getByRole("tab", { name: /pH/ }).click();
     }
@@ -157,6 +160,7 @@ for (const viewport of viewports) {
 
     const dataMetrics = await collectLayoutMetrics(page);
     assertNoDocumentOverflow(viewport.name, dataMetrics, "data");
+    if (compact) await page.screenshot({ path: `${outDir}/${viewport.name}-data.png`, fullPage: false });
 
     if (compact) await page.getByRole("button", { name: "Map", exact: true }).click();
     await waitForMapStable(page, viewport.name);
@@ -172,6 +176,7 @@ for (const viewport of viewports) {
     if (compact) {
       await page.getByRole("button", { name: "Sites", exact: true }).click();
       await sourceState.waitFor({ state: "visible" });
+      await page.screenshot({ path: `${outDir}/${viewport.name}-sites.png`, fullPage: false });
     }
     if ((await page.locator(".site-row").count()) !== 0) failures.push(`${viewport.name}: disconnected mode unexpectedly rendered sites`);
     const search = page.locator('.site-search-input[aria-label="Search monitoring sites"]');
@@ -189,6 +194,7 @@ for (const viewport of viewports) {
     if ((await page.locator(".range-controls").count()) !== 0 || (await page.locator(".parameter-tabs").count()) !== 0) failures.push(`${viewport.name}: disconnected chart exposes meaningless active controls`);
     const dataMetrics = await collectLayoutMetrics(page);
     assertNoDocumentOverflow(viewport.name, dataMetrics, "disconnected-data");
+    if (compact) await page.screenshot({ path: `${outDir}/${viewport.name}-data.png`, fullPage: false });
     if (compact) await page.getByRole("button", { name: "Map", exact: true }).click();
     await waitForMapStable(page, viewport.name);
   }
