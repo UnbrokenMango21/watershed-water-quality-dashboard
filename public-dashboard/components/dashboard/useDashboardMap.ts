@@ -122,7 +122,7 @@ export function useDashboardMap({
         map.map.add(hoverLayer);
         map.map.add(selectionLayer);
 
-        const updateRing = (layer: { removeAll: () => void; add: (graphic: unknown) => void }, site: DashboardSite | null, selected: boolean) => {
+        const updateRing = (layer: InstanceType<typeof GraphicsLayer>, site: DashboardSite | null, selected: boolean) => {
           layer.removeAll();
           if (!site) return;
           layer.add(new Graphic({
