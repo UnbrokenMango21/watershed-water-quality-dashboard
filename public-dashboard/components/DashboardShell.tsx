@@ -10,6 +10,8 @@ import { SiteBrowser } from "./dashboard/SiteBrowser";
 import { SiteDetail } from "./dashboard/SiteDetail";
 import { formatShortDate, parameterDefinitions, rangeStart, type MobileView, type RangeName } from "./dashboard/dashboard-utils";
 
+type DataSubview = "readings" | "series";
+
 export function DashboardShell() {
   const [activeRange, setActiveRange] = useState<RangeName>("90D");
   const [activeParameter, setActiveParameter] = useState<DashboardParameter>("waterTemperature");
@@ -21,6 +23,7 @@ export function DashboardShell() {
   const [search, setSearch] = useState("");
   const [loadingSites, setLoadingSites] = useState(true);
   const [mobileView, setMobileView] = useState<MobileView>("map");
+  const [dataSubview, setDataSubview] = useState<DataSubview>("readings");
 
   const demoMode = process.env.NEXT_PUBLIC_DASHBOARD_DATA_MODE === "demo";
   const productionDataConfigured = useMemo(() => Boolean(
@@ -29,10 +32,14 @@ export function DashboardShell() {
     process.env.NEXT_PUBLIC_ARCGIS_MEASUREMENTS_VIEW_URL &&
     process.env.NEXT_PUBLIC_ARCGIS_LATEST_CONDITIONS_VIEW_URL
   ), []);
+  const sourceConnected = demoMode || productionDataConfigured;
 
   useEffect(() => {
     let cancelled = false;
-    if (!demoMode) { setLoadingSites(false); return; }
+    if (!demoMode) {
+      setLoadingSites(false);
+      return;
+    }
     setLoadingSites(true);
     void (async () => {
       const loadedSites = await mockDashboardDataSource.listSites();
@@ -40,7 +47,8 @@ export function DashboardShell() {
       if (cancelled) return;
       setSites(loadedSites);
       setConditions(Object.fromEntries(entries));
-      setSelectedSiteId((current) => current ?? loadedSites[0]?.id ?? null);
+      // Intentionally begin with no selection. This keeps no-selection distinct
+      // from site-selected/no-measurement and prevents misleading active controls.
       setLoadingSites(false);
     })();
     return () => { cancelled = true; };
@@ -56,9 +64,14 @@ export function DashboardShell() {
   const selectedCondition = selectedSiteId ? conditions[selectedSiteId] ?? null : null;
 
   useEffect(() => {
-    if (!demoMode || !selectedSiteId) { setSeries([]); return; }
+    if (!demoMode || !selectedSiteId) {
+      setSeries([]);
+      return;
+    }
     let cancelled = false;
-    void mockDashboardDataSource.getObservationSeries(selectedSiteId, activeParameter).then((points) => { if (!cancelled) setSeries(points); });
+    void mockDashboardDataSource.getObservationSeries(selectedSiteId, activeParameter).then((points) => {
+      if (!cancelled) setSeries(points);
+    });
     return () => { cancelled = true; };
   }, [activeParameter, demoMode, selectedSiteId]);
 
@@ -67,10 +80,23 @@ export function DashboardShell() {
     return series.filter((point) => Date.parse(point.observedAt) >= start);
   }, [activeRange, series]);
 
-  const handleSelect = useCallback((siteId: string) => {
+  const selectSite = useCallback((siteId: string) => {
     setSelectedSiteId(siteId);
     document.getElementById(`site-row-${siteId}`)?.scrollIntoView({ block: "nearest" });
   }, []);
+
+  const handleSelectFromList = useCallback((siteId: string) => {
+    selectSite(siteId);
+    if (window.matchMedia("(max-width: 960px)").matches) {
+      setMobileView("data");
+      setDataSubview("readings");
+    }
+  }, [selectSite]);
+
+  const handleSelectFromMap = useCallback((siteId: string) => {
+    selectSite(siteId);
+  }, [selectSite]);
+
   const handleHover = useCallback((siteId: string | null) => setHoveredSiteId(siteId), []);
   const handleExport = useCallback(() => {
     if (!selectedSite || visibleSeries.length === 0) return;
@@ -79,23 +105,76 @@ export function DashboardShell() {
   }, [activeParameter, activeRange, selectedSite, visibleSeries]);
 
   return (
-    <main className="dashboard-shell" data-mobile-view={mobileView}>
+    <main className="dashboard-shell" data-mobile-view={mobileView} data-source-connected={sourceConnected ? "true" : "false"}>
       <header className="app-bar">
-        <div className="brand-block"><div className="brand-mark" aria-hidden="true">≈</div><div><h1>Central PA Watershed</h1><p>Water Quality Monitoring Dashboard</p></div></div>
-        <div className="kpi-strip" aria-label="Network summary">
-          <div className="kpi"><span>Active Sites</span><strong>{demoMode ? demoNetworkSummary.activeSites : "—"}</strong></div>
-          <div className="kpi"><span>Latest Update</span><strong>{demoMode ? formatShortDate(demoNetworkSummary.latestUpdate) : "—"}</strong></div>
-          <div className="kpi"><span>Streams Monitored</span><strong>{demoMode ? demoNetworkSummary.streamsMonitored : "—"}</strong></div>
+        <div className="brand-block">
+          <div className="brand-mark" aria-hidden="true">≈</div>
+          <div><h1>Central PA Watershed</h1><p>Water Quality Monitoring Dashboard</p></div>
         </div>
+        {sourceConnected ? (
+          <div className="kpi-strip" aria-label="Network summary">
+            <div className="kpi"><span>Active Sites</span><strong>{demoMode ? demoNetworkSummary.activeSites : sites.length || "—"}</strong></div>
+            <div className="kpi"><span>Latest Update</span><strong>{demoMode ? formatShortDate(demoNetworkSummary.latestUpdate) : "—"}</strong></div>
+            <div className="kpi"><span>Streams Monitored</span><strong>{demoMode ? demoNetworkSummary.streamsMonitored : "—"}</strong></div>
+          </div>
+        ) : (
+          <div className="source-status" role="status"><span className="source-status-dot" aria-hidden="true" /><span>Monitoring source unavailable</span></div>
+        )}
       </header>
+
       {demoMode && <div className="demo-banner" role="status"><strong>DEMO MODE</strong><span>· Synthetic test sites and measurements — not production observations</span></div>}
-      <nav className="mobile-view-tabs" aria-label="Dashboard view">{(["sites", "map", "data"] as MobileView[]).map((view) => <button key={view} type="button" className={mobileView === view ? "mobile-view-button active" : "mobile-view-button"} aria-pressed={mobileView === view} onClick={() => setMobileView(view)}>{view === "sites" ? "Sites" : view === "map" ? "Map" : "Data"}</button>)}</nav>
-      <section className="workspace" data-mobile-view={mobileView}>
-        <SiteBrowser sites={sites} filteredSites={filteredSites} conditions={conditions} selectedSiteId={selectedSiteId} hoveredSiteId={hoveredSiteId} search={search} loading={loadingSites} productionDataConfigured={productionDataConfigured} onSearch={setSearch} onSelect={handleSelect} onHover={handleHover} />
+
+      <nav className="mobile-view-tabs" aria-label="Dashboard view">
+        {(["sites", "map", "data"] as MobileView[]).map((view) => (
+          <button key={view} type="button" className={mobileView === view ? "mobile-view-button active" : "mobile-view-button"} aria-pressed={mobileView === view} onClick={() => setMobileView(view)}>
+            {view === "sites" ? "Sites" : view === "map" ? "Map" : "Data"}
+          </button>
+        ))}
+      </nav>
+
+      <section className="workspace" data-mobile-view={mobileView} data-data-subview={dataSubview}>
+        <nav className="data-subview-tabs" aria-label="Data view section">
+          <button type="button" className={dataSubview === "readings" ? "active" : ""} aria-pressed={dataSubview === "readings"} onClick={() => setDataSubview("readings")}>Readings</button>
+          <button type="button" className={dataSubview === "series" ? "active" : ""} aria-pressed={dataSubview === "series"} onClick={() => setDataSubview("series")}>Time series</button>
+        </nav>
+
+        <SiteBrowser
+          sites={sites}
+          filteredSites={filteredSites}
+          conditions={conditions}
+          selectedSiteId={selectedSiteId}
+          hoveredSiteId={hoveredSiteId}
+          search={search}
+          loading={loadingSites}
+          productionDataConfigured={productionDataConfigured}
+          onSearch={setSearch}
+          onSelect={handleSelectFromList}
+          onHover={handleHover}
+        />
+
         <section className="center-column">
-          <MapSurface sites={sites} conditions={conditions} selectedSite={selectedSite} hoveredSite={hoveredSite} onSelectSite={handleSelect} onHoverSite={handleHover} demoMode={demoMode} />
-          <ChartPanel site={selectedSite} activeParameter={activeParameter} activeRange={activeRange} points={visibleSeries} onParameter={setActiveParameter} onRange={setActiveRange} onExport={handleExport} />
+          <MapSurface
+            sites={sites}
+            conditions={conditions}
+            selectedSite={selectedSite}
+            hoveredSite={hoveredSite}
+            onSelectSite={handleSelectFromMap}
+            onHoverSite={handleHover}
+            demoMode={demoMode}
+            hasOperationalLayers={sourceConnected}
+          />
+          <ChartPanel
+            site={selectedSite}
+            sourceConnected={sourceConnected}
+            activeParameter={activeParameter}
+            activeRange={activeRange}
+            points={visibleSeries}
+            onParameter={setActiveParameter}
+            onRange={setActiveRange}
+            onExport={handleExport}
+          />
         </section>
+
         <SiteDetail site={selectedSite} condition={selectedCondition} />
       </section>
     </main>
