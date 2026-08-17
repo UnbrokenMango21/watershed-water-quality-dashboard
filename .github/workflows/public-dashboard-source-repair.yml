@@ -1,0 +1,38 @@
+name: Public Dashboard Source Repair
+
+on:
+  push:
+    branches:
+      - final/public-dashboard-v1
+    paths:
+      - '.github/workflows/public-dashboard-source-repair.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: final/public-dashboard-v1
+      - name: Apply narrow TypeScript assertion fix
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('public-dashboard/components/DashboardShell.tsx')
+          text = path.read_text()
+          old = 'const map = document.createElement("arcgis-map") as ArcgisMapElement;'
+          new = 'const map = document.createElement("arcgis-map") as unknown as ArcgisMapElement;'
+          if old not in text:
+              raise SystemExit('Expected source line not found')
+          path.write_text(text.replace(old, new, 1))
+          PY
+      - name: Commit repair
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add public-dashboard/components/DashboardShell.tsx
+          git commit -m "fix(public-dashboard): narrow ArcGIS custom element assertion"
+          git push origin HEAD:final/public-dashboard-v1
