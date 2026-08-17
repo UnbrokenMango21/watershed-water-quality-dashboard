@@ -133,8 +133,7 @@ for (const viewport of viewports) {
     await page.locator(".site-row").filter({ hasText: "Demo Bald Eagle Creek Site" }).click();
 
     if (compact) {
-      await page.getByRole("button", { name: "Data", exact: true }).waitFor({ state: "visible" });
-      if (!(await page.getByRole("button", { name: "Data", exact: true }).getAttribute("aria-pressed"))?.includes("true")) failures.push(`${viewport.name}: site-list selection did not move compact UI to Data view`);
+      await page.waitForFunction(() => document.querySelector('.mobile-view-button[aria-pressed="true"]')?.textContent?.trim() === "Data", undefined, { timeout: 30000 });
       await page.getByRole("button", { name: "Readings", exact: true }).click();
     }
 
@@ -150,7 +149,11 @@ for (const viewport of viewports) {
     } else {
       await page.getByRole("tab", { name: /pH/ }).click();
     }
-    if ((await page.locator(".export-button").count()) !== 1) failures.push(`${viewport.name}: contextual CSV export is unavailable for sampled data`);
+    try {
+      await page.locator(".export-button").waitFor({ state: "visible", timeout: 30000 });
+    } catch {
+      failures.push(`${viewport.name}: contextual CSV export is unavailable for sampled data`);
+    }
 
     const dataMetrics = await collectLayoutMetrics(page);
     assertNoDocumentOverflow(viewport.name, dataMetrics, "data");
@@ -164,10 +167,11 @@ for (const viewport of viewports) {
     if ((await page.getByText("There are currently no items to display.", { exact: false }).count()) > 0) failures.push(`${viewport.name}: demo Layers tool opened an empty-state overlay`);
     await page.getByRole("button", { name: "Close Layers" }).click();
   } else {
-    await page.getByText("Monitoring data unavailable", { exact: true }).waitFor({ state: compact ? "hidden" : "visible", timeout: 30000 }).catch(() => undefined);
+    const sourceState = page.locator(".site-browser").getByText("Monitoring data unavailable", { exact: true });
+    await sourceState.waitFor({ state: compact ? "hidden" : "visible", timeout: 30000 }).catch(() => undefined);
     if (compact) {
       await page.getByRole("button", { name: "Sites", exact: true }).click();
-      await page.getByText("Monitoring data unavailable", { exact: true }).waitFor({ state: "visible" });
+      await sourceState.waitFor({ state: "visible" });
     }
     if ((await page.locator(".site-row").count()) !== 0) failures.push(`${viewport.name}: disconnected mode unexpectedly rendered sites`);
     const search = page.locator('.site-search-input[aria-label="Search monitoring sites"]');
