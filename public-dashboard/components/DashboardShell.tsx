@@ -387,7 +387,7 @@ export function DashboardShell() {
             />
           </div>
           {demoMode ? (
-            <div className="site-list" role="list" aria-label="Synthetic monitoring sites">
+            <div className="site-list" aria-label="Synthetic monitoring sites">
               {filteredSites.map((site) => {
                 const condition = conditions[site.id];
                 const primaryCount = condition?.measurements.filter((measurement) => parameterDefinitions.some((parameter) => parameter.key === measurement.parameter)).length ?? 0;
@@ -397,7 +397,6 @@ export function DashboardShell() {
                     id={`site-row-${site.id}`}
                     key={site.id}
                     type="button"
-                    role="listitem"
                     className={site.id === selectedSiteId ? "site-row selected" : "site-row"}
                     onClick={() => setSelectedSiteId(site.id)}
                   >
