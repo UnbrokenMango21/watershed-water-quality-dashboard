@@ -28,14 +28,14 @@
   .workspace[data-mobile-view="map"] .map-frame{width:100%;height:100%}
   .workspace[data-mobile-view="map"] .trend-panel{display:none}
 
-  .workspace[data-mobile-view="data"]{display:grid;grid-template-rows:34px minmax(0,1fr);overflow:hidden;background:var(--canvas)}
-  .workspace[data-mobile-view="data"]>.data-subview-tabs{display:grid;grid-template-columns:1fr 1fr;grid-row:1;height:34px;padding:3px 6px 2px;background:#fff;border-bottom:1px solid var(--line);gap:3px}
+  .workspace[data-mobile-view="data"]{display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:34px minmax(0,1fr);overflow:hidden;background:var(--canvas)}
+  .workspace[data-mobile-view="data"]>.data-subview-tabs{display:grid;grid-template-columns:1fr 1fr;grid-column:1;grid-row:1;height:34px;padding:3px 6px 2px;background:#fff;border-bottom:1px solid var(--line);gap:3px}
   .data-subview-tabs button{border:0;border-radius:4px;background:transparent;color:var(--muted);font-size:10px;font-weight:600;cursor:pointer}
   .data-subview-tabs button:hover{background:var(--surface-soft)}
   .data-subview-tabs button.active{background:var(--accent-soft);color:var(--accent-deep);box-shadow:inset 0 -2px 0 var(--accent)}
 
-  .workspace[data-mobile-view="data"][data-data-subview="readings"]>.site-detail{display:flex;grid-row:2;width:100%;height:100%;border-left:0;border-top:0;overflow:hidden}
-  .workspace[data-mobile-view="data"][data-data-subview="series"]>.center-column{display:block;grid-row:2;width:100%;height:100%;padding:6px;overflow:hidden}
+  .workspace[data-mobile-view="data"][data-data-subview="readings"]>.site-detail{display:flex;grid-column:1;grid-row:2;width:100%;height:100%;border-left:0;border-top:0;overflow:hidden}
+  .workspace[data-mobile-view="data"][data-data-subview="series"]>.center-column{display:block;grid-column:1;grid-row:2;width:100%;height:100%;padding:6px;overflow:hidden}
   .workspace[data-mobile-view="data"][data-data-subview="series"] .map-frame{display:none}
   .workspace[data-mobile-view="data"][data-data-subview="series"] .trend-panel{display:grid;width:100%;height:100%}
 
