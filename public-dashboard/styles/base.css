@@ -27,9 +27,9 @@
 * { box-sizing: border-box; }
 html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; }
 body { background: var(--canvas); color: var(--ink); font-family: var(--font-ui); font-size: 14px; }
-button, input { font: inherit; }
+button, input, select { font: inherit; }
 button { color: inherit; }
-button:focus-visible, input:focus-visible, [tabindex]:focus-visible { outline: 2px solid #4fa7dc; outline-offset: 2px; }
+button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focus-visible { outline: 2px solid #4fa7dc; outline-offset: 2px; }
 
 .dashboard-shell {
   width: 100%;
@@ -63,13 +63,15 @@ button:focus-visible, input:focus-visible, [tabindex]:focus-visible { outline: 2
 .kpi:last-child { border-right: 0; }
 .kpi span { color: var(--muted); font-size: 9px; line-height: 1.2; text-transform: uppercase; letter-spacing: .055em; }
 .kpi strong { font-size: 14px; line-height: 1.25; font-weight: 600; font-variant-numeric: tabular-nums; }
+.source-status { min-height: 32px; padding: 0 10px; display: inline-flex; align-items: center; gap: 7px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface-soft); color: var(--muted); font-size: 10px; font-weight: 600; }
+.source-status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--neutral); }
 
 .demo-banner { min-height: 27px; padding: 5px var(--s3); display: flex; align-items: center; justify-content: center; gap: var(--s1); background: #fff8e7; border-bottom: 1px solid #e8d6a7; color: #674b18; font-size: 10px; line-height: 1.3; white-space: nowrap; }
 .demo-banner strong { font-size: 9px; letter-spacing: .07em; }
 
-.mobile-view-tabs { display: none; }
+.mobile-view-tabs, .data-subview-tabs { display: none; }
 .workspace { min-width: 0; min-height: 0; overflow: hidden; display: grid; grid-template-columns: clamp(220px, 18vw, 274px) minmax(0, 1fr) clamp(286px, 21vw, 332px); }
-.center-column { min-width: 0; min-height: 0; overflow: hidden; padding: var(--s2); display: grid; grid-template-rows: minmax(0, 2fr) minmax(220px, 1fr); gap: var(--s2); }
+.center-column { min-width: 0; min-height: 0; overflow: hidden; padding: var(--s2); display: grid; grid-template-rows: minmax(0, 2fr) minmax(170px, .9fr); gap: var(--s2); }
 .site-browser, .site-detail, .trend-panel, .map-frame { min-width: 0; min-height: 0; background: var(--surface); }
 .site-browser { border-right: 1px solid var(--line); }
 .site-detail { border-left: 1px solid var(--line); }
