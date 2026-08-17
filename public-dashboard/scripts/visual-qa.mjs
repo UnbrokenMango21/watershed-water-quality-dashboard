@@ -73,12 +73,25 @@ async function collectLayoutMetrics(page) {
       shellClientHeight: shell?.clientHeight ?? 0,
       workspaceScrollHeight: workspace?.scrollHeight ?? 0,
       workspaceClientHeight: workspace?.clientHeight ?? 0,
+      workspaceClientWidth: workspace?.clientWidth ?? 0,
       shellRect: shellRect ? { left: shellRect.left, top: shellRect.top, right: shellRect.right, bottom: shellRect.bottom } : null,
       mapHeight: map?.getBoundingClientRect().height ?? 0,
       fontFamily: getComputedStyle(document.body).fontFamily,
       visibleControls,
     };
   });
+}
+
+async function assertCompactSurfaceFillsWorkspace(page, viewportName, selector, stage) {
+  const sizes = await page.evaluate((targetSelector) => {
+    const workspace = document.querySelector(".workspace");
+    const surface = document.querySelector(targetSelector);
+    return {
+      workspaceWidth: workspace?.getBoundingClientRect().width ?? 0,
+      surfaceWidth: surface?.getBoundingClientRect().width ?? 0,
+    };
+  }, selector);
+  if (sizes.workspaceWidth > 0 && sizes.surfaceWidth < sizes.workspaceWidth - 16) failures.push(`${viewportName}/${stage}: compact surface does not fill workspace (${Math.round(sizes.surfaceWidth)}px of ${Math.round(sizes.workspaceWidth)}px)`);
 }
 
 function assertNoDocumentOverflow(viewportName, metrics, stage) {
@@ -124,7 +137,10 @@ for (const viewport of viewports) {
 
     if (compact) await page.getByRole("button", { name: "Sites", exact: true }).click();
     await page.locator(".site-row").first().waitFor({ state: "visible", timeout: 30000 });
-    if (compact) await page.screenshot({ path: `${outDir}/${viewport.name}-sites.png`, fullPage: false });
+    if (compact) {
+      await assertCompactSurfaceFillsWorkspace(page, viewport.name, ".site-browser", "sites");
+      await page.screenshot({ path: `${outDir}/${viewport.name}-sites.png`, fullPage: false });
+    }
     if ((await page.locator(".site-row").count()) !== 8) failures.push(`${viewport.name}: expected 8 demo sites`);
 
     const search = page.locator('.site-search-input[aria-label="Search monitoring sites"]');
@@ -141,7 +157,10 @@ for (const viewport of viewports) {
 
     await page.getByRole("heading", { name: "Demo Bald Eagle Creek Site" }).waitFor({ state: "visible" });
     if (!(await page.locator(".missing-summary").innerText()).includes("1 of 5")) failures.push(`${viewport.name}: partial-sample summary is missing`);
-    if (compact) await page.screenshot({ path: `${outDir}/${viewport.name}-readings.png`, fullPage: false });
+    if (compact) {
+      await assertCompactSurfaceFillsWorkspace(page, viewport.name, ".site-detail", "readings");
+      await page.screenshot({ path: `${outDir}/${viewport.name}-readings.png`, fullPage: false });
+    }
 
     if (compact) await page.getByRole("button", { name: "Time series", exact: true }).click();
     if (compact) {
@@ -160,7 +179,10 @@ for (const viewport of viewports) {
 
     const dataMetrics = await collectLayoutMetrics(page);
     assertNoDocumentOverflow(viewport.name, dataMetrics, "data");
-    if (compact) await page.screenshot({ path: `${outDir}/${viewport.name}-data.png`, fullPage: false });
+    if (compact) {
+      await assertCompactSurfaceFillsWorkspace(page, viewport.name, ".trend-panel", "time-series");
+      await page.screenshot({ path: `${outDir}/${viewport.name}-data.png`, fullPage: false });
+    }
 
     if (compact) await page.getByRole("button", { name: "Map", exact: true }).click();
     await waitForMapStable(page, viewport.name);
@@ -176,6 +198,7 @@ for (const viewport of viewports) {
     if (compact) {
       await page.getByRole("button", { name: "Sites", exact: true }).click();
       await sourceState.waitFor({ state: "visible" });
+      await assertCompactSurfaceFillsWorkspace(page, viewport.name, ".site-browser", "disconnected-sites");
       await page.screenshot({ path: `${outDir}/${viewport.name}-sites.png`, fullPage: false });
     }
     if ((await page.locator(".site-row").count()) !== 0) failures.push(`${viewport.name}: disconnected mode unexpectedly rendered sites`);
@@ -189,12 +212,16 @@ for (const viewport of viewports) {
       await page.getByRole("button", { name: "Data", exact: true }).click();
       await page.getByRole("button", { name: "Readings", exact: true }).click();
       await page.getByRole("heading", { name: "No site selected" }).waitFor({ state: "visible" });
+      await assertCompactSurfaceFillsWorkspace(page, viewport.name, ".site-detail", "disconnected-readings");
       await page.getByRole("button", { name: "Time series", exact: true }).click();
     }
     if ((await page.locator(".range-controls").count()) !== 0 || (await page.locator(".parameter-tabs").count()) !== 0) failures.push(`${viewport.name}: disconnected chart exposes meaningless active controls`);
     const dataMetrics = await collectLayoutMetrics(page);
     assertNoDocumentOverflow(viewport.name, dataMetrics, "disconnected-data");
-    if (compact) await page.screenshot({ path: `${outDir}/${viewport.name}-data.png`, fullPage: false });
+    if (compact) {
+      await assertCompactSurfaceFillsWorkspace(page, viewport.name, ".trend-panel", "disconnected-time-series");
+      await page.screenshot({ path: `${outDir}/${viewport.name}-data.png`, fullPage: false });
+    }
     if (compact) await page.getByRole("button", { name: "Map", exact: true }).click();
     await waitForMapStable(page, viewport.name);
   }
@@ -216,4 +243,4 @@ if (failures.length) {
   console.error("Visual QA failures:\n" + failures.map((item) => `- ${item}`).join("\n"));
   process.exit(1);
 }
-console.log(`Visual QA passed for ${viewports.length} viewports in ${mode} mode with viewport-height and map-stability assertions.`);
+console.log(`Visual QA passed for ${viewports.length} viewports in ${mode} mode with viewport-height, full-surface compact views, and map-stability assertions.`);
