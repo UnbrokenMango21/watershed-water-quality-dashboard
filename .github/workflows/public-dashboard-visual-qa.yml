@@ -19,6 +19,8 @@ jobs:
   visual-qa:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      NEXT_PUBLIC_DASHBOARD_DATA_MODE: demo
     defaults:
       run:
         working-directory: public-dashboard
