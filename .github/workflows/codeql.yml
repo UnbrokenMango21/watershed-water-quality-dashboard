@@ -30,7 +30,7 @@ jobs:
           - language: python
             build-mode: none
           - language: swift
-            build-mode: autobuild
+            build-mode: manual
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
@@ -56,6 +56,17 @@ jobs:
         if: matrix.language == 'java-kotlin'
         working-directory: Phone App/Android App
         run: ./gradlew :app:assembleDebug
+
+      - name: Build nested iOS project for CodeQL
+        if: matrix.language == 'swift'
+        working-directory: Phone App/iPhone App/PAWatershedWatch
+        run: >-
+          xcodebuild build
+          -project PAWatershedWatch.xcodeproj
+          -scheme PAWatershedWatch
+          -destination 'generic/platform=iOS Simulator'
+          ARCHS=arm64
+          CODE_SIGNING_ALLOWED=NO
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v4
