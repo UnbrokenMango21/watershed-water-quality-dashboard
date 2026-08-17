@@ -17,10 +17,20 @@ permissions:
 
 jobs:
   visual-qa:
+    name: visual-qa (${{ matrix.qa_mode }})
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - qa_mode: demo
+            data_mode: demo
+          - qa_mode: disconnected
+            data_mode: production
     env:
-      NEXT_PUBLIC_DASHBOARD_DATA_MODE: demo
+      NEXT_PUBLIC_DASHBOARD_DATA_MODE: ${{ matrix.data_mode }}
+      DASHBOARD_QA_MODE: ${{ matrix.qa_mode }}
     defaults:
       run:
         working-directory: public-dashboard
@@ -54,7 +64,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: public-dashboard-visual-qa
+          name: public-dashboard-visual-qa-${{ matrix.qa_mode }}
           path: public-dashboard/artifacts/visual-qa
           if-no-files-found: warn
           retention-days: 14
