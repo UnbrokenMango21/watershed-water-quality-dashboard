@@ -14,7 +14,6 @@
 }
 
 @media (max-width:960px){
-  .dashboard-shell{grid-template-rows:auto auto auto minmax(0,1fr)}
   .mobile-view-tabs{display:grid;grid-template-columns:repeat(3,1fr);height:34px;padding:3px;background:#fff;border-bottom:1px solid var(--line);gap:2px}
   .mobile-view-button{border:0;border-radius:4px;background:transparent;color:var(--muted);font-size:10px;font-weight:600;cursor:pointer}
   .mobile-view-button:hover{background:var(--surface-soft)}
@@ -42,6 +41,9 @@
 
   .site-row{min-height:58px}.site-row-copy strong{font-size:11.5px}.site-row-copy span{font-size:10px}
   .trend-toolbar{align-items:flex-start}.chart-actions{align-items:flex-end;flex-direction:column}
+  .parameter-tabs{display:none}
+  .parameter-select-wrap{margin-top:7px;display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:8px;color:var(--muted);font-size:9px}
+  .parameter-select-wrap select{width:100%;height:34px;min-width:0;border:1px solid var(--line);border-radius:var(--radius);padding:0 28px 0 9px;background:#fff;color:var(--ink);font-size:10px}
 }
 
 @media (max-width:640px){
@@ -55,13 +57,10 @@
   .workspace[data-mobile-view="data"][data-data-subview="series"]>.center-column{padding:5px}
   .trend-panel{padding:9px}
   .trend-toolbar{display:grid;gap:7px}
-  .chart-actions{width:100%;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px;align-items:center}
-  .range-controls{width:100%;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));overflow:hidden}
+  .chart-actions{width:100%;display:flex;flex-direction:column;align-items:stretch;gap:6px}
+  .range-controls{width:100%;display:grid;grid-template-columns:repeat(4,minmax(0,1fr)) minmax(66px,1.25fr);overflow:hidden}
   .range-button{min-width:0;min-height:34px;padding:0 3px;white-space:nowrap;font-size:9px}
-  .export-button{min-height:34px}
-  .parameter-tabs{display:none}
-  .parameter-select-wrap{margin-top:7px;display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:8px;color:var(--muted);font-size:9px}
-  .parameter-select-wrap select{width:100%;height:34px;min-width:0;border:1px solid var(--line);border-radius:var(--radius);padding:0 28px 0 9px;background:#fff;color:var(--ink);font-size:10px}
+  .export-button{min-height:34px;align-self:flex-end}
   .chart-caption{padding-left:8px}.trend-chart{min-height:138px}
 
   arcgis-search{max-width:58vw}
