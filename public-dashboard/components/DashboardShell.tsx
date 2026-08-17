@@ -234,7 +234,7 @@ export function DashboardShell() {
       const GraphicsLayer = layerModule.default;
       const Point = pointModule.default;
       const SimpleMarkerSymbol = symbolModule.default;
-      const map = document.createElement("arcgis-map") as ArcgisMapElement;
+      const map = document.createElement("arcgis-map") as unknown as ArcgisMapElement;
       map.setAttribute("basemap", "topo-vector");
       map.setAttribute("center", "-77.85,40.9");
       map.setAttribute("zoom", "7");
