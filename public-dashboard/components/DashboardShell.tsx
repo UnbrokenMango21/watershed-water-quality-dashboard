@@ -2,13 +2,6 @@
 
 import { createElement, useEffect, useMemo, useRef, useState } from "react";
 
-import "@arcgis/map-components/components/arcgis-home";
-import "@arcgis/map-components/components/arcgis-layer-list";
-import "@arcgis/map-components/components/arcgis-map";
-import "@arcgis/map-components/components/arcgis-zoom";
-import "@esri/calcite-components/components/calcite-button";
-import "@esri/calcite-components/components/calcite-input-text";
-
 const parameterLabels = [
   "Water Temperature",
   "pH",
@@ -48,27 +41,46 @@ export function DashboardShell() {
   );
 
   useEffect(() => {
+    let cancelled = false;
     const host = mapHost.current;
     if (!host) return;
 
-    const map = document.createElement("arcgis-map");
-    map.setAttribute("basemap", "topo-vector");
-    map.setAttribute("center", "-77.85,40.9");
-    map.setAttribute("zoom", "7");
-    map.className = "map-element";
-    map.setAttribute("aria-label", "Central Pennsylvania watershed monitoring map");
+    async function initializeBrowserComponents() {
+      await Promise.all([
+        import("@arcgis/map-components/components/arcgis-home"),
+        import("@arcgis/map-components/components/arcgis-layer-list"),
+        import("@arcgis/map-components/components/arcgis-map"),
+        import("@arcgis/map-components/components/arcgis-zoom"),
+        import("@esri/calcite-components/components/calcite-button"),
+        import("@esri/calcite-components/components/calcite-input-text"),
+      ]);
 
-    const zoom = document.createElement("arcgis-zoom");
-    zoom.setAttribute("position", "top-left");
-    const home = document.createElement("arcgis-home");
-    home.setAttribute("position", "top-left");
-    const layers = document.createElement("arcgis-layer-list");
-    layers.setAttribute("position", "top-right");
+      if (cancelled || !mapHost.current) return;
 
-    map.append(zoom, home, layers);
-    host.replaceChildren(map);
+      const map = document.createElement("arcgis-map");
+      map.setAttribute("basemap", "topo-vector");
+      map.setAttribute("center", "-77.85,40.9");
+      map.setAttribute("zoom", "7");
+      map.className = "map-element";
+      map.setAttribute("aria-label", "Central Pennsylvania watershed monitoring map");
 
-    return () => host.replaceChildren();
+      const zoom = document.createElement("arcgis-zoom");
+      zoom.setAttribute("position", "top-left");
+      const home = document.createElement("arcgis-home");
+      home.setAttribute("position", "top-left");
+      const layers = document.createElement("arcgis-layer-list");
+      layers.setAttribute("position", "top-right");
+
+      map.append(zoom, home, layers);
+      mapHost.current.replaceChildren(map);
+    }
+
+    void initializeBrowserComponents();
+
+    return () => {
+      cancelled = true;
+      host.replaceChildren();
+    };
   }, []);
 
   return (
