@@ -8,6 +8,9 @@ import { registerArcgisComponents } from "./registerArcgisComponents";
 type ArcgisMapElement = HTMLElement & {
   map?: { add: (layer: unknown) => void };
   zoom?: number;
+  ready?: boolean;
+  stationary?: boolean;
+  updating?: boolean;
   goTo: (target: unknown, options?: unknown) => Promise<unknown>;
   hitTest: (target: unknown, options?: unknown) => Promise<{ results: Array<Record<string, unknown>> }>;
 };
@@ -40,13 +43,14 @@ export function useDashboardMap({
     if (!host) return;
 
     async function initializeMap() {
-      const [graphicsModule, featureLayerModule, graphicsLayerModule, pointModule, symbolModule, rendererModule] = await Promise.all([
+      const [graphicsModule, featureLayerModule, graphicsLayerModule, pointModule, symbolModule, rendererModule, reactiveUtils] = await Promise.all([
         import("@arcgis/core/Graphic.js"),
         import("@arcgis/core/layers/FeatureLayer.js"),
         import("@arcgis/core/layers/GraphicsLayer.js"),
         import("@arcgis/core/geometry/Point.js"),
         import("@arcgis/core/symbols/SimpleMarkerSymbol.js"),
         import("@arcgis/core/renderers/SimpleRenderer.js"),
+        import("@arcgis/core/core/reactiveUtils.js"),
         registerArcgisComponents(),
       ]);
       if (cancelled || !mapHost.current) return;
@@ -62,7 +66,11 @@ export function useDashboardMap({
       map.setAttribute("basemap", "topo-vector");
       map.setAttribute("center", "-77.85,40.9");
       map.setAttribute("zoom", "7");
+      map.setAttribute("popup-disabled", "");
+      map.setAttribute("attribution-mode", "light");
       map.className = "map-element";
+      map.dataset.viewReady = "false";
+      map.dataset.viewStable = "false";
       map.setAttribute("aria-label", "Central Pennsylvania watershed monitoring map");
 
       const component = (tag: string, slot: string, attrs: Record<string, string> = {}) => {
@@ -81,7 +89,15 @@ export function useDashboardMap({
         component("arcgis-scale-bar", "bottom-left", { unit: "dual" }),
       );
 
+      const waitForStableView = async () => {
+        map.dataset.viewStable = "false";
+        await reactiveUtils.whenOnce(() => Boolean(map.ready && map.stationary && !map.updating));
+        if (!cancelled) map.dataset.viewStable = "true";
+      };
+
       const onReady = () => {
+        map.dataset.viewReady = "true";
+        void waitForStableView();
         if (!demoMode || sites.length === 0 || !map.map) return;
 
         const siteGraphics = sites.map((site, index) => new Graphic({
@@ -155,10 +171,16 @@ export function useDashboardMap({
           });
         });
         map.addEventListener("arcgisViewPointerLeave", () => onHoverSite(null));
-        void siteLayer.load().then(() => map.goTo(siteLayer.fullExtent, { duration: 0 })).catch(() => undefined);
+        void siteLayer.load().then(async () => {
+          await map.goTo(siteLayer.fullExtent, { duration: 0 });
+          await waitForStableView();
+        }).catch(() => undefined);
       };
 
       map.addEventListener("arcgisViewReadyChange", onReady, { once: true });
+      map.addEventListener("arcgisViewChange", () => {
+        if (map.ready && (!map.stationary || map.updating)) map.dataset.viewStable = "false";
+      });
       map.addEventListener("arcgisViewClick", async (event) => {
         if (!demoMode) return;
         try {
@@ -194,6 +216,7 @@ export function useDashboardMap({
     if (!selectedSite || !mapElementRef.current) return;
     const currentZoom = mapElementRef.current.zoom ?? 8;
     const targetZoom = Math.min(Math.max(currentZoom, 9), 11);
+    mapElementRef.current.dataset.viewStable = "false";
     void mapElementRef.current.goTo({ center: [selectedSite.longitude, selectedSite.latitude], zoom: targetZoom }, { duration: 300 }).catch(() => undefined);
   }, [selectedSite]);
 
