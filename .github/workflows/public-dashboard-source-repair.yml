@@ -17,22 +17,25 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: final/public-dashboard-v1
-      - name: Apply narrow TypeScript assertion fix
+      - name: Preserve native button semantics
         run: |
           python - <<'PY'
           from pathlib import Path
           path = Path('public-dashboard/components/DashboardShell.tsx')
           text = path.read_text()
-          old = 'const map = document.createElement("arcgis-map") as ArcgisMapElement;'
-          new = 'const map = document.createElement("arcgis-map") as unknown as ArcgisMapElement;'
-          if old not in text:
-              raise SystemExit('Expected source line not found')
-          path.write_text(text.replace(old, new, 1))
+          text2 = text.replace(
+              '<div className="site-list" role="list" aria-label="Synthetic monitoring sites">',
+              '<div className="site-list" aria-label="Synthetic monitoring sites">',
+              1,
+          ).replace('                    role="listitem"\n', '', 1)
+          if text2 == text:
+              raise SystemExit('Expected site-list semantics not found')
+          path.write_text(text2)
           PY
       - name: Commit repair
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add public-dashboard/components/DashboardShell.tsx
-          git commit -m "fix(public-dashboard): narrow ArcGIS custom element assertion"
+          git commit -m "fix(public-dashboard): preserve native site button semantics"
           git push origin HEAD:final/public-dashboard-v1
