@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import "@esri/calcite-components/dist/calcite/calcite.css";
 import "./globals.css";
 
 export const metadata: Metadata = {
