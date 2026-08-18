@@ -5,6 +5,9 @@ import type { DashboardSite, LatestSiteCondition } from "@/lib/data/DashboardDat
 import { completenessFor, completenessLabel } from "./dashboard-utils";
 import { registerArcgisComponents } from "./registerArcgisComponents";
 
+const WATERSHED_LAYER_URL = process.env.NEXT_PUBLIC_ARCGIS_WATERSHEDS_VIEW_URL
+  || "https://services.arcgis.com/P3ePLMYs2RVChkJx/arcgis/rest/services/Watershed_Boundary_Dataset_HUC_12s/FeatureServer/0";
+
 type ArcgisMapElement = HTMLElement & {
   map?: { add: (layer: unknown) => void };
   zoom?: number;
@@ -36,7 +39,11 @@ export function useDashboardMap({
   const mapElementRef = useRef<ArcgisMapElement | null>(null);
   const selectionUpdaterRef = useRef<((site: DashboardSite | null) => void) | null>(null);
   const hoverUpdaterRef = useRef<((site: DashboardSite | null) => void) | null>(null);
+  const watershedSelectionUpdaterRef = useRef<((site: DashboardSite | null) => void) | null>(null);
   const waitForStableRef = useRef<(() => Promise<void>) | null>(null);
+  const selectedSiteRef = useRef<DashboardSite | null>(selectedSite);
+
+  useEffect(() => { selectedSiteRef.current = selectedSite; }, [selectedSite]);
 
   useEffect(() => {
     let cancelled = false;
@@ -44,12 +51,13 @@ export function useDashboardMap({
     if (!host) return;
 
     async function initializeMap() {
-      const [graphicsModule, featureLayerModule, graphicsLayerModule, pointModule, symbolModule, rendererModule, reactiveUtils] = await Promise.all([
+      const [graphicsModule, featureLayerModule, graphicsLayerModule, pointModule, markerSymbolModule, fillSymbolModule, rendererModule, reactiveUtils] = await Promise.all([
         import("@arcgis/core/Graphic.js"),
         import("@arcgis/core/layers/FeatureLayer.js"),
         import("@arcgis/core/layers/GraphicsLayer.js"),
         import("@arcgis/core/geometry/Point.js"),
         import("@arcgis/core/symbols/SimpleMarkerSymbol.js"),
+        import("@arcgis/core/symbols/SimpleFillSymbol.js"),
         import("@arcgis/core/renderers/SimpleRenderer.js"),
         import("@arcgis/core/core/reactiveUtils.js"),
         registerArcgisComponents(),
@@ -60,7 +68,8 @@ export function useDashboardMap({
       const FeatureLayer = featureLayerModule.default;
       const GraphicsLayer = graphicsLayerModule.default;
       const Point = pointModule.default;
-      const SimpleMarkerSymbol = symbolModule.default;
+      const SimpleMarkerSymbol = markerSymbolModule.default;
+      const SimpleFillSymbol = fillSymbolModule.default;
       const SimpleRenderer = rendererModule.default;
       const map = document.createElement("arcgis-map") as unknown as ArcgisMapElement;
       map.id = "watershed-map";
@@ -72,6 +81,7 @@ export function useDashboardMap({
       map.className = "map-element";
       map.dataset.viewReady = "false";
       map.dataset.viewStable = "false";
+      map.dataset.watershedLayerReady = "false";
       map.setAttribute("aria-label", "Central Pennsylvania watershed monitoring map");
 
       const component = (tag: string, slot: string, attrs: Record<string, string> = {}) => {
@@ -106,7 +116,68 @@ export function useDashboardMap({
       const onReady = () => {
         syncStableState();
         void waitForStableView();
-        if (!demoMode || sites.length === 0 || !map.map) return;
+        if (!map.map) return;
+
+        // Public USGS/Esri Watershed Boundary Dataset reference geography.
+        // This is real geographic context and is intentionally independent of
+        // whether production monitoring observations are connected.
+        const watershedLayer = new FeatureLayer({
+          url: WATERSHED_LAYER_URL,
+          title: "HUC12 watersheds (USGS)",
+          definitionExpression: "states LIKE '%PA%'",
+          outFields: ["huc12", "name", "states"],
+          popupEnabled: false,
+          minScale: 0,
+          maxScale: 0,
+          opacity: 0.9,
+          blendMode: "multiply",
+          renderer: new SimpleRenderer({
+            symbol: new SimpleFillSymbol({
+              style: "solid",
+              color: [31, 139, 160, 0.11],
+              outline: { color: [34, 117, 151, 0.58], width: 1.05 },
+            }),
+          }),
+        });
+        const watershedSelectionLayer = new GraphicsLayer({ title: "Selected watershed", listMode: "hide" });
+        map.map.add(watershedLayer);
+        map.map.add(watershedSelectionLayer);
+
+        watershedSelectionUpdaterRef.current = (site) => {
+          watershedSelectionLayer.removeAll();
+          if (!site) return;
+          const point = new Point({ longitude: site.longitude, latitude: site.latitude });
+          void watershedLayer.queryFeatures({
+            geometry: point,
+            spatialRelationship: "intersects",
+            returnGeometry: true,
+            outFields: ["huc12", "name"],
+          }).then((result) => {
+            if (cancelled || selectedSiteRef.current?.id !== site.id) return;
+            const watershed = result.features[0];
+            if (!watershed?.geometry) return;
+            watershedSelectionLayer.add(new Graphic({
+              geometry: watershed.geometry,
+              attributes: watershed.attributes,
+              symbol: new SimpleFillSymbol({
+                style: "solid",
+                color: [0, 103, 190, 0.24],
+                outline: { color: [0, 78, 145, 0.96], width: 2.35 },
+              }),
+            }));
+          }).catch(() => undefined);
+        };
+        watershedSelectionUpdaterRef.current(selectedSiteRef.current);
+
+        void watershedLayer.load().then(async () => {
+          if (cancelled) return;
+          map.dataset.watershedLayerReady = "true";
+          await waitForStableView();
+        }).catch(() => {
+          if (!cancelled) map.dataset.watershedLayerReady = "error";
+        });
+
+        if (!demoMode || sites.length === 0) return;
 
         const siteGraphics = sites.map((site, index) => new Graphic({
           geometry: new Point({ longitude: site.longitude, latitude: site.latitude }),
@@ -199,7 +270,7 @@ export function useDashboardMap({
           const siteId = graphic?.attributes?.siteId;
           if (typeof siteId === "string") onSelectSite(siteId);
         } catch {
-          // Basemap clicks with no monitoring feature are intentionally a no-op.
+          // Basemap/watershed clicks with no monitoring feature are intentionally a no-op.
         }
       });
 
@@ -212,6 +283,7 @@ export function useDashboardMap({
       cancelled = true;
       selectionUpdaterRef.current = null;
       hoverUpdaterRef.current = null;
+      watershedSelectionUpdaterRef.current = null;
       waitForStableRef.current = null;
       mapElementRef.current = null;
       host.replaceChildren();
@@ -220,6 +292,7 @@ export function useDashboardMap({
 
   useEffect(() => {
     selectionUpdaterRef.current?.(selectedSite);
+    watershedSelectionUpdaterRef.current?.(selectedSite);
     if (!selectedSite || !mapElementRef.current) return;
     const map = mapElementRef.current;
     const currentZoom = map.zoom ?? 8;
