@@ -21,11 +21,19 @@ async function waitForMapStable(page, viewportName) {
   try {
     await page.waitForFunction(() => {
       const map = document.querySelector("arcgis-map");
-      return Boolean(map && map.ready === true && map.stationary === true && map.updating === false && map.dataset.viewStable === "true");
+      return Boolean(
+        map
+        && map.ready === true
+        && map.stationary === true
+        && map.updating === false
+        && map.dataset.viewStable === "true"
+        && map.dataset.watershedLayerReady === "true"
+      );
     }, undefined, { timeout: 90000 });
     await page.waitForTimeout(450);
   } catch {
-    failures.push(`${viewportName}: ArcGIS map did not reach a ready/stationary/non-updating state before capture`);
+    const watershedState = await page.locator("arcgis-map").evaluate((map) => map.dataset.watershedLayerReady).catch(() => "missing");
+    failures.push(`${viewportName}: ArcGIS map/reference watershed layer did not reach a ready/stationary state (watershed=${watershedState})`);
   }
 }
 
@@ -103,6 +111,19 @@ function assertNoDocumentOverflow(viewportName, metrics, stage) {
   for (const control of metrics.visibleControls) {
     if (control.left < -1 || control.right > metrics.viewportWidth + 1 || control.top < -1 || control.bottom > metrics.viewportHeight + 1) failures.push(`${viewportName}/${stage}: visible control outside viewport (${control.label})`);
     if (control.visibleText && control.clientWidth > 0 && control.scrollWidth > control.clientWidth + 2 && control.tag !== "INPUT" && control.tag !== "SELECT") failures.push(`${viewportName}/${stage}: clipped visible control text (${control.visibleText})`);
+  }
+}
+
+async function assertWatershedLayerTool(page, viewportName, label) {
+  const layersButton = page.getByRole("button", { name: "Layers", exact: true });
+  try {
+    await layersButton.waitFor({ state: "visible", timeout: 30000 });
+    await layersButton.click();
+    await page.locator('.map-tool-panel[data-map-panel="layers"]').waitFor({ state: "visible", timeout: 30000 });
+    if ((await page.getByText("There are currently no items to display.", { exact: false }).count()) > 0) failures.push(`${viewportName}: ${label} Layers tool opened an empty-state overlay`);
+    await page.getByRole("button", { name: "Close Layers" }).click();
+  } catch {
+    failures.push(`${viewportName}: watershed Layers action is unavailable in ${label} mode`);
   }
 }
 
@@ -186,12 +207,7 @@ for (const viewport of viewports) {
 
     if (compact) await page.getByRole("button", { name: "Map", exact: true }).click();
     await waitForMapStable(page, viewport.name);
-    const layersButton = page.getByRole("button", { name: "Layers", exact: true });
-    await layersButton.waitFor({ state: "visible" });
-    await layersButton.click();
-    await page.locator('.map-tool-panel[data-map-panel="layers"]').waitFor({ state: "visible" });
-    if ((await page.getByText("There are currently no items to display.", { exact: false }).count()) > 0) failures.push(`${viewport.name}: demo Layers tool opened an empty-state overlay`);
-    await page.getByRole("button", { name: "Close Layers" }).click();
+    await assertWatershedLayerTool(page, viewport.name, "demo");
   } else {
     const sourceState = page.locator(".site-browser").getByText("Monitoring data unavailable", { exact: true });
     await sourceState.waitFor({ state: compact ? "hidden" : "visible", timeout: 30000 }).catch(() => undefined);
@@ -204,8 +220,6 @@ for (const viewport of viewports) {
     if ((await page.locator(".site-row").count()) !== 0) failures.push(`${viewport.name}: disconnected mode unexpectedly rendered sites`);
     const search = page.locator('.site-search-input[aria-label="Search monitoring sites"]');
     if (!(await search.isDisabled())) failures.push(`${viewport.name}: disconnected site search should be disabled`);
-    if ((await page.getByRole("button", { name: "Layers", exact: true }).count()) !== 0) failures.push(`${viewport.name}: Layers action is exposed without operational layers`);
-    if ((await page.getByRole("button", { name: "Legend", exact: true }).count()) !== 0) failures.push(`${viewport.name}: Legend action is exposed without operational layers`);
     if ((await page.locator(".sample-summary").count()) !== 0 || (await page.locator(".metrics").count()) !== 0) failures.push(`${viewport.name}: disconnected mode renders observation-level UI`);
 
     if (compact) {
@@ -224,6 +238,7 @@ for (const viewport of viewports) {
     }
     if (compact) await page.getByRole("button", { name: "Map", exact: true }).click();
     await waitForMapStable(page, viewport.name);
+    await assertWatershedLayerTool(page, viewport.name, "disconnected");
   }
 
   const finalMetrics = await collectLayoutMetrics(page);
@@ -243,4 +258,4 @@ if (failures.length) {
   console.error("Visual QA failures:\n" + failures.map((item) => `- ${item}`).join("\n"));
   process.exit(1);
 }
-console.log(`Visual QA passed for ${viewports.length} viewports in ${mode} mode with viewport-height, full-surface compact views, and map-stability assertions.`);
+console.log(`Visual QA passed for ${viewports.length} viewports in ${mode} mode with viewport-height, watershed-layer, and map-stability assertions.`);
