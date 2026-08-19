@@ -9,7 +9,8 @@
   "scripts": {
     "test:contracts": "node --test tests/validation/*.test.mjs",
     "test:trigger": "node --test tests/validation-trigger/firestore_trigger.test.mjs",
-    "test:review": "node tests/review/run-tests.cjs"
+    "test:review": "node tests/review/run-tests.cjs",
+    "test:publication": "node --test tests/publication/*.test.mjs"
   },
   "dependencies": {
     "firebase-admin": "14.2.0",
