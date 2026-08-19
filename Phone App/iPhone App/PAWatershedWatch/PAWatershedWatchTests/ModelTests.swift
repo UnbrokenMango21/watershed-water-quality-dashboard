@@ -101,17 +101,27 @@ final class ModelTests: XCTestCase {
         // comparison as before.
         XCTAssertTrue(submission["submitted_at"] is FieldValue, "submission submitted_at must use the trusted Firestore server-timestamp sentinel, not a client timestamp")
         XCTAssertTrue(revision["submitted_at"] is FieldValue, "revision submitted_at must use the trusted Firestore server-timestamp sentinel, not a client timestamp")
+        XCTAssertEqual(submission["mobile_app_version"] as? String, snapshot.appVersion)
+        XCTAssertEqual(revision["mobile_app_version"] as? String, snapshot.appVersion)
 
         let fixture = try Self.goldenFixture()
         let fixtureCase = try XCTUnwrap((fixture["serializationCases"] as? [[String: Any]])?.first)
         let expected = try XCTUnwrap(fixtureCase["expected"] as? [String: Any])
+        let expectedSubmission = Self.normalizingExpectedMobileAppVersion(
+            try XCTUnwrap(expected["submission"] as? [String: Any]),
+            with: snapshot.appVersion
+        )
+        let expectedRevision = Self.normalizingExpectedMobileAppVersion(
+            try XCTUnwrap(expected["revision"] as? [String: Any]),
+            with: snapshot.appVersion
+        )
         XCTAssertEqual(
             try Self.jsonData(Self.droppingServerTimestampSentinel(submission)),
-            try Self.jsonData(Self.droppingServerTimestampSentinel(try XCTUnwrap(expected["submission"] as? [String: Any])))
+            try Self.jsonData(Self.droppingServerTimestampSentinel(expectedSubmission))
         )
         XCTAssertEqual(
             try Self.jsonData(Self.droppingServerTimestampSentinel(revision)),
-            try Self.jsonData(Self.droppingServerTimestampSentinel(try XCTUnwrap(expected["revision"] as? [String: Any])))
+            try Self.jsonData(Self.droppingServerTimestampSentinel(expectedRevision))
         )
         XCTAssertEqual(
             try Self.jsonData(snapshot.measurements.map { FirebaseMapper.measurement($0, in: snapshot) }),
@@ -122,6 +132,40 @@ final class ModelTests: XCTestCase {
             try Self.jsonData(snapshot.attachments.map { FirebaseMapper.attachment($0, in: snapshot, storagePath: path) }),
             try Self.jsonData(try XCTUnwrap(expected["attachments"]))
         )
+    }
+
+    @MainActor
+    func testCorrectionResubmitAcknowledgementAllowsParentRevisionMismatchOnlyWhileCorrectionIsRequested() throws {
+        let revision1 = "11111111-1111-4111-8111-111111111111"
+        let revision2 = "22222222-2222-4222-8222-222222222222"
+
+        XCTAssertNil(try FirebaseMobileService.acknowledgedWorkflow(
+            status: "NEEDS_CORRECTION",
+            remoteRevisionID: revision1,
+            snapshotRevisionID: revision2,
+            isCorrection: true
+        ), "A new correction revision must be allowed to append while the server still points at the retained parent revision")
+
+        XCTAssertEqual(try FirebaseMobileService.acknowledgedWorkflow(
+            status: "PENDING_REVIEW",
+            remoteRevisionID: revision2,
+            snapshotRevisionID: revision2,
+            isCorrection: true
+        ), .pendingReview, "A retry after revision 2 reaches the server must remain idempotent")
+
+        XCTAssertThrowsError(try FirebaseMobileService.acknowledgedWorkflow(
+            status: "PENDING_REVIEW",
+            remoteRevisionID: revision1,
+            snapshotRevisionID: revision2,
+            isCorrection: true
+        ), "A mismatched revision outside the correction-request state must still be rejected")
+
+        XCTAssertThrowsError(try FirebaseMobileService.acknowledgedWorkflow(
+            status: "NEEDS_CORRECTION",
+            remoteRevisionID: revision1,
+            snapshotRevisionID: revision2,
+            isCorrection: false
+        ), "A non-correction write must never inherit the correction mismatch exception")
     }
 
     func testSharedGoldenFixtureRemainsAvailableToBothNativeSuites() throws {
@@ -147,6 +191,15 @@ final class ModelTests: XCTestCase {
     private static func droppingServerTimestampSentinel(_ dictionary: [String: Any]) -> [String: Any] {
         var copy = dictionary
         copy.removeValue(forKey: "submitted_at")
+        return copy
+    }
+
+    /// The golden fixture is shared with Android, whose release version can differ from iOS.
+    /// Keep the field covered explicitly above, then normalize only the expected version value
+    /// so every other contract field remains byte-for-byte identical.
+    private static func normalizingExpectedMobileAppVersion(_ dictionary: [String: Any], with appVersion: String) -> [String: Any] {
+        var copy = dictionary
+        copy["mobile_app_version"] = appVersion
         return copy
     }
 
