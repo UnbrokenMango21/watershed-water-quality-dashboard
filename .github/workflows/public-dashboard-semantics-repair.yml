@@ -1,0 +1,43 @@
+name: Public Dashboard Semantics Repair
+
+on:
+  push:
+    branches:
+      - final/public-dashboard-v1
+    paths:
+      - '.github/workflows/public-dashboard-semantics-repair.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: final/public-dashboard-v1
+      - name: Preserve native button semantics
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('public-dashboard/components/DashboardShell.tsx')
+          text = path.read_text()
+          old_list = '<div className="site-list" role="list" aria-label="Synthetic monitoring sites">'
+          new_list = '<div className="site-list" aria-label="Synthetic monitoring sites">'
+          if old_list not in text:
+              raise SystemExit('Expected site-list role marker not found')
+          text = text.replace(old_list, new_list, 1)
+          old_role = '                    role="listitem"\n'
+          if old_role not in text:
+              raise SystemExit('Expected listitem role marker not found')
+          text = text.replace(old_role, '', 1)
+          path.write_text(text)
+          PY
+      - name: Commit repair
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add public-dashboard/components/DashboardShell.tsx
+          git commit -m "fix(public-dashboard): preserve native site button semantics"
+          git push origin HEAD:final/public-dashboard-v1
