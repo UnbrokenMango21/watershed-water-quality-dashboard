@@ -1,4 +1,12 @@
 import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+
+const catalog = JSON.parse(readFileSync(new URL('../config/production_measurement_catalog.json', import.meta.url), 'utf8'));
+const measurementCatalog = new Map(
+  catalog.measurements
+    .filter((measurement) => measurement.support === 'FULLY_SUPPORTED')
+    .map((measurement) => [measurement.parameterCode, measurement]),
+);
 
 export class PublicationEligibilityError extends Error {
   constructor(message) {
@@ -46,6 +54,11 @@ export function recordHash(value) {
   return createHash('sha256').update(JSON.stringify(normalizedForHash(value))).digest('hex');
 }
 
+export function publicObservationId(revisionId) {
+  const privateRevisionId = requiredString(revisionId, 'revision id');
+  return `obs_${createHash('sha256').update(`pa-watershed-watch/public-observation/v1:${privateRevisionId}`).digest('hex')}`;
+}
+
 export function assertPublicationEligibility(submission, approvedRevisionId) {
   if (!submission) throw new PublicationEligibilityError('Submission does not exist');
   const revisionId = requiredString(approvedRevisionId, 'approved revision id');
@@ -77,6 +90,22 @@ function siteAttributes(site) {
     updated_at: toEpochMillis(site.updated_at, 'site.updated_at'),
     schema_version: site.schema_version ?? null,
   };
+}
+
+function validateMeasurementContract(measurement) {
+  const code = requiredString(measurement.parameter_code, 'measurement.parameter_code');
+  const definition = measurementCatalog.get(code);
+  if (!definition || definition.serializationTarget !== 'measurement') {
+    throw new PublicationEligibilityError(`Measurement parameter '${code}' is not in the production publication contract`);
+  }
+  const unit = requiredString(measurement.unit_code, `measurement ${code} unit_code`);
+  if (unit !== definition.canonicalUnit) {
+    throw new PublicationEligibilityError(`Measurement ${code} unit '${unit}' does not match canonical unit '${definition.canonicalUnit}'`);
+  }
+  if (measurement.qualifier != null && String(measurement.qualifier).trim() !== '') {
+    throw new PublicationEligibilityError(`Measurement ${code} has a qualifier requiring scientific interpretation before public publication`);
+  }
+  return definition;
 }
 
 function buildWideMeasurements(measurements) {
@@ -111,14 +140,21 @@ export function buildPublicationBundle({ submission, revision, measurements, sit
   if (revision.event_id !== submission.event_id) throw new PublicationEligibilityError('Revision event_id does not match its parent submission');
   if (revision.site_id !== submission.site_id || site.site_id !== submission.site_id) throw new PublicationEligibilityError('Submission, revision and site catalog site_id values must match');
 
+  const collectedAt = toEpochMillis(revision.collected_at, 'revision.collected_at');
+  const approvedAt = toEpochMillis(submission.reviewed_at, 'submission.reviewed_at');
+  if (collectedAt == null || approvedAt == null) throw new PublicationEligibilityError('Collection and approval timestamps are required');
+
+  const measurementList = [...measurements];
+  const measurementDefinitions = new Map(measurementList.map((measurement) => [measurement.measurement_id, validateMeasurementContract(measurement)]));
+  const publicId = publicObservationId(revisionId);
+
   const siteAttrs = siteAttributes(site);
   const siteFeature = { attributes: { ...siteAttrs }, geometry: pointGeometry(siteAttrs.longitude, siteAttrs.latitude) };
   siteFeature.attributes.record_hash = recordHash({ attributes: siteFeature.attributes, geometry: siteFeature.geometry });
 
-  const collectedAt = toEpochMillis(revision.collected_at, 'revision.collected_at');
-  const measurementList = [...measurements];
   const observationAttributes = {
     publication_key: `approved:${revisionId}`,
+    public_observation_id: publicId,
     event_id: requiredString(submission.event_id, 'submission.event_id'),
     source_submission_id: requiredString(submission.submission_id, 'submission.submission_id'),
     source_revision_id: revisionId,
@@ -126,7 +162,7 @@ export function buildPublicationBundle({ submission, revision, measurements, sit
     collector_user_id: submission.collector_user_id ?? revision.collector_user_id ?? null,
     site_id: siteAttrs.site_id, site_code: siteAttrs.site_code, site_name: siteAttrs.site_name, county: siteAttrs.county, watershed_name: siteAttrs.watershed_name,
     collected_at: collectedAt,
-    approved_at: toEpochMillis(submission.reviewed_at, 'submission.reviewed_at'),
+    approved_at: approvedAt,
     published_at: toEpochMillis(publishedAt, 'publishedAt'),
     data_collected_by: revision.data_collected_by ?? null, test_type: revision.test_type ?? null,
     method_name: revision.method_name ?? null, instrument_name: revision.instrument_name ?? null, weather_condition: revision.weather_condition ?? null,
@@ -146,22 +182,23 @@ export function buildPublicationBundle({ submission, revision, measurements, sit
 
   const normalizedMeasurements = measurementList.map((measurement) => {
     const measurementId = requiredString(measurement.measurement_id, 'measurement.measurement_id');
+    const definition = measurementDefinitions.get(measurement.measurement_id);
     const attributes = {
-      publication_key: `${revisionId}:${measurementId}`, measurement_id: measurementId, event_id: observationAttributes.event_id,
+      publication_key: `${revisionId}:${measurementId}`, measurement_id: measurementId, public_observation_id: publicId, event_id: observationAttributes.event_id,
       source_revision_id: revisionId, site_id: siteAttrs.site_id, collected_at: collectedAt,
-      parameter_code: requiredString(measurement.parameter_code, 'measurement.parameter_code'), display_name: measurement.display_name ?? measurement.parameter_code,
-      value: finiteNumber(measurement.value, `measurement ${measurementId} value`), unit_code: requiredString(measurement.unit_code, `measurement ${measurementId} unit_code`),
+      parameter_code: requiredString(measurement.parameter_code, 'measurement.parameter_code'), display_name: definition.displayName,
+      value: finiteNumber(measurement.value, `measurement ${measurementId} value`), unit_code: definition.canonicalUnit,
       entered_value: typeof measurement.entered_value === 'number' ? measurement.entered_value : null, entered_unit_code: measurement.entered_unit_code ?? null,
       method_name: measurement.method_name ?? revision.method_name ?? null, instrument_name: measurement.instrument_name ?? revision.instrument_name ?? null,
-      qualifier: measurement.qualifier ?? null, source_type: 'FIRESTORE_MEASUREMENT',
+      qualifier: null, source_type: 'FIRESTORE_MEASUREMENT',
     };
     attributes.record_hash = recordHash(attributes);
     return { attributes };
   });
 
   const temperatureAttributes = {
-    publication_key: `${revisionId}:WATER_TEMP_C`, measurement_id: `temp:${revisionId}`, event_id: observationAttributes.event_id,
-    source_revision_id: revisionId, site_id: siteAttrs.site_id, collected_at: collectedAt, parameter_code: 'WATER_TEMP_C', display_name: 'Water Temperature (°C)',
+    publication_key: `${revisionId}:WATER_TEMP_C`, measurement_id: `temp:${revisionId}`, public_observation_id: publicId, event_id: observationAttributes.event_id,
+    source_revision_id: revisionId, site_id: siteAttrs.site_id, collected_at: collectedAt, parameter_code: 'WATER_TEMP_C', display_name: 'Water Temperature',
     value: observationAttributes.temp_c, unit_code: 'degC', entered_value: finiteNumber(revision.temp_entered_value, 'revision.temp_entered_value'),
     entered_unit_code: requiredString(revision.temp_entered_unit, 'revision.temp_entered_unit'), method_name: revision.method_name ?? null,
     instrument_name: revision.instrument_name ?? null, qualifier: null, source_type: 'REVISION_TEMPERATURE',
@@ -169,7 +206,7 @@ export function buildPublicationBundle({ submission, revision, measurements, sit
   temperatureAttributes.record_hash = recordHash(temperatureAttributes);
   normalizedMeasurements.push({ attributes: temperatureAttributes });
   normalizedMeasurements.sort((a, b) => a.attributes.publication_key.localeCompare(b.attributes.publication_key));
-  return { revisionId, siteFeature, observationFeature, measurements: normalizedMeasurements };
+  return { revisionId, publicObservationId: publicId, siteFeature, observationFeature, measurements: normalizedMeasurements };
 }
 
 export function buildLatestFeature({ siteFeature, latestObservationFeature, sampleCount }) {
