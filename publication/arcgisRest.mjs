@@ -14,13 +14,36 @@ function objectIdOf(attributes) {
   throw new ArcGISConflictError('ArcGIS query result did not expose an ObjectID field');
 }
 
+const DEFAULT_DATASET_NAMES = Object.freeze({
+  sites: 'SamplingSites',
+  observations: 'ApprovedObservations',
+  measurements: 'Measurements',
+  latest: 'LatestSiteConditions',
+});
+
 export class ArcGISRestClient {
-  constructor({ featureServiceUrl, clientId, clientSecret, portalUrl = 'https://www.arcgis.com', fetchImpl = globalThis.fetch, layerIds = { sites: 0, observations: 1, measurements: 2, latest: 3 } }) {
+  constructor({
+    featureServiceUrl,
+    clientId,
+    clientSecret,
+    portalUrl = 'https://www.arcgis.com',
+    fetchImpl = globalThis.fetch,
+    layerIds = null,
+    datasetNames = DEFAULT_DATASET_NAMES,
+  }) {
     if (!featureServiceUrl) throw new Error('featureServiceUrl is required');
     if (!clientId || !clientSecret) throw new Error('ArcGIS OAuth client credentials are required');
     if (typeof fetchImpl !== 'function') throw new Error('fetch implementation is required');
-    this.featureServiceUrl = trimSlash(featureServiceUrl); this.portalUrl = trimSlash(portalUrl); this.clientId = clientId; this.clientSecret = clientSecret;
-    this.fetchImpl = fetchImpl; this.layerIds = layerIds; this.token = null; this.tokenExpiresAt = 0;
+    this.featureServiceUrl = trimSlash(featureServiceUrl);
+    this.portalUrl = trimSlash(portalUrl);
+    this.clientId = clientId;
+    this.clientSecret = clientSecret;
+    this.fetchImpl = fetchImpl;
+    this.layerIds = layerIds ? { ...layerIds } : null;
+    this.datasetNames = { ...DEFAULT_DATASET_NAMES, ...datasetNames };
+    this.layerIdsPromise = null;
+    this.token = null;
+    this.tokenExpiresAt = 0;
   }
   layerUrl(id) { return `${this.featureServiceUrl}/${id}`; }
   async getToken({ force = false } = {}) {
@@ -45,6 +68,33 @@ export class ArcGISRestClient {
     if ((code === 498 || code === 499) && retryToken) { await this.getToken({ force: true }); return this.post(url, params, { retryToken: false }); }
     if (!response.ok || payload.error) throw new ArcGISError(payload.error?.message ?? `ArcGIS request failed with HTTP ${response.status}`, { code, retryable: isRetryableCode(code ?? response.status), details: payload.error?.details ?? null });
     return payload;
+  }
+  async ensureLayerIds() {
+    if (this.layerIds) return this.layerIds;
+    this.layerIdsPromise ??= (async () => {
+      const metadata = await this.post(this.featureServiceUrl, {});
+      const datasets = [...(metadata.layers ?? []), ...(metadata.tables ?? [])];
+      const ids = {};
+      for (const [key, expectedName] of Object.entries(this.datasetNames)) {
+        const matches = datasets.filter((dataset) => dataset?.name === expectedName);
+        if (matches.length !== 1 || !Number.isInteger(Number(matches[0]?.id))) {
+          throw new ArcGISError(`ArcGIS authoritative service must expose exactly one dataset named '${expectedName}'`, {
+            code: 'ARCGIS_SCHEMA_MISMATCH',
+            retryable: false,
+            details: datasets.map((dataset) => ({ id: dataset?.id, name: dataset?.name })),
+          });
+        }
+        ids[key] = Number(matches[0].id);
+      }
+      this.layerIds = ids;
+      return ids;
+    })();
+    return this.layerIdsPromise;
+  }
+  async datasetId(key) {
+    const ids = await this.ensureLayerIds();
+    if (!Number.isInteger(ids[key])) throw new ArcGISError(`Unknown ArcGIS dataset key '${key}'`, { code: 'ARCGIS_SCHEMA_MISMATCH' });
+    return ids[key];
   }
   async query(layerId, { where, outFields = '*', returnGeometry = false, orderByFields = null, resultRecordCount = null }) {
     const params = { where, outFields, returnGeometry: String(returnGeometry) };
@@ -77,31 +127,31 @@ export class ArcGISRestClient {
     return features[0] ?? null;
   }
   async ensureSite(siteFeature) {
-    const id = this.layerIds.sites; const siteId = siteFeature.attributes.site_id; const existing = await this.findExactlyOneOrNone(id, 'site_id', siteId, { returnGeometry: true });
+    const id = await this.datasetId('sites'); const siteId = siteFeature.attributes.site_id; const existing = await this.findExactlyOneOrNone(id, 'site_id', siteId, { returnGeometry: true });
     if (!existing) { const [r] = await this.addFeatures(id, [siteFeature]); return { created: true, objectId: r.objectId, globalId: r.globalId ?? null }; }
     if (existing.attributes.record_hash === siteFeature.attributes.record_hash) return { created: false, objectId: objectIdOf(existing.attributes), globalId: existing.attributes.GlobalID ?? null };
     const r = await this.updateFeature(id, { ...siteFeature, attributes: { ...siteFeature.attributes, OBJECTID: objectIdOf(existing.attributes) } });
     return { created: false, updated: true, objectId: r.objectId, globalId: r.globalId ?? null };
   }
   async ensureObservation(feature) {
-    const id = this.layerIds.observations; const revisionId = feature.attributes.source_revision_id; const existing = await this.findExactlyOneOrNone(id, 'source_revision_id', revisionId, { returnGeometry: true });
+    const id = await this.datasetId('observations'); const revisionId = feature.attributes.source_revision_id; const existing = await this.findExactlyOneOrNone(id, 'source_revision_id', revisionId, { returnGeometry: true });
     if (!existing) { const [r] = await this.addFeatures(id, [feature]); return { created: true, objectId: r.objectId, globalId: r.globalId ?? null }; }
     if (existing.attributes.record_hash !== feature.attributes.record_hash) throw new ArcGISConflictError(`Approved observation ${revisionId} already exists with a different immutable record hash`, { existingHash: existing.attributes.record_hash, incomingHash: feature.attributes.record_hash });
     return { created: false, objectId: objectIdOf(existing.attributes), globalId: existing.attributes.GlobalID ?? null };
   }
   async ensureMeasurements(revisionId, features) {
-    const id = this.layerIds.measurements; const existing = await this.query(id, { where: `source_revision_id = ${sqlString(revisionId)}`, outFields: '*', returnGeometry: false });
+    const id = await this.datasetId('measurements'); const existing = await this.query(id, { where: `source_revision_id = ${sqlString(revisionId)}`, outFields: '*', returnGeometry: false });
     const expected = new Map(features.map((f) => [f.attributes.publication_key, f])); const found = new Map();
     for (const f of existing) { const key = f.attributes.publication_key; if (found.has(key)) throw new ArcGISConflictError(`Duplicate ArcGIS measurement publication_key '${key}'`); found.set(key, f); }
     for (const [key, f] of found) { const e = expected.get(key); if (!e) throw new ArcGISConflictError(`ArcGIS contains an unexpected measurement '${key}' for immutable revision ${revisionId}`); if (f.attributes.record_hash !== e.attributes.record_hash) throw new ArcGISConflictError(`Measurement '${key}' already exists with a different immutable record hash`); }
     const missing = features.filter((f) => !found.has(f.attributes.publication_key)); await this.addFeatures(id, missing); return { created: missing.length, existing: existing.length };
   }
   async refreshLatestForSite(siteFeature, buildLatestFeature) {
-    const siteId = siteFeature.attributes.site_id; const obsId = this.layerIds.observations;
+    const siteId = siteFeature.attributes.site_id; const obsId = await this.datasetId('observations');
     const latestObservation = (await this.query(obsId, { where: `site_id = ${sqlString(siteId)}`, outFields: '*', returnGeometry: false, orderByFields: 'collected_at DESC, OBJECTID DESC', resultRecordCount: 1 }))[0];
     if (!latestObservation) throw new ArcGISConflictError(`No approved ArcGIS observation exists for site ${siteId}`);
     const sampleCount = await this.count(obsId, `site_id = ${sqlString(siteId)}`); const latest = buildLatestFeature({ siteFeature, latestObservationFeature: latestObservation, sampleCount });
-    const id = this.layerIds.latest; const existing = await this.findExactlyOneOrNone(id, 'site_id', siteId, { returnGeometry: true });
+    const id = await this.datasetId('latest'); const existing = await this.findExactlyOneOrNone(id, 'site_id', siteId, { returnGeometry: true });
     if (!existing) { const [r] = await this.addFeatures(id, [latest]); return { created: true, objectId: r.objectId, sampleCount }; }
     if (existing.attributes.record_hash === latest.attributes.record_hash) return { created: false, objectId: objectIdOf(existing.attributes), sampleCount };
     const r = await this.updateFeature(id, { ...latest, attributes: { ...latest.attributes, OBJECTID: objectIdOf(existing.attributes) } });
