@@ -35,42 +35,22 @@ const m = (parameter: DashboardParameter, value: number, unit: string, observedA
 });
 
 const latestMeasurements: Record<string, DashboardMeasurement[]> = {
-  "demo-spring": [
-    m("waterTemperature", 17.8, "°C"), m("ph", 7.42, "pH"), m("dissolvedOxygen", 9.1, "mg/L"), m("specificConductivity", 286, "µS/cm"), m("nitrate", 0.64, "mg/L"),
-  ],
-  "demo-penns": [
-    m("waterTemperature", 19.3, "°C"), m("ph", 7.71, "pH"), m("dissolvedOxygen", 8.5, "mg/L"), m("specificConductivity", 214, "µS/cm"), m("nitrate", 0.31, "mg/L"),
-  ],
-  "demo-bald-eagle": [
-    m("waterTemperature", 20.6, "°C"), m("ph", 7.33, "pH"), m("dissolvedOxygen", 7.8, "mg/L"), m("specificConductivity", 331, "µS/cm"),
-  ],
-  "demo-little-juniata": [
-    m("waterTemperature", 18.9, "°C"), m("ph", 7.56, "pH"), m("dissolvedOxygen", 8.8, "mg/L"), m("specificConductivity", 268, "µS/cm"), m("nitrate", 0.48, "mg/L"),
-  ],
-  "demo-kish": [
-    m("waterTemperature", 21.2, "°C"), m("ph", 7.18, "pH"), m("nitrate", 0.82, "mg/L"),
-  ],
-  "demo-black-moshannon": [
-    m("waterTemperature", 16.4, "°C"), m("ph", 6.91, "pH"),
-  ],
-  "demo-juniata": [
-    m("waterTemperature", 22.1, "°C"), m("ph", 7.49, "pH"), m("dissolvedOxygen", 7.6, "mg/L"), m("specificConductivity", 302, "µS/cm"), m("nitrate", 0.57, "mg/L"),
-  ],
+  "demo-spring": [m("waterTemperature", 17.8, "°C"), m("ph", 7.42, "pH"), m("dissolvedOxygen", 9.1, "mg/L"), m("specificConductivity", 286, "µS/cm"), m("nitrate", 0.64, "mg/L as N")],
+  "demo-penns": [m("waterTemperature", 19.3, "°C"), m("ph", 7.71, "pH"), m("dissolvedOxygen", 8.5, "mg/L"), m("specificConductivity", 214, "µS/cm"), m("nitrate", 0.31, "mg/L as N")],
+  "demo-bald-eagle": [m("waterTemperature", 20.6, "°C"), m("ph", 7.33, "pH"), m("dissolvedOxygen", 7.8, "mg/L"), m("specificConductivity", 331, "µS/cm")],
+  "demo-little-juniata": [m("waterTemperature", 18.9, "°C"), m("ph", 7.56, "pH"), m("dissolvedOxygen", 8.8, "mg/L"), m("specificConductivity", 268, "µS/cm"), m("nitrate", 0.48, "mg/L as N")],
+  "demo-kish": [m("waterTemperature", 21.2, "°C"), m("ph", 7.18, "pH"), m("nitrate", 0.82, "mg/L as N")],
+  "demo-black-moshannon": [m("waterTemperature", 16.4, "°C"), m("ph", 6.91, "pH")],
+  "demo-juniata": [m("waterTemperature", 22.1, "°C"), m("ph", 7.49, "pH"), m("dissolvedOxygen", 7.6, "mg/L"), m("specificConductivity", 302, "µS/cm"), m("nitrate", 0.57, "mg/L as N")],
 };
 
 const offsets: Record<DashboardParameter, number[]> = {
-  waterTemperature: [-5.1, -3.8, -1.9, 0.7, 1.8, 0],
-  ph: [-0.18, -0.09, 0.04, -0.06, 0.11, 0],
-  dissolvedOxygen: [1.1, 0.7, 0.3, -0.4, -0.2, 0],
-  dissolvedOxygenSaturation: [-7, -3, 2, 5, 1, 0],
-  specificConductivity: [-24, -11, 8, 19, 12, 0],
-  totalDissolvedSolids: [-12, -7, 3, 8, 4, 0],
-  oxidationReductionPotential: [-14, -8, 5, 11, 6, 0],
-  chloride: [-0.08, -0.03, 0.02, 0.04, 0.01, 0],
-  sulfate: [-0.06, -0.02, 0.01, 0.03, 0.02, 0],
-  nitrate: [-0.12, -0.08, -0.02, 0.05, 0.03, 0],
-  phosphate: [-0.02, -0.01, 0.01, 0.02, 0.01, 0],
-  discharge: [0.4, 0.1, -0.2, 0.8, 0.3, 0],
+  waterTemperature: [-5.1, -3.8, -1.9, 0.7, 1.8, 0], ph: [-0.18, -0.09, 0.04, -0.06, 0.11, 0],
+  dissolvedOxygen: [1.1, 0.7, 0.3, -0.4, -0.2, 0], dissolvedOxygenSaturation: [-7, -3, 2, 5, 1, 0],
+  specificConductivity: [-24, -11, 8, 19, 12, 0], totalDissolvedSolids: [-12, -7, 3, 8, 4, 0],
+  oxidationReductionPotential: [-14, -8, 5, 11, 6, 0], chloride: [-0.08, -0.03, 0.02, 0.04, 0.01, 0],
+  sulfate: [-0.06, -0.02, 0.01, 0.03, 0.02, 0], nitrate: [-0.12, -0.08, -0.02, 0.05, 0.03, 0],
+  phosphate: [-0.02, -0.01, 0.01, 0.02, 0.01, 0], discharge: [0.4, 0.1, -0.2, 0.8, 0.3, 0],
 };
 
 const roundFor = (parameter: DashboardParameter, value: number) => {
@@ -85,26 +65,23 @@ const conditionsBySite = new Map<string, LatestSiteCondition>();
 for (const site of demoSites) {
   const current = latestMeasurements[site.id];
   if (!current) continue;
-
   const allPoints: DashboardObservationSeriesPoint[] = [];
   const previousMeasurements: Partial<Record<DashboardParameter, DashboardMeasurement>> = {};
-
   for (const measurement of current) {
-    const parameterOffsets = offsets[measurement.parameter];
     const points = observationDates.map((observedAt, index) => ({
       observationId: `${site.id}-${measurement.parameter}-${index + 1}`,
       parameter: measurement.parameter,
-      value: roundFor(measurement.parameter, measurement.value + parameterOffsets[index]),
+      value: roundFor(measurement.parameter, measurement.value + offsets[measurement.parameter][index]),
       unit: measurement.unit,
       observedAt,
     }));
     allPoints.push(...points);
     previousMeasurements[measurement.parameter] = points.at(-2);
   }
-
   seriesBySite.set(site.id, allPoints);
   conditionsBySite.set(site.id, {
     siteId: site.id,
+    observedAt: observationDates.at(-1)!,
     approvedAt: observationDates.at(-1)!,
     reviewed: true,
     measurements: current,
@@ -120,30 +97,18 @@ export const demoNetworkSummary = {
 };
 
 export class MockDashboardDataSource implements DashboardDataSource {
-  async listSites(): Promise<DashboardSite[]> {
-    return demoSites.map((site) => ({ ...site }));
-  }
-
+  async listSites(): Promise<DashboardSite[]> { return demoSites.map((site) => ({ ...site })); }
   async getLatestSiteCondition(siteId: string): Promise<LatestSiteCondition | null> {
     const condition = conditionsBySite.get(siteId);
     return condition ? structuredClone(condition) : null;
   }
-
-  async getObservationSeries(
-    siteId: string,
-    parameter: DashboardParameter,
-    startIso?: string,
-    endIso?: string,
-  ): Promise<DashboardObservationSeriesPoint[]> {
+  async getObservationSeries(siteId: string, parameter: DashboardParameter, startIso?: string, endIso?: string): Promise<DashboardObservationSeriesPoint[]> {
     const start = startIso ? Date.parse(startIso) : Number.NEGATIVE_INFINITY;
     const end = endIso ? Date.parse(endIso) : Number.POSITIVE_INFINITY;
-    return (seriesBySite.get(siteId) ?? [])
-      .filter((point) => point.parameter === parameter)
-      .filter((point) => {
-        const time = Date.parse(point.observedAt);
-        return time >= start && time <= end;
-      })
-      .map((point) => ({ ...point }));
+    return (seriesBySite.get(siteId) ?? []).filter((point) => point.parameter === parameter).filter((point) => {
+      const time = Date.parse(point.observedAt);
+      return time >= start && time <= end;
+    }).map((point) => ({ ...point }));
   }
 }
 
