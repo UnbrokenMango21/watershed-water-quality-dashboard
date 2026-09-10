@@ -11,16 +11,8 @@ export function SiteDetail({ site, condition }: { site: DashboardSite | null; co
   if (!site) {
     return (
       <aside className="site-detail site-detail-empty" aria-label="Selected site details">
-        <div className="detail-heading">
-          <span className="eyebrow">Selected site</span>
-          <h2>No site selected</h2>
-          <p>Choose a monitoring site from the browser or map to view measurements.</p>
-        </div>
-        <div className="detail-context-empty" role="status">
-          <CalciteIcon icon="pin" label="No monitoring site selected" />
-          <strong>Select a site to inspect readings</strong>
-          <span>Observation status and parameter values appear only after a monitoring site is selected.</span>
-        </div>
+        <div className="detail-heading"><span className="eyebrow">Selected site</span><h2>No site selected</h2><p>Choose a monitoring site from the browser or map to view measurements.</p></div>
+        <div className="detail-context-empty" role="status"><CalciteIcon icon="pin" label="No monitoring site selected" /><strong>Select a site to inspect readings</strong><span>Observation status and parameter values appear only after a monitoring site is selected.</span></div>
       </aside>
     );
   }
@@ -28,16 +20,8 @@ export function SiteDetail({ site, condition }: { site: DashboardSite | null; co
   if (!condition) {
     return (
       <aside className="site-detail site-detail-empty" aria-label="Selected site details">
-        <div className="detail-heading">
-          <span className="eyebrow">Selected site</span>
-          <h2>{site.name}</h2>
-          <div className="detail-meta"><span>{site.code}</span><span>{site.county}</span><span>Stream · {site.watershed}</span></div>
-        </div>
-        <div className="detail-context-empty" role="status">
-          <CalciteIcon icon="table" label="No measurements available" />
-          <strong>No approved measurements available for this site</strong>
-          <span>The site is available, but no reviewed public observation is available to display.</span>
-        </div>
+        <div className="detail-heading"><span className="eyebrow">Selected site</span><h2>{site.name}</h2><div className="detail-meta"><span>{site.code}</span><span>{site.county}</span><span>Stream · {site.watershed}</span></div></div>
+        <div className="detail-context-empty" role="status"><CalciteIcon icon="table" label="No measurements available" /><strong>No approved measurements available for this site</strong><span>The site is available, but no reviewed public observation is available to display.</span></div>
       </aside>
     );
   }
@@ -48,14 +32,10 @@ export function SiteDetail({ site, condition }: { site: DashboardSite | null; co
 
   return (
     <aside className="site-detail" aria-label="Selected site details">
-      <div className="detail-heading">
-        <span className="eyebrow">Selected site</span>
-        <h2>{site.name}</h2>
-        <div className="detail-meta"><span>{site.code}</span><span>{site.county}</span><span>Stream · {site.watershed}</span></div>
-      </div>
+      <div className="detail-heading"><span className="eyebrow">Selected site</span><h2>{site.name}</h2><div className="detail-meta"><span>{site.code}</span><span>{site.county}</span><span>Stream · {site.watershed}</span></div></div>
 
       <div className={`sample-summary ${completeness}`}>
-        <div><span>Latest sample</span><strong>{formatDateTime(condition.approvedAt)}</strong></div>
+        <div><span>Latest sample</span><strong>{formatDateTime(condition.observedAt)}</strong></div>
         <span className={`sample-state ${completeness}`}><span className="sample-state-dot" aria-hidden="true" />{completenessLabel(completeness)}</span>
       </div>
 
