@@ -5,6 +5,7 @@ on:
       - 'publication/**'
       - 'functions/index.mjs'
       - 'config/arcgis_publication_schema.json'
+      - 'config/production_measurement_catalog.json'
       - 'config/publication_contract.json'
       - 'scripts/provision_arcgis_publication.py'
       - 'scripts/verify_arcgis_publication.py'
@@ -19,6 +20,7 @@ on:
       - 'publication/**'
       - 'functions/index.mjs'
       - 'config/arcgis_publication_schema.json'
+      - 'config/production_measurement_catalog.json'
       - 'config/publication_contract.json'
       - 'scripts/provision_arcgis_publication.py'
       - 'scripts/verify_arcgis_publication.py'
@@ -38,9 +40,12 @@ jobs:
       - run: npm ci
       - run: npm run test:publication
       - run: npm run test:contracts
+      - name: Test fail-closed ArcGIS public-view guard
+        run: python3 -m unittest discover -s tests/publication -p '*_test.py'
       - name: Parse ArcGIS Pro Python automation
         run: >-
-          python -m py_compile
+          python3 -m py_compile
+          publication/arcgis_schema_guard.py
           scripts/provision_arcgis_publication.py
           scripts/verify_arcgis_publication.py
           scripts/inventory_arcgis_legacy.py
