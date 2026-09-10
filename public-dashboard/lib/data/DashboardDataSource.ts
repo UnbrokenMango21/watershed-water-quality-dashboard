@@ -32,13 +32,17 @@ export interface DashboardMeasurement {
 
 export interface LatestSiteCondition {
   siteId: string;
-  approvedAt: string;
+  /** Scientific collection/sample time. This is what the public UI labels as the sample time. */
+  observedAt: string;
+  /** Optional approval time; never substitute this for observedAt. */
+  approvedAt?: string;
   reviewed: true;
   measurements: DashboardMeasurement[];
   previousMeasurements?: Partial<Record<DashboardParameter, DashboardMeasurement>>;
 }
 
 export interface DashboardObservationSeriesPoint extends DashboardMeasurement {
+  /** Opaque public identifier; never a private Firestore submission/revision/workflow ID. */
   observationId: string;
 }
 
