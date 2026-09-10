@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { assertPublicationEligibility, buildPublicationBundle, PublicationEligibilityError } from '../../publication/transform.mjs';
+import { assertPublicationEligibility, buildPublicationBundle, publicObservationId, PublicationEligibilityError } from '../../publication/transform.mjs';
 
 const submission = { submission_id: 'submission-1', event_id: 'event-1', collector_user_id: 'collector-private', site_id: 'site-1', status: 'APPROVED', current_revision_id: 'revision-2', current_revision_no: 2, review_decision: 'APPROVE', reviewed_revision_id: 'revision-2', reviewed_at: new Date('2026-08-16T16:00:00Z'), overall_quality_score: 92.3333, warning_flag_count: 4, validation_rules_version: '0.1.0', quality_algorithm_version: '0.1.0', schema_version: '0.1.0', mobile_app_version: '0.1.0' };
 const revision = { revision_id: 'revision-2', revision_no: 2, submission_id: 'submission-1', event_id: 'event-1', collector_user_id: 'collector-private', site_id: 'site-1', revision_status: 'SUBMITTED', collected_at: new Date('2026-08-16T14:30:00Z'), latitude: 40.7934, longitude: -77.86, gps_accuracy_m: 4.2, site_distance_m: 3.1, data_collected_by: 'Student/researcher', test_type: 'In-situ / Field Instrument', method_name: 'Field meter', instrument_name: 'Multiparameter sonde', weather_condition: 'CLEAR', temp_entered_value: 20, temp_entered_unit: 'C', temp_c: 20, temp_f: 68, schema_version: '0.1.0', mobile_app_version: '0.1.0' };
@@ -13,9 +13,22 @@ const measurements = [
 
 test('approved current immutable revision maps to typed GIS features and normalized measurements', () => {
   const bundle = buildPublicationBundle({ submission, revision, site, measurements, publishedAt: new Date('2026-08-16T17:00:00Z') });
-  assert.equal(bundle.revisionId, 'revision-2'); assert.deepEqual(bundle.observationFeature.geometry.spatialReference, { wkid: 4326 }); assert.equal(bundle.observationFeature.geometry.x, -77.86); assert.equal(bundle.observationFeature.geometry.y, 40.7934);
+  assert.equal(bundle.revisionId, 'revision-2');
+  assert.match(bundle.publicObservationId, /^obs_[0-9a-f]{64}$/);
+  assert.notEqual(bundle.publicObservationId, revision.revision_id);
+  assert.equal(bundle.observationFeature.attributes.public_observation_id, bundle.publicObservationId);
+  assert.ok(bundle.measurements.every((item) => item.attributes.public_observation_id === bundle.publicObservationId));
+  assert.deepEqual(bundle.observationFeature.geometry.spatialReference, { wkid: 4326 });
+  assert.equal(bundle.observationFeature.geometry.x, -77.86); assert.equal(bundle.observationFeature.geometry.y, 40.7934);
   assert.equal(bundle.observationFeature.attributes.ph, 7.2); assert.equal(bundle.observationFeature.attributes.do_mg_l, 9.1); assert.equal(bundle.observationFeature.attributes.conductivity_us_cm, 350); assert.equal(bundle.observationFeature.attributes.quality_score, 92.3333); assert.equal(bundle.observationFeature.attributes.quality_context, 'APPROVED_WITH_VALIDATION_CONTEXT');
   assert.equal(bundle.measurements.length, 4); const temp = bundle.measurements.find((i) => i.attributes.parameter_code === 'WATER_TEMP_C'); assert.equal(temp.attributes.value, 20); assert.equal(temp.attributes.unit_code, 'degC'); assert.equal(temp.attributes.entered_value, 20); assert.equal(temp.attributes.entered_unit_code, 'C');
+});
+
+test('public observation ID is deterministic but does not expose the private revision ID', () => {
+  const first = publicObservationId('private-revision-abc');
+  assert.equal(first, publicObservationId('private-revision-abc'));
+  assert.notEqual(first, publicObservationId('private-revision-def'));
+  assert.equal(first.includes('private-revision-abc'), false);
 });
 
 test('publication preserves canonical units and does not silently convert measurement values', () => {
@@ -27,3 +40,11 @@ test('publication preserves canonical units and does not silently convert measur
 test('unapproved and rejected submissions are never publication eligible', () => { for (const status of ['DRAFT','SUBMITTED','VALIDATING','PENDING_REVIEW','NEEDS_CORRECTION','REJECTED']) assert.throws(() => assertPublicationEligibility({ ...submission, status }, 'revision-2'), PublicationEligibilityError, status); assert.throws(() => assertPublicationEligibility({ ...submission, review_decision: 'REJECT' }, 'revision-2'), PublicationEligibilityError); });
 test('an old reviewed revision cannot publish after a newer current revision exists', () => assert.throws(() => assertPublicationEligibility({ ...submission, current_revision_id: 'revision-3' }, 'revision-2'), /no longer the current revision/));
 test('timestamp is preserved as the exact UTC instant in ArcGIS epoch milliseconds', () => assert.equal(buildPublicationBundle({ submission, revision, site, measurements }).observationFeature.attributes.collected_at, Date.parse('2026-08-16T14:30:00Z')));
+
+test('publisher rejects missing scientific timestamps, bad canonical units, unsupported parameters and qualifiers', () => {
+  assert.throws(() => buildPublicationBundle({ submission, revision: { ...revision, collected_at: null }, site, measurements }), /timestamps are required/);
+  assert.throws(() => buildPublicationBundle({ submission: { ...submission, reviewed_at: null }, revision, site, measurements }), /timestamps are required/);
+  assert.throws(() => buildPublicationBundle({ submission, revision, site, measurements: [{ ...measurements[0], unit_code: 'unitless' }] }), /canonical unit/);
+  assert.throws(() => buildPublicationBundle({ submission, revision, site, measurements: [{ ...measurements[0], parameter_code: 'UNKNOWN' }] }), /production publication contract/);
+  assert.throws(() => buildPublicationBundle({ submission, revision, site, measurements: [{ ...measurements[0], qualifier: '<' }] }), /qualifier requiring scientific interpretation/);
+});
