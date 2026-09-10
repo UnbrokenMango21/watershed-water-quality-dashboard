@@ -53,25 +53,10 @@ export const parameterContracts: Record<DashboardParameter, ParameterContract> =
 };
 
 const protectedFieldNames = new Set([
-  "collector_user_id",
-  "source_submission_id",
-  "source_revision_id",
-  "event_id",
-  "reviewer_user_id",
-  "review_comment",
-  "field_notes_original",
-  "gps_accuracy_m",
-  "site_distance_m",
-  "entered_value",
-  "entered_unit_code",
-  "record_hash",
-  "publication_key",
-  "measurement_id",
-  "revision_no",
-  "schema_version",
-  "mobile_app_version",
-  "validation_rules_version",
-  "quality_algorithm_version",
+  "collector_user_id", "source_submission_id", "source_revision_id", "event_id", "reviewer_user_id", "review_comment",
+  "field_notes_original", "gps_accuracy_m", "site_distance_m", "entered_value", "entered_unit_code", "record_hash",
+  "publication_key", "measurement_id", "revision_no", "schema_version", "mobile_app_version", "validation_rules_version",
+  "quality_algorithm_version", "data_collected_by", "test_type", "weather_condition", "qualifier",
 ]);
 
 const requiredFields = {
@@ -111,30 +96,22 @@ async function fetchJson<T extends { error?: { message?: string; details?: strin
   throw lastError instanceof Error ? lastError : new Error("ArcGIS request failed.");
 }
 
-function sqlString(value: string): string {
-  return `'${value.replaceAll("'", "''")}'`;
-}
-
+function sqlString(value: string): string { return `'${value.replaceAll("'", "''")}'`; }
 function asString(value: unknown, field: string): string {
   if (typeof value !== "string" || value.trim() === "") throw new Error(`ArcGIS field ${field} is missing.`);
   return value.trim();
 }
-
 function asFiniteNumber(value: unknown, field: string): number {
   if (typeof value !== "number" || !Number.isFinite(value)) throw new Error(`ArcGIS field ${field} is not a finite number.`);
   return value;
 }
-
 function asIso(value: unknown, field: string): string {
   const date = typeof value === "number" ? new Date(value) : new Date(String(value ?? ""));
   if (Number.isNaN(date.valueOf())) throw new Error(`ArcGIS field ${field} is not a valid date.`);
   return date.toISOString();
 }
 
-async function queryAll(
-  base: string,
-  options: { where?: string; outFields: string[]; returnGeometry?: boolean; orderByFields?: string },
-): Promise<ArcgisFeature[]> {
+async function queryAll(base: string, options: { where?: string; outFields: string[]; returnGeometry?: boolean; orderByFields?: string }): Promise<ArcgisFeature[]> {
   const pageSize = 1000;
   const all: ArcgisFeature[] = [];
   for (let offset = 0; ; offset += pageSize) {
@@ -158,7 +135,6 @@ function attributes(feature: ArcgisFeature): Record<string, unknown> {
   if (!feature.attributes) throw new Error("ArcGIS returned a feature without attributes.");
   return feature.attributes;
 }
-
 function chunks<T>(values: T[], size: number): T[][] {
   const result: T[][] = [];
   for (let index = 0; index < values.length; index += size) result.push(values.slice(index, index + size));
@@ -184,17 +160,13 @@ export class ArcgisDashboardDataSource implements DashboardDataSource {
     url.searchParams.set("f", "json");
     const metadata = await fetchJson<ArcgisMetadata>(url);
     const capabilities = new Set(String(metadata.capabilities ?? "").split(",").map((value) => value.trim()).filter(Boolean));
-    if (!capabilities.has("Query") || ["Create", "Update", "Delete", "Editing"].some((value) => capabilities.has(value))) {
+    if (!capabilities.has("Query") || ["Create", "Update", "Delete", "Editing", "Sync"].some((value) => capabilities.has(value))) {
       throw new Error(`ArcGIS ${kind} public view is not read-only.`);
     }
     if (metadata.hasAttachments === true) throw new Error(`ArcGIS ${kind} public view unexpectedly exposes attachments.`);
     const names = new Set((metadata.fields ?? []).map((field) => field.name));
-    for (const required of requiredFields[kind]) {
-      if (!names.has(required)) throw new Error(`ArcGIS ${kind} public view is missing ${required}.`);
-    }
-    for (const field of protectedFieldNames) {
-      if (names.has(field)) throw new Error(`ArcGIS ${kind} public view exposes protected field ${field}.`);
-    }
+    for (const required of requiredFields[kind]) if (!names.has(required)) throw new Error(`ArcGIS ${kind} public view is missing ${required}.`);
+    for (const field of protectedFieldNames) if (names.has(field)) throw new Error(`ArcGIS ${kind} public view exposes protected field ${field}.`);
   }
 
   private ensureValidated(): Promise<void> {
@@ -214,13 +186,10 @@ export class ArcgisDashboardDataSource implements DashboardDataSource {
       const longitude = typeof row.longitude === "number" ? row.longitude : feature.geometry?.x;
       const latitude = typeof row.latitude === "number" ? row.latitude : feature.geometry?.y;
       return {
-        id: asString(row.site_id, "site_id"),
-        code: asString(row.site_code, "site_code"),
-        name: asString(row.site_name, "site_name"),
+        id: asString(row.site_id, "site_id"), code: asString(row.site_code, "site_code"), name: asString(row.site_name, "site_name"),
         county: typeof row.county === "string" ? row.county : undefined,
         watershed: typeof row.watershed_name === "string" ? row.watershed_name : undefined,
-        longitude: asFiniteNumber(longitude, "longitude"),
-        latitude: asFiniteNumber(latitude, "latitude"),
+        longitude: asFiniteNumber(longitude, "longitude"), latitude: asFiniteNumber(latitude, "latitude"),
       };
     });
   }
@@ -258,17 +227,15 @@ export class ArcgisDashboardDataSource implements DashboardDataSource {
     if (ids.length === 0) return;
     const found = new Map<string, { siteId: string; collectedAt: string }>();
     for (const group of chunks(ids, 100)) {
-      const where = `public_observation_id IN (${group.map(sqlString).join(",")})`;
       const observations = await queryAll(this.urls.observations, {
-        where,
+        where: `public_observation_id IN (${group.map(sqlString).join(",")})`,
         outFields: ["public_observation_id", "site_id", "collected_at"],
         returnGeometry: false,
       });
       for (const feature of observations) {
         const row = attributes(feature);
         found.set(asString(row.public_observation_id, "public_observation_id"), {
-          siteId: asString(row.site_id, "site_id"),
-          collectedAt: asIso(row.collected_at, "collected_at"),
+          siteId: asString(row.site_id, "site_id"), collectedAt: asIso(row.collected_at, "collected_at"),
         });
       }
     }
@@ -281,17 +248,12 @@ export class ArcgisDashboardDataSource implements DashboardDataSource {
     }
   }
 
-  async getObservationSeries(
-    siteId: string,
-    parameter: DashboardParameter,
-    startIso?: string,
-    endIso?: string,
-  ): Promise<DashboardObservationSeriesPoint[]> {
+  async getObservationSeries(siteId: string, parameter: DashboardParameter, startIso?: string, endIso?: string): Promise<DashboardObservationSeriesPoint[]> {
     await this.ensureValidated();
     const contract = parameterContracts[parameter];
     const features = await queryAll(this.urls.measurements, {
       where: `site_id=${sqlString(siteId)} AND parameter_code=${sqlString(contract.code)}`,
-      outFields: ["public_observation_id", "site_id", "collected_at", "parameter_code", "value", "unit_code", "qualifier"],
+      outFields: ["public_observation_id", "site_id", "collected_at", "parameter_code", "value", "unit_code"],
       returnGeometry: false,
       orderByFields: "collected_at ASC",
     });
@@ -302,19 +264,11 @@ export class ArcgisDashboardDataSource implements DashboardDataSource {
     if ((startIso && Number.isNaN(start)) || (endIso && Number.isNaN(end))) throw new Error("Invalid dashboard date range.");
 
     return rows.map((row) => {
-      if (row.qualifier != null && String(row.qualifier).trim() !== "") {
-        throw new Error("This measurement has a qualifier that needs scientific interpretation before plotting.");
-      }
-      if (row.unit_code !== contract.canonicalUnit) {
-        throw new Error(`Unexpected unit for ${contract.code}: ${String(row.unit_code)}.`);
-      }
+      if (row.unit_code !== contract.canonicalUnit) throw new Error(`Unexpected unit for ${contract.code}: ${String(row.unit_code)}.`);
       const observedAt = asIso(row.collected_at, "collected_at");
       return {
-        observationId: asString(row.public_observation_id, "public_observation_id"),
-        parameter,
-        value: asFiniteNumber(row.value, "value"),
-        unit: contract.displayUnit,
-        observedAt,
+        observationId: asString(row.public_observation_id, "public_observation_id"), parameter,
+        value: asFiniteNumber(row.value, "value"), unit: contract.displayUnit, observedAt,
       };
     }).filter((point) => {
       const time = Date.parse(point.observedAt);
