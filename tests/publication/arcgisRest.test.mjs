@@ -17,14 +17,37 @@ function fakeArcGIS() {
   };
   return { fetchImpl, layers };
 }
+
 function bundle(revisionId='rev-1', collectedAt='2026-08-16T14:00:00Z') {
   const submission = { submission_id:`sub-${revisionId}`, event_id:`event-${revisionId}`, collector_user_id:'private', site_id:'site-1', status:'APPROVED', current_revision_id:revisionId, review_decision:'APPROVE', reviewed_revision_id:revisionId, reviewed_at:new Date('2026-08-16T15:00:00Z'), overall_quality_score:95, warning_flag_count:0 };
   const revision = { revision_id:revisionId, revision_no:1, submission_id:submission.submission_id, event_id:submission.event_id, site_id:'site-1', revision_status:'SUBMITTED', collected_at:new Date(collectedAt), latitude:40.7, longitude:-77.8, temp_entered_value:20, temp_entered_unit:'C', temp_c:20, temp_f:68, data_collected_by:'Student/researcher', test_type:'In-situ / Field Instrument', method_name:'meter', instrument_name:'sonde' };
   const site = { site_id:'site-1', site_code:'S1', site_name_display:'Site 1', county:'Centre', watershed_name:'Spring Creek', latitude:40.71, longitude:-77.81, active:true };
   const measurements = [{ measurement_id:`m-${revisionId}`, parameter_code:'PH', display_name:'pH', value:7, unit_code:'pH', entered_value:7, entered_unit_code:'ph-standard' }]; return buildPublicationBundle({submission,revision,site,measurements});
 }
-const client = (fake) => new ArcGISRestClient({ featureServiceUrl:'https://example.test/FeatureServer', clientId:'id', clientSecret:'secret', fetchImpl:fake.fetchImpl });
+
+const client = (fake) => new ArcGISRestClient({
+  featureServiceUrl:'https://example.test/FeatureServer', clientId:'id', clientSecret:'secret', fetchImpl:fake.fetchImpl,
+  layerIds:{ sites:0, observations:1, measurements:2, latest:3 },
+});
 
 test('approved revision retry is idempotent: exactly one observation and one copy of every measurement', async () => { const fake=fakeArcGIS(), arcgis=client(fake), data=bundle(); await arcgis.ensureSite(data.siteFeature); const first=await arcgis.ensureObservation(data.observationFeature); await arcgis.ensureMeasurements(data.revisionId,data.measurements); await arcgis.refreshLatestForSite(data.siteFeature,buildLatestFeature); const second=await arcgis.ensureObservation(data.observationFeature); await arcgis.ensureMeasurements(data.revisionId,data.measurements); await arcgis.refreshLatestForSite(data.siteFeature,buildLatestFeature); assert.equal(first.created,true); assert.equal(second.created,false); assert.equal(fake.layers.get(1).length,1); assert.equal(fake.layers.get(2).length,data.measurements.length); assert.equal(fake.layers.get(3).length,1); });
 test('historical approved observation is immutable when same revision id arrives with different science', async () => { const fake=fakeArcGIS(), arcgis=client(fake), original=bundle(); await arcgis.ensureObservation(original.observationFeature); const changed=structuredClone(original.observationFeature); changed.attributes.ph=9; changed.attributes.record_hash='different-hash'; await assert.rejects(()=>arcgis.ensureObservation(changed),ArcGISConflictError); assert.equal(fake.layers.get(1)[0].attributes.ph,7); });
 test('latest-site materialization selects newest approved observation while retaining historical records', async () => { const fake=fakeArcGIS(), arcgis=client(fake), older=bundle('rev-old','2026-08-15T10:00:00Z'), newer=bundle('rev-new','2026-08-16T10:00:00Z'); await arcgis.ensureSite(older.siteFeature); await arcgis.ensureObservation(newer.observationFeature); await arcgis.ensureObservation(older.observationFeature); const latest=await arcgis.refreshLatestForSite(older.siteFeature,buildLatestFeature); assert.equal(latest.sampleCount,2); assert.equal(fake.layers.get(1).length,2); assert.equal(fake.layers.get(3)[0].attributes.source_revision_id,'rev-new'); });
+
+test('authoritative dataset IDs are discovered by name rather than assumed numeric order', async () => {
+  const response = (payload) => ({ ok:true, status:200, json:async()=>payload });
+  const fetchImpl = async (url) => {
+    if (url.includes('/oauth2/token')) return response({ access_token:'token', expires_in:3600 });
+    if (url === 'https://example.test/FeatureServer') return response({
+      layers:[
+        { id:7, name:'SamplingSites' },
+        { id:9, name:'ApprovedObservations' },
+        { id:11, name:'LatestSiteConditions' },
+      ],
+      tables:[{ id:3, name:'Measurements' }],
+    });
+    throw new Error(`Unexpected URL ${url}`);
+  };
+  const arcgis = new ArcGISRestClient({ featureServiceUrl:'https://example.test/FeatureServer', clientId:'id', clientSecret:'secret', fetchImpl });
+  assert.deepEqual(await arcgis.ensureLayerIds(), { sites:7, observations:9, measurements:3, latest:11 });
+});
