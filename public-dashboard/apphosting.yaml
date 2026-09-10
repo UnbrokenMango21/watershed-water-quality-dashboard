@@ -1,6 +1,10 @@
+# Production-safe default: never silently serve synthetic monitoring observations.
+# Configure the four NEXT_PUBLIC_ARCGIS_*_VIEW_URL values in the App Hosting
+# environment after the verified ArcGIS public views have been migrated to the
+# current schema. Local/demo builds may explicitly set this variable to `demo`.
 env:
   - variable: NEXT_PUBLIC_DASHBOARD_DATA_MODE
-    value: demo
+    value: production
     availability:
       - BUILD
       - RUNTIME
