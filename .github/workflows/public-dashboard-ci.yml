@@ -1,0 +1,32 @@
+name: Public Dashboard CI
+
+on:
+  pull_request:
+    paths:
+      - 'public-dashboard/**'
+      - '.github/workflows/public-dashboard-ci.yml'
+  push:
+    branches:
+      - final/public-dashboard-v1
+    paths:
+      - 'public-dashboard/**'
+      - '.github/workflows/public-dashboard-ci.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  dashboard:
+    name: Typecheck and production build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: public-dashboard
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+      - run: npm install --no-audit --no-fund
+      - run: npm run typecheck
+      - run: npm run build
