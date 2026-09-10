@@ -1,9 +1,9 @@
 {
-  "schemaVersion": "1.0.0",
+  "schemaVersion": "1.1.0",
   "serviceName": "Central_PA_Watershed_Approved_Authoritative",
   "serviceTitle": "Central PA Watershed Approved Authoritative",
   "spatialReference": {"wkid": 4326},
-  "description": "Approved-only authoritative GIS publication store for Central PA Watershed observations. Firestore remains the transactional workflow/audit source; this service contains only immutable approved scientific revisions plus public-safe site/latest materializations.",
+  "description": "Approved-only authoritative GIS publication store for PA Watershed Watch observations. Firestore remains the transactional workflow/audit source; this service contains immutable approved scientific revisions plus public-safe site/latest materializations.",
   "layers": [
     {
       "id": 0,
@@ -31,6 +31,7 @@
       "keyField": "source_revision_id",
       "fields": [
         {"name":"publication_key","alias":"Publication Key","type":"esriFieldTypeString","length":160,"public":false},
+        {"name":"public_observation_id","alias":"Public Observation ID","type":"esriFieldTypeString","length":80,"public":true},
         {"name":"event_id","alias":"Event ID","type":"esriFieldTypeString","length":80,"public":false},
         {"name":"source_submission_id","alias":"Source Submission ID","type":"esriFieldTypeString","length":80,"public":false},
         {"name":"source_revision_id","alias":"Approved Revision ID","type":"esriFieldTypeString","length":80,"public":false},
@@ -44,11 +45,11 @@
         {"name":"collected_at","alias":"Collected At","type":"esriFieldTypeDate","public":true},
         {"name":"approved_at","alias":"Approved At","type":"esriFieldTypeDate","public":true},
         {"name":"published_at","alias":"Published At","type":"esriFieldTypeDate","public":true},
-        {"name":"data_collected_by","alias":"Data Collected By","type":"esriFieldTypeString","length":80,"public":true},
-        {"name":"test_type","alias":"Test Type","type":"esriFieldTypeString","length":80,"public":true},
+        {"name":"data_collected_by","alias":"Data Collected By","type":"esriFieldTypeString","length":80,"public":false},
+        {"name":"test_type","alias":"Test Type","type":"esriFieldTypeString","length":80,"public":false},
         {"name":"method_name","alias":"Method","type":"esriFieldTypeString","length":160,"public":true},
         {"name":"instrument_name","alias":"Instrument / Lab","type":"esriFieldTypeString","length":160,"public":true},
-        {"name":"weather_condition","alias":"Weather Condition","type":"esriFieldTypeString","length":50,"public":true},
+        {"name":"weather_condition","alias":"Weather Condition","type":"esriFieldTypeString","length":50,"public":false},
         {"name":"latitude","alias":"Collection Latitude","type":"esriFieldTypeDouble","public":true},
         {"name":"longitude","alias":"Collection Longitude","type":"esriFieldTypeDouble","public":true},
         {"name":"gps_accuracy_m","alias":"GPS Accuracy (m)","type":"esriFieldTypeDouble","public":false},
@@ -83,6 +84,7 @@
       "fields": [
         {"name":"publication_key","alias":"Publication Key","type":"esriFieldTypeString","length":180,"public":false},
         {"name":"measurement_id","alias":"Measurement ID","type":"esriFieldTypeString","length":100,"public":false},
+        {"name":"public_observation_id","alias":"Public Observation ID","type":"esriFieldTypeString","length":80,"public":true},
         {"name":"event_id","alias":"Event ID","type":"esriFieldTypeString","length":80,"public":false},
         {"name":"source_revision_id","alias":"Approved Revision ID","type":"esriFieldTypeString","length":80,"public":false},
         {"name":"site_id","alias":"Site ID","type":"esriFieldTypeString","length":80,"public":true},
@@ -95,7 +97,7 @@
         {"name":"entered_unit_code","alias":"Entered Unit","type":"esriFieldTypeString","length":32,"public":false},
         {"name":"method_name","alias":"Method","type":"esriFieldTypeString","length":160,"public":true},
         {"name":"instrument_name","alias":"Instrument / Lab","type":"esriFieldTypeString","length":160,"public":true},
-        {"name":"qualifier","alias":"Qualifier","type":"esriFieldTypeString","length":40,"public":true},
+        {"name":"qualifier","alias":"Qualifier","type":"esriFieldTypeString","length":40,"public":false},
         {"name":"source_type","alias":"Source Type","type":"esriFieldTypeString","length":40,"public":true},
         {"name":"record_hash","alias":"Immutable Record Hash","type":"esriFieldTypeString","length":64,"public":false}
       ]
@@ -134,13 +136,18 @@
     }
   ],
   "publicViews": [
-    {"name":"Central_PA_Watershed_Public_Sites","sourceLayerId":0},
-    {"name":"Central_PA_Watershed_Public_Observations","sourceLayerId":1},
-    {"name":"Central_PA_Watershed_Public_Measurements","sourceTableId":2},
-    {"name":"Central_PA_Watershed_Public_Latest","sourceLayerId":3}
+    {"name":"Central_PA_Watershed_Public_Sites","sourceDataset":"SamplingSites"},
+    {"name":"Central_PA_Watershed_Public_Observations","sourceDataset":"ApprovedObservations"},
+    {"name":"Central_PA_Watershed_Public_Measurements","sourceDataset":"Measurements"},
+    {"name":"Central_PA_Watershed_Public_Latest","sourceDataset":"LatestSiteConditions"}
   ],
   "privacy": {
-    "neverPublic": ["collector_user_id","source_submission_id","source_revision_id","event_id","reviewer_user_id","review_comment","field_notes_original","gps_accuracy_m","site_distance_m","entered_value","entered_unit_code","record_hash"],
-    "note": "The internal authoritative service retains traceability. Public hosted feature layer views expose only fields marked public=true."
+    "neverPublic": [
+      "collector_user_id","source_submission_id","source_revision_id","event_id","reviewer_user_id","review_comment",
+      "field_notes_original","gps_accuracy_m","site_distance_m","entered_value","entered_unit_code","record_hash",
+      "publication_key","measurement_id","revision_no","schema_version","mobile_app_version","validation_rules_version",
+      "quality_algorithm_version","data_collected_by","test_type","weather_condition","qualifier"
+    ],
+    "note": "The internal authoritative service retains traceability. Public hosted feature layer views expose only fields marked public=true. public_observation_id is a deterministic opaque identifier derived from the private immutable revision ID and is the only public observation-to-measurement join key."
   }
 }
