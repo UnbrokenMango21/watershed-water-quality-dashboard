@@ -7,7 +7,7 @@ on:
       - '.github/workflows/public-dashboard-ci.yml'
   push:
     branches:
-      - final/public-dashboard-v1
+      - main
     paths:
       - 'public-dashboard/**'
       - '.github/workflows/public-dashboard-ci.yml'
@@ -17,7 +17,7 @@ permissions:
 
 jobs:
   dashboard:
-    name: Typecheck and production build
+    name: Test, typecheck and production build
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -28,5 +28,6 @@ jobs:
         with:
           node-version: '22.x'
       - run: npm install --no-audit --no-fund
+      - run: npm test
       - run: npm run typecheck
       - run: npm run build
