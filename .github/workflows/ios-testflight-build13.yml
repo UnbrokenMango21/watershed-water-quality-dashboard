@@ -19,7 +19,7 @@ env:
   PROJECT_PATH: Phone App/iPhone App/PAWatershedWatch/PAWatershedWatch.xcodeproj
   SCHEME: PAWatershedWatch
   RELEASE_REF: release/ios-existing-app-v0.1.0-b13
-  RELEASE_SHA: e44218f5e41dcecaf55d961d6c3c51437eec247b
+  RELEASE_SHA: 7354d1b939aad865a000b5052f09396b4f1a48d7
   MARKETING_VERSION: 0.1.0
   BUILD_NUMBER: '13'
   ICON_PATH: Phone App/iPhone App/PAWatershedWatch/PAWatershedWatch/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png
@@ -95,9 +95,10 @@ jobs:
           grep -q "PRODUCT_BUNDLE_IDENTIFIER = ${BUNDLE_ID};" "$pbx"
           grep -q "MARKETING_VERSION = ${MARKETING_VERSION};" "$pbx"
           [ -f "$ICON_PATH" ] || { echo 'App icon missing'; exit 1; }
-          sips -g pixelWidth -g pixelHeight -g hasAlpha "$ICON_PATH" | tee "$RUNNER_TEMP/icon-check.txt"
-          grep -q 'pixelWidth: 1024' "$RUNNER_TEMP/icon-check.txt"
-          grep -q 'pixelHeight: 1024' "$RUNNER_TEMP/icon-check.txt"
+          file "$ICON_PATH" | tee "$RUNNER_TEMP/icon-check.txt"
+          grep -q 'PNG image data, 1024 x 1024' "$RUNNER_TEMP/icon-check.txt"
+          grep -q 'RGB' "$RUNNER_TEMP/icon-check.txt"
+          sips -g hasAlpha "$ICON_PATH" | tee -a "$RUNNER_TEMP/icon-check.txt"
           if grep -qi 'hasAlpha: yes' "$RUNNER_TEMP/icon-check.txt"; then
             echo 'App Store icon must not contain alpha'; exit 1
           fi
@@ -209,7 +210,7 @@ jobs:
             echo "- Build: $BUILD_NUMBER"
             echo "- Release ref: $RELEASE_REF"
             echo "- Commit: $RELEASE_SHA"
-            echo '- Includes refreshed 1024x1024 opaque app icon.'
+            echo '- Includes refreshed 1024x1024 opaque RGB app icon.'
             echo '- Apple may show Processing before TestFlight availability.'
           } >> "$GITHUB_STEP_SUMMARY"
 
