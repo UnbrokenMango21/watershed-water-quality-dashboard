@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { DashboardObservationSeriesPoint, DashboardParameter, DashboardSite, LatestSiteCondition } from "@/lib/data/DashboardDataSource";
 import { ArcgisDashboardDataSource } from "@/lib/data/ArcgisDashboardDataSource";
+import { productionArcgisViews } from "@/lib/data/productionResources";
 import { mockDashboardDataSource } from "@/lib/data/MockDashboardDataSource";
 import { ChartPanel } from "./dashboard/ChartPanel";
 import { exportSeriesCsv } from "./dashboard/exportCsv";
@@ -27,12 +28,7 @@ export function DashboardShell() {
   const [dataSubview, setDataSubview] = useState<DataSubview>("readings");
 
   const demoMode = process.env.NEXT_PUBLIC_DASHBOARD_DATA_MODE === "demo";
-  const productionDataConfigured = useMemo(() => Boolean(
-    process.env.NEXT_PUBLIC_ARCGIS_SITES_VIEW_URL &&
-    process.env.NEXT_PUBLIC_ARCGIS_OBSERVATIONS_VIEW_URL &&
-    process.env.NEXT_PUBLIC_ARCGIS_MEASUREMENTS_VIEW_URL &&
-    process.env.NEXT_PUBLIC_ARCGIS_LATEST_CONDITIONS_VIEW_URL
-  ), []);
+  const productionDataConfigured = true;
   const [dataError, setDataError] = useState<string | null>(null);
   const [seriesError, setSeriesError] = useState<string | null>(null);
   const [loadingSeries, setLoadingSeries] = useState(false);
@@ -42,10 +38,10 @@ export function DashboardShell() {
     if (!productionDataConfigured) return null;
     try {
       return new ArcgisDashboardDataSource({
-        sites: process.env.NEXT_PUBLIC_ARCGIS_SITES_VIEW_URL!,
-        observations: process.env.NEXT_PUBLIC_ARCGIS_OBSERVATIONS_VIEW_URL!,
-        measurements: process.env.NEXT_PUBLIC_ARCGIS_MEASUREMENTS_VIEW_URL!,
-        latest: process.env.NEXT_PUBLIC_ARCGIS_LATEST_CONDITIONS_VIEW_URL!,
+        sites: productionArcgisViews.sites,
+        observations: productionArcgisViews.observations,
+        measurements: productionArcgisViews.measurements,
+        latest: productionArcgisViews.latest,
       });
     } catch { return null; }
   }, [demoMode, productionDataConfigured]);
