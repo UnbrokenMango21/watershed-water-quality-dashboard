@@ -19,7 +19,7 @@ env:
   PROJECT_PATH: Phone App/iPhone App/PAWatershedWatch/PAWatershedWatch.xcodeproj
   SCHEME: PAWatershedWatch
   RELEASE_REF: release/ios-existing-app-v0.1.0-b13
-  RELEASE_SHA: 7354d1b939aad865a000b5052f09396b4f1a48d7
+  RELEASE_SHA: a23358ad1f3c32f5b9c12a2a10e864ca5d1ca7d7
   MARKETING_VERSION: 0.1.0
   BUILD_NUMBER: '13'
   ICON_PATH: Phone App/iPhone App/PAWatershedWatch/PAWatershedWatch/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png
