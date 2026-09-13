@@ -6,7 +6,11 @@ export class ArcGISError extends Error {
 export class ArcGISConflictError extends ArcGISError {
   constructor(message, details = null) { super(message, { code: 'ARCGIS_IMMUTABILITY_CONFLICT', retryable: false, details }); this.name = 'ArcGISConflictError'; }
 }
-const trimSlash = (value) => String(value).replace(/\/+$/, '');
+const trimSlash = (value) => {
+  let result = String(value);
+  while (result.endsWith('/')) result = result.slice(0, -1);
+  return result;
+};
 const sqlString = (value) => `'${String(value).replaceAll("'", "''")}'`;
 const isRetryableCode = (code) => Number(code) === 429 || Number(code) === 498 || Number(code) === 499 || Number(code) >= 500;
 function objectIdOf(attributes) {
