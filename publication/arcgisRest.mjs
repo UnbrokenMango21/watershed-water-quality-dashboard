@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs';
+const resources = JSON.parse(readFileSync(new URL('../config/arcgis_resources.json', import.meta.url), 'utf8'));
+
 export class ArcGISError extends Error {
   constructor(message, { code = null, retryable = false, details = null } = {}) {
     super(message); this.name = 'ArcGISError'; this.code = code; this.retryable = retryable; this.details = details;
@@ -15,7 +18,7 @@ function objectIdOf(attributes) {
 }
 
 export class ArcGISRestClient {
-  constructor({ featureServiceUrl, clientId, clientSecret, portalUrl = 'https://www.arcgis.com', fetchImpl = globalThis.fetch, layerIds = { sites: 0, observations: 1, measurements: 2, latest: 3 } }) {
+  constructor({ featureServiceUrl, clientId, clientSecret, portalUrl = 'https://www.arcgis.com', fetchImpl = globalThis.fetch, layerIds = resources.authoritative.layerIds }) {
     if (!featureServiceUrl) throw new Error('featureServiceUrl is required');
     if (!clientId || !clientSecret) throw new Error('ArcGIS OAuth client credentials are required');
     if (typeof fetchImpl !== 'function') throw new Error('fetch implementation is required');

@@ -12,7 +12,14 @@ export const parameterDefinitions: Array<{
   { key: "ph", label: "pH", shortLabel: "pH", glyph: "pH", decimals: 2 },
   { key: "dissolvedOxygen", label: "Dissolved Oxygen", shortLabel: "Dissolved Oxygen", glyph: "O₂", decimals: 1 },
   { key: "specificConductivity", label: "Specific Conductivity", shortLabel: "Conductivity", glyph: "µS", decimals: 0 },
-  { key: "nitrate", label: "Nitrate", shortLabel: "Nitrate", glyph: "NO₃", decimals: 2 },
+  { key: "nitrate", label: "Nitrate (as N)", shortLabel: "Nitrate", glyph: "N", decimals: 2 },
+  { key: "dissolvedOxygenSaturation", label: "Dissolved Oxygen Saturation", shortLabel: "DO saturation", glyph: "%", decimals: 1 },
+  { key: "totalDissolvedSolids", label: "Total Dissolved Solids", shortLabel: "TDS", glyph: "TDS", decimals: 1 },
+  { key: "oxidationReductionPotential", label: "Oxidation-Reduction Potential", shortLabel: "ORP", glyph: "mV", decimals: 0 },
+  { key: "chloride", label: "Chloride", shortLabel: "Chloride", glyph: "Cl", decimals: 2 },
+  { key: "sulfate", label: "Sulfate", shortLabel: "Sulfate", glyph: "SO₄", decimals: 2 },
+  { key: "phosphate", label: "Phosphate (as P)", shortLabel: "Phosphate", glyph: "P", decimals: 2 },
+  { key: "discharge", label: "Discharge / Flow", shortLabel: "Discharge", glyph: "Q", decimals: 3 },
 ];
 
 export const ranges = ["7D", "30D", "90D", "1Y", "Full record"] as const;
@@ -35,11 +42,13 @@ export function formatDateTime(iso: string) {
     year: "numeric",
     hour: "numeric",
     minute: "2-digit",
+    timeZone: "America/New_York",
+    timeZoneName: "short",
   }).format(new Date(iso));
 }
 
 export function formatShortDate(iso: string) {
-  return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" }).format(new Date(iso));
+  return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", timeZone: "America/New_York" }).format(new Date(iso));
 }
 
 export function rangeStart(range: RangeName, timestamps: string[]) {
@@ -58,5 +67,5 @@ export function completenessFor(condition: LatestSiteCondition | null | undefine
 }
 
 export function completenessLabel(completeness: "complete" | "partial" | "missing") {
-  return completeness === "complete" ? "Complete" : completeness === "partial" ? "Partial" : "No sample";
+  return completeness === "complete" ? "Reviewed" : completeness === "partial" ? "Reviewed" : "No sample";
 }

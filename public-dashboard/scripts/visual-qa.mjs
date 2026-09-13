@@ -190,7 +190,7 @@ for (const viewport of viewports) {
       await parameterSelect.selectOption("ph");
       if ((await page.locator(".parameter-tabs:visible").count()) !== 0) failures.push(`${viewport.name}: compact layout still shows desktop parameter tabs`);
     } else {
-      await page.getByRole("tab", { name: /pH/ }).click();
+      await page.getByRole("button", { name: /pH/ }).click();
     }
     try {
       await page.locator(".export-button").waitFor({ state: "visible", timeout: 30000 });

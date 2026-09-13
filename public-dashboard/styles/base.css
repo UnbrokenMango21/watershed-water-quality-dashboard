@@ -93,3 +93,6 @@ button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focu
 button[data-tooltip] { position: relative; }
 button[data-tooltip]::after { content: attr(data-tooltip); position: absolute; z-index: 100; left: 50%; bottom: calc(100% + 7px); transform: translateX(-50%) translateY(2px); opacity: 0; pointer-events: none; white-space: nowrap; padding: 4px 6px; border-radius: 4px; background: #26323c; color: #fff; font-size: 10px; line-height: 1.2; transition: opacity .12s ease, transform .12s ease; }
 button[data-tooltip]:hover::after, button[data-tooltip]:focus-visible::after { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+.source-error { display:flex; flex-wrap:wrap; align-items:center; gap:12px; padding:10px 20px; color:#7d2b20; background:#fff3ef; font-size:13px; }
+.source-error button { margin-left:auto; min-height:36px; cursor:pointer; }

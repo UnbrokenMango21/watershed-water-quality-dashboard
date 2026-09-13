@@ -55,13 +55,13 @@ export function SiteDetail({ site, condition }: { site: DashboardSite | null; co
       </div>
 
       <div className={`sample-summary ${completeness}`}>
-        <div><span>Latest sample</span><strong>{formatDateTime(condition.approvedAt)}</strong></div>
+        <div><span>Latest sample</span><strong>{formatDateTime(condition.observedAt)}</strong></div>
         <span className={`sample-state ${completeness}`}><span className="sample-state-dot" aria-hidden="true" />{completenessLabel(completeness)}</span>
       </div>
 
       <section className="metrics" aria-label="Latest readings">
         <div className="metrics-heading">
-          <div><span className="eyebrow">Latest readings</span><h3>Core water-quality parameters</h3></div>
+          <div><span className="eyebrow">Latest readings</span><h3>Water-quality measurements</h3></div>
           {hasTrendInformation && (
             <div className="detail-info-wrap">
               <button type="button" className="info-button" aria-label="Explain trend indicators" aria-expanded={showTrendInfo} data-tooltip="About trends" onClick={() => setShowTrendInfo((value) => !value)}><CalciteIcon icon="information" label="About trends" /></button>
@@ -74,7 +74,7 @@ export function SiteDetail({ site, condition }: { site: DashboardSite | null; co
         </div>
       </section>
 
-      <div className="missing-summary" role="status">{missingCount === 0 ? "All five core parameters were recorded in the latest sample." : `${missingCount} of 5 core parameters ${missingCount === 1 ? "was" : "were"} not recorded in the latest sample.`}</div>
+      <div className="missing-summary" role="status">{missingCount === 0 ? "All displayed parameters were recorded in the latest sample." : `${missingCount} displayed parameters ${missingCount === 1 ? "was" : "were"} not recorded in the latest sample. Optional measurements are not required for approval.`}</div>
     </aside>
   );
 }

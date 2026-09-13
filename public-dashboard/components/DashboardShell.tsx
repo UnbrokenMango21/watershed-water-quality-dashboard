@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { DashboardObservationSeriesPoint, DashboardParameter, DashboardSite, LatestSiteCondition } from "@/lib/data/DashboardDataSource";
-import { demoNetworkSummary, mockDashboardDataSource } from "@/lib/data/MockDashboardDataSource";
+import { ArcgisDashboardDataSource } from "@/lib/data/ArcgisDashboardDataSource";
+import { mockDashboardDataSource } from "@/lib/data/MockDashboardDataSource";
 import { ChartPanel } from "./dashboard/ChartPanel";
 import { exportSeriesCsv } from "./dashboard/exportCsv";
 import { MapSurface } from "./dashboard/MapSurface";
@@ -32,27 +33,45 @@ export function DashboardShell() {
     process.env.NEXT_PUBLIC_ARCGIS_MEASUREMENTS_VIEW_URL &&
     process.env.NEXT_PUBLIC_ARCGIS_LATEST_CONDITIONS_VIEW_URL
   ), []);
-  const sourceConnected = demoMode || productionDataConfigured;
+  const [dataError, setDataError] = useState<string | null>(null);
+  const [seriesError, setSeriesError] = useState<string | null>(null);
+  const [loadingSeries, setLoadingSeries] = useState(false);
+  const [retry, setRetry] = useState(0);
+  const source = useMemo(() => {
+    if (demoMode) return mockDashboardDataSource;
+    if (!productionDataConfigured) return null;
+    try {
+      return new ArcgisDashboardDataSource({
+        sites: process.env.NEXT_PUBLIC_ARCGIS_SITES_VIEW_URL!,
+        observations: process.env.NEXT_PUBLIC_ARCGIS_OBSERVATIONS_VIEW_URL!,
+        measurements: process.env.NEXT_PUBLIC_ARCGIS_MEASUREMENTS_VIEW_URL!,
+        latest: process.env.NEXT_PUBLIC_ARCGIS_LATEST_CONDITIONS_VIEW_URL!,
+      });
+    } catch { return null; }
+  }, [demoMode, productionDataConfigured]);
+  const sourceConnected = Boolean(source) && !dataError && !loadingSites;
 
   useEffect(() => {
     let cancelled = false;
-    if (!demoMode) {
+    setDataError(null);
+    if (!source) {
       setLoadingSites(false);
+      if (productionDataConfigured) setDataError("The public source configuration is invalid.");
       return;
     }
     setLoadingSites(true);
-    void (async () => {
-      const loadedSites = await mockDashboardDataSource.listSites();
-      const entries = await Promise.all(loadedSites.map(async (site) => [site.id, await mockDashboardDataSource.getLatestSiteCondition(site.id)] as const));
+    void Promise.all([source.listSites(), source.listLatestSiteConditions()]).then(([loadedSites, latest]) => {
       if (cancelled) return;
+      if (latest.some((condition) => !loadedSites.some((site) => site.id === condition.siteId))) throw new Error("A latest observation references an unavailable public site.");
       setSites(loadedSites);
-      setConditions(Object.fromEntries(entries));
-      // Intentionally begin with no selection. This keeps no-selection distinct
-      // from site-selected/no-measurement and prevents misleading active controls.
-      setLoadingSites(false);
-    })();
+      setConditions(Object.fromEntries(latest.map((condition) => [condition.siteId, condition])));
+    }).catch((error: unknown) => {
+      if (cancelled) return;
+      setSites([]); setConditions({}); setSelectedSiteId(null);
+      setDataError(error instanceof Error ? error.message : "Monitoring data could not be loaded.");
+    }).finally(() => { if (!cancelled) setLoadingSites(false); });
     return () => { cancelled = true; };
-  }, [demoMode]);
+  }, [source, productionDataConfigured, retry]);
 
   const filteredSites = useMemo(() => {
     const needle = search.trim().toLowerCase();
@@ -64,16 +83,17 @@ export function DashboardShell() {
   const selectedCondition = selectedSiteId ? conditions[selectedSiteId] ?? null : null;
 
   useEffect(() => {
-    if (!demoMode || !selectedSiteId) {
-      setSeries([]);
-      return;
-    }
+    setSeries([]); setSeriesError(null);
+    if (!source || !selectedSiteId) { setLoadingSeries(false); return; }
     let cancelled = false;
-    void mockDashboardDataSource.getObservationSeries(selectedSiteId, activeParameter).then((points) => {
+    setLoadingSeries(true);
+    void source.getObservationSeries(selectedSiteId, activeParameter).then((points) => {
       if (!cancelled) setSeries(points);
-    });
+    }).catch((error: unknown) => {
+      if (!cancelled) setSeriesError(error instanceof Error ? error.message : "Historical observations could not be loaded.");
+    }).finally(() => { if (!cancelled) setLoadingSeries(false); });
     return () => { cancelled = true; };
-  }, [activeParameter, demoMode, selectedSiteId]);
+  }, [activeParameter, source, selectedSiteId, retry]);
 
   const visibleSeries = useMemo(() => {
     const start = rangeStart(activeRange, series.map((point) => point.observedAt));
@@ -104,24 +124,28 @@ export function DashboardShell() {
     exportSeriesCsv(selectedSite, definition.label, `${selectedSite.code}-${activeParameter}-${activeRange.replaceAll(" ", "-").toLowerCase()}`, visibleSeries);
   }, [activeParameter, activeRange, selectedSite, visibleSeries]);
 
+  const latestSample = Object.values(conditions).flatMap((condition) => condition ? [condition.observedAt] : []).sort().at(-1);
+  const watershedCount = new Set(sites.map((site) => site.watershed).filter(Boolean)).size;
+
   return (
     <main className="dashboard-shell" data-mobile-view={mobileView} data-source-connected={sourceConnected ? "true" : "false"}>
       <header className="app-bar">
         <div className="brand-block">
           <div className="brand-mark" aria-hidden="true">≈</div>
-          <div><h1>Central PA Watershed</h1><p>Water Quality Monitoring Dashboard</p></div>
+          <div><h1>PA Watershed Watch</h1><p>Watershed Dashboard</p></div>
         </div>
         {sourceConnected ? (
           <div className="kpi-strip" aria-label="Network summary">
-            <div className="kpi"><span>Active Sites</span><strong>{demoMode ? demoNetworkSummary.activeSites : sites.length || "—"}</strong></div>
-            <div className="kpi"><span>Latest Update</span><strong>{demoMode ? formatShortDate(demoNetworkSummary.latestUpdate) : "—"}</strong></div>
-            <div className="kpi"><span>Streams Monitored</span><strong>{demoMode ? demoNetworkSummary.streamsMonitored : "—"}</strong></div>
+            <div className="kpi"><span>Monitoring Sites</span><strong>{sites.length}</strong></div>
+            <div className="kpi"><span>Latest Sample</span><strong>{latestSample ? formatShortDate(latestSample) : "—"}</strong></div>
+            <div className="kpi"><span>Watersheds</span><strong>{watershedCount}</strong></div>
           </div>
         ) : (
           <div className="source-status" role="status"><span className="source-status-dot" aria-hidden="true" /><span>Monitoring source unavailable</span></div>
         )}
       </header>
 
+      {dataError && <div className="source-error" role="alert"><span>{dataError}</span><button type="button" onClick={() => setRetry((value) => value + 1)}>Retry monitoring data</button></div>}
       {demoMode && <div className="demo-banner" role="status"><strong>DEMO MODE</strong><span>· Synthetic test sites and measurements — not production observations</span></div>}
 
       <nav className="mobile-view-tabs" aria-label="Dashboard view">
@@ -146,7 +170,7 @@ export function DashboardShell() {
           hoveredSiteId={hoveredSiteId}
           search={search}
           loading={loadingSites}
-          productionDataConfigured={productionDataConfigured}
+          productionDataConfigured={Boolean(source) && !dataError}
           onSearch={setSearch}
           onSelect={handleSelectFromList}
           onHover={handleHover}
@@ -165,6 +189,9 @@ export function DashboardShell() {
           />
           <ChartPanel
             site={selectedSite}
+            loading={loadingSeries}
+            error={seriesError}
+            onRetry={() => setRetry((value) => value + 1)}
             sourceConnected={sourceConnected}
             activeParameter={activeParameter}
             activeRange={activeRange}

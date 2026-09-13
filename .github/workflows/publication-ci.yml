@@ -5,6 +5,8 @@ on:
       - 'publication/**'
       - 'functions/index.mjs'
       - 'config/arcgis_publication_schema.json'
+      - 'config/arcgis_resources.json'
+      - 'config/production_measurement_catalog.json'
       - 'config/publication_contract.json'
       - 'scripts/provision_arcgis_publication.py'
       - 'scripts/verify_arcgis_publication.py'
@@ -19,6 +21,8 @@ on:
       - 'publication/**'
       - 'functions/index.mjs'
       - 'config/arcgis_publication_schema.json'
+      - 'config/arcgis_resources.json'
+      - 'config/production_measurement_catalog.json'
       - 'config/publication_contract.json'
       - 'scripts/provision_arcgis_publication.py'
       - 'scripts/verify_arcgis_publication.py'
@@ -36,6 +40,7 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: npm }
       - run: npm ci
+      - run: python3 -m unittest discover -s tests/publication -p '*_test.py'
       - run: npm run test:publication
       - run: npm run test:contracts
       - name: Parse ArcGIS Pro Python automation

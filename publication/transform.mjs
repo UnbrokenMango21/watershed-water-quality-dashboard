@@ -1,4 +1,7 @@
 import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+
+const measurementCatalog = new Map(JSON.parse(readFileSync(new URL('../config/production_measurement_catalog.json', import.meta.url), 'utf8')).measurements.filter((m) => m.support === 'FULLY_SUPPORTED').map((m) => [m.parameterCode, m]));
 
 export class PublicationEligibilityError extends Error {
   constructor(message) {
@@ -28,9 +31,10 @@ function finiteNumber(value, label) {
 
 export function toEpochMillis(value, label) {
   if (value == null) return null;
-  if (typeof value.toMillis === 'function') return value.toMillis();
-  if (value instanceof Date) return value.valueOf();
+  if (typeof value.toMillis === 'function') value = value.toMillis();
+  if (value instanceof Date) value = value.valueOf();
   if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value !== 'string' || !value.trim()) throw new PublicationEligibilityError(`${label} is not a valid timestamp`);
   const parsed = new Date(value);
   if (!Number.isNaN(parsed.valueOf())) return parsed.valueOf();
   throw new PublicationEligibilityError(`${label} is not a valid timestamp`);
@@ -68,7 +72,7 @@ function siteAttributes(site) {
   return {
     site_id: siteId,
     site_code: site.site_code ?? siteId,
-    site_name: site.site_name_display ?? site.site_name_public ?? site.site_code ?? siteId,
+    site_name: site.site_name_public ?? `Sampling Site ${site.site_code ?? siteId}`,
     county: site.county ?? null,
     watershed_name: site.watershed_name ?? null,
     site_status: site.active === false ? 'INACTIVE' : 'ACTIVE',
@@ -111,17 +115,31 @@ export function buildPublicationBundle({ submission, revision, measurements, sit
   if (revision.event_id !== submission.event_id) throw new PublicationEligibilityError('Revision event_id does not match its parent submission');
   if (revision.site_id !== submission.site_id || site.site_id !== submission.site_id) throw new PublicationEligibilityError('Submission, revision and site catalog site_id values must match');
 
+  // Site catalog is server-owned. Public coordinates and provenance need explicit release clearance.
+  if (site.publication_approved !== true || /^TEST(?:[-_]|$)/i.test(site.site_code ?? '')) {
+    throw new PublicationEligibilityError('Site is not cleared for public scientific publication');
+  }
+
+  const publicObservationId = createHash('sha256').update(`pa-watershed-watch:observation:${revisionId}`).digest('hex');
   const siteAttrs = siteAttributes(site);
   const siteFeature = { attributes: { ...siteAttrs }, geometry: pointGeometry(siteAttrs.longitude, siteAttrs.latitude) };
   siteFeature.attributes.record_hash = recordHash({ attributes: siteFeature.attributes, geometry: siteFeature.geometry });
 
   const collectedAt = toEpochMillis(revision.collected_at, 'revision.collected_at');
   const measurementList = [...measurements];
+  for (const m of measurementList) {
+    const definition = measurementCatalog.get(m.parameter_code);
+    if (!definition || definition.serializationTarget !== 'measurement' || m.unit_code !== definition.canonicalUnit) {
+      throw new PublicationEligibilityError('Measurement does not match the production parameter/unit contract');
+    }
+    if (m.qualifier != null && m.qualifier !== '') throw new PublicationEligibilityError('Qualified measurements require a verified public interpretation before publication');
+  }
+  if (collectedAt == null || toEpochMillis(submission.reviewed_at, 'reviewed_at') == null) throw new PublicationEligibilityError('Collection and approval timestamps are required');
   const observationAttributes = {
     publication_key: `approved:${revisionId}`,
     event_id: requiredString(submission.event_id, 'submission.event_id'),
     source_submission_id: requiredString(submission.submission_id, 'submission.submission_id'),
-    source_revision_id: revisionId,
+    source_revision_id: revisionId, observation_id: publicObservationId,
     revision_no: Number(revision.revision_no),
     collector_user_id: submission.collector_user_id ?? revision.collector_user_id ?? null,
     site_id: siteAttrs.site_id, site_code: siteAttrs.site_code, site_name: siteAttrs.site_name, county: siteAttrs.county, watershed_name: siteAttrs.watershed_name,
@@ -148,8 +166,8 @@ export function buildPublicationBundle({ submission, revision, measurements, sit
     const measurementId = requiredString(measurement.measurement_id, 'measurement.measurement_id');
     const attributes = {
       publication_key: `${revisionId}:${measurementId}`, measurement_id: measurementId, event_id: observationAttributes.event_id,
-      source_revision_id: revisionId, site_id: siteAttrs.site_id, collected_at: collectedAt,
-      parameter_code: requiredString(measurement.parameter_code, 'measurement.parameter_code'), display_name: measurement.display_name ?? measurement.parameter_code,
+      source_revision_id: revisionId, observation_id: publicObservationId, site_id: siteAttrs.site_id, collected_at: collectedAt,
+      parameter_code: requiredString(measurement.parameter_code, 'measurement.parameter_code'), display_name: measurementCatalog.get(measurement.parameter_code).displayName,
       value: finiteNumber(measurement.value, `measurement ${measurementId} value`), unit_code: requiredString(measurement.unit_code, `measurement ${measurementId} unit_code`),
       entered_value: typeof measurement.entered_value === 'number' ? measurement.entered_value : null, entered_unit_code: measurement.entered_unit_code ?? null,
       method_name: measurement.method_name ?? revision.method_name ?? null, instrument_name: measurement.instrument_name ?? revision.instrument_name ?? null,
@@ -161,7 +179,7 @@ export function buildPublicationBundle({ submission, revision, measurements, sit
 
   const temperatureAttributes = {
     publication_key: `${revisionId}:WATER_TEMP_C`, measurement_id: `temp:${revisionId}`, event_id: observationAttributes.event_id,
-    source_revision_id: revisionId, site_id: siteAttrs.site_id, collected_at: collectedAt, parameter_code: 'WATER_TEMP_C', display_name: 'Water Temperature (°C)',
+    source_revision_id: revisionId, observation_id: publicObservationId, site_id: siteAttrs.site_id, collected_at: collectedAt, parameter_code: 'WATER_TEMP_C', display_name: 'Water Temperature (°C)',
     value: observationAttributes.temp_c, unit_code: 'degC', entered_value: finiteNumber(revision.temp_entered_value, 'revision.temp_entered_value'),
     entered_unit_code: requiredString(revision.temp_entered_unit, 'revision.temp_entered_unit'), method_name: revision.method_name ?? null,
     instrument_name: revision.instrument_name ?? null, qualifier: null, source_type: 'REVISION_TEMPERATURE',
@@ -177,7 +195,7 @@ export function buildLatestFeature({ siteFeature, latestObservationFeature, samp
   const attrs = {
     site_id: siteFeature.attributes.site_id, site_code: siteFeature.attributes.site_code, site_name: siteFeature.attributes.site_name,
     county: siteFeature.attributes.county, watershed_name: siteFeature.attributes.watershed_name,
-    source_revision_id: source.source_revision_id, collected_at: source.collected_at, sample_count: Number(sampleCount),
+    source_revision_id: source.source_revision_id, observation_id: source.observation_id, collected_at: source.collected_at, sample_count: Number(sampleCount),
     temp_c: source.temp_c ?? null, temp_f: source.temp_f ?? null, ph: source.ph ?? null, do_mg_l: source.do_mg_l ?? null,
     do_percent: source.do_percent ?? null, conductivity_us_cm: source.conductivity_us_cm ?? null, tds_mg_l: source.tds_mg_l ?? null,
     orp_mv: source.orp_mv ?? null, chloride_mg_l: source.chloride_mg_l ?? null, sulfate_mg_l: source.sulfate_mg_l ?? null,

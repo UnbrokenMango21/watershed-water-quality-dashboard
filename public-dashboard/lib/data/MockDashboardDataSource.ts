@@ -105,7 +105,7 @@ for (const site of demoSites) {
   seriesBySite.set(site.id, allPoints);
   conditionsBySite.set(site.id, {
     siteId: site.id,
-    approvedAt: observationDates.at(-1)!,
+    observedAt: observationDates.at(-1)!,
     reviewed: true,
     measurements: current,
     previousMeasurements,
@@ -122,6 +122,10 @@ export const demoNetworkSummary = {
 export class MockDashboardDataSource implements DashboardDataSource {
   async listSites(): Promise<DashboardSite[]> {
     return demoSites.map((site) => ({ ...site }));
+  }
+
+  async listLatestSiteConditions(): Promise<LatestSiteCondition[]> {
+    return structuredClone([...conditionsBySite.values()]);
   }
 
   async getLatestSiteCondition(siteId: string): Promise<LatestSiteCondition | null> {

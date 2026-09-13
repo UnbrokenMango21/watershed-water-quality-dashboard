@@ -32,7 +32,7 @@ export interface DashboardMeasurement {
 
 export interface LatestSiteCondition {
   siteId: string;
-  approvedAt: string;
+  observedAt: string;
   reviewed: true;
   measurements: DashboardMeasurement[];
   previousMeasurements?: Partial<Record<DashboardParameter, DashboardMeasurement>>;
@@ -44,6 +44,7 @@ export interface DashboardObservationSeriesPoint extends DashboardMeasurement {
 
 export interface DashboardDataSource {
   listSites(): Promise<DashboardSite[]>;
+  listLatestSiteConditions(): Promise<LatestSiteCondition[]>;
   getLatestSiteCondition(siteId: string): Promise<LatestSiteCondition | null>;
   getObservationSeries(
     siteId: string,

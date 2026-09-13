@@ -4,7 +4,7 @@ import { assertPublicationEligibility, buildPublicationBundle, PublicationEligib
 
 const submission = { submission_id: 'submission-1', event_id: 'event-1', collector_user_id: 'collector-private', site_id: 'site-1', status: 'APPROVED', current_revision_id: 'revision-2', current_revision_no: 2, review_decision: 'APPROVE', reviewed_revision_id: 'revision-2', reviewed_at: new Date('2026-08-16T16:00:00Z'), overall_quality_score: 92.3333, warning_flag_count: 4, validation_rules_version: '0.1.0', quality_algorithm_version: '0.1.0', schema_version: '0.1.0', mobile_app_version: '0.1.0' };
 const revision = { revision_id: 'revision-2', revision_no: 2, submission_id: 'submission-1', event_id: 'event-1', collector_user_id: 'collector-private', site_id: 'site-1', revision_status: 'SUBMITTED', collected_at: new Date('2026-08-16T14:30:00Z'), latitude: 40.7934, longitude: -77.86, gps_accuracy_m: 4.2, site_distance_m: 3.1, data_collected_by: 'Student/researcher', test_type: 'In-situ / Field Instrument', method_name: 'Field meter', instrument_name: 'Multiparameter sonde', weather_condition: 'CLEAR', temp_entered_value: 20, temp_entered_unit: 'C', temp_c: 20, temp_f: 68, schema_version: '0.1.0', mobile_app_version: '0.1.0' };
-const site = { site_id: 'site-1', site_code: 'WB-001', site_name_display: 'Spring Creek at Example Reach', county: 'Centre', watershed_name: 'Spring Creek', latitude: 40.793, longitude: -77.861, active: true, updated_at: new Date('2026-08-16T12:00:00Z') };
+const site = { publication_approved: true, site_id: 'site-1', site_code: 'WB-001', site_name_display: 'Spring Creek at Example Reach', county: 'Centre', watershed_name: 'Spring Creek', latitude: 40.793, longitude: -77.861, active: true, updated_at: new Date('2026-08-16T12:00:00Z') };
 const measurements = [
   { measurement_id: 'm-ph', parameter_code: 'PH', display_name: 'pH', value: 7.2, unit_code: 'pH', entered_value: 7.2, entered_unit_code: 'ph-standard', method_name: 'Field meter', instrument_name: 'Sonde' },
   { measurement_id: 'm-do', parameter_code: 'DO_MG_L', display_name: 'DO (mg/L)', value: 9.1, unit_code: 'mg/L', entered_value: 9.1, entered_unit_code: 'mg-o2-l', method_name: 'Field meter', instrument_name: 'Sonde' },
@@ -27,3 +27,35 @@ test('publication preserves canonical units and does not silently convert measur
 test('unapproved and rejected submissions are never publication eligible', () => { for (const status of ['DRAFT','SUBMITTED','VALIDATING','PENDING_REVIEW','NEEDS_CORRECTION','REJECTED']) assert.throws(() => assertPublicationEligibility({ ...submission, status }, 'revision-2'), PublicationEligibilityError, status); assert.throws(() => assertPublicationEligibility({ ...submission, review_decision: 'REJECT' }, 'revision-2'), PublicationEligibilityError); });
 test('an old reviewed revision cannot publish after a newer current revision exists', () => assert.throws(() => assertPublicationEligibility({ ...submission, current_revision_id: 'revision-3' }, 'revision-2'), /no longer the current revision/));
 test('timestamp is preserved as the exact UTC instant in ArcGIS epoch milliseconds', () => assert.equal(buildPublicationBundle({ submission, revision, site, measurements }).observationFeature.attributes.collected_at, Date.parse('2026-08-16T14:30:00Z')));
+
+test('public join ID is opaque, stable on retry, revision-specific and never reveals internal IDs', () => {
+  const a = buildPublicationBundle({ submission, revision, site, measurements, publishedAt: 100 });
+  const retry = buildPublicationBundle({ submission, revision, site, measurements, publishedAt: 200 });
+  const id = a.observationFeature.attributes.observation_id;
+  assert.match(id, /^[a-f0-9]{64}$/);
+  assert.equal(id, retry.observationFeature.attributes.observation_id);
+  assert.equal(a.observationFeature.attributes.record_hash, retry.observationFeature.attributes.record_hash);
+  for (const m of a.measurements) assert.equal(m.attributes.observation_id, id);
+  assert.equal(a.observationFeature.attributes.site_name, 'Sampling Site WB-001');
+  assert.notEqual(a.observationFeature.attributes.collected_at, a.observationFeature.attributes.approved_at);
+  const next = buildPublicationBundle({ submission: { ...submission, current_revision_id: 'revision-3', reviewed_revision_id: 'revision-3' }, revision: { ...revision, revision_id: 'revision-3', revision_no: 3 }, site, measurements });
+  assert.notEqual(next.observationFeature.attributes.observation_id, id);
+});
+
+
+test('publisher rejects missing dates, unexpected canonical units and unhandled qualifiers', () => {
+  for (const change of [{ unit_code: 'degF' }, { qualifier: '<' }, { parameter_code: 'UNKNOWN' }]) {
+    assert.throws(() => buildPublicationBundle({ submission, revision, site, measurements: [{ ...measurements[0], ...change }] }), PublicationEligibilityError);
+  }
+  assert.throws(() => buildPublicationBundle({ submission, revision: { ...revision, collected_at: null }, site, measurements }), /timestamps are required/);
+});
+
+
+test('public release clearance fails closed for unknown, private and test sites', () => {
+  for (const change of [{ publication_approved: undefined }, { publication_approved: false }, { publication_approved: 'true' }, { site_code: 'TEST-014' }]) {
+    assert.throws(() => buildPublicationBundle({ submission, revision, measurements, site: { ...site, ...change } }), /not cleared/);
+  }
+  for (const collected_at of [new Date('invalid'), NaN, Infinity, { toMillis: () => NaN }]) {
+    assert.throws(() => buildPublicationBundle({ submission, site, measurements, revision: { ...revision, collected_at } }), /valid timestamp/);
+  }
+});

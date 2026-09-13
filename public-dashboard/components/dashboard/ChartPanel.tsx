@@ -4,8 +4,11 @@ import type { DashboardObservationSeriesPoint, DashboardParameter, DashboardSite
 import { CalciteIcon, parameterDefinitions, ranges, type RangeName } from "./dashboard-utils";
 import { TrendChart } from "./TrendChart";
 
-export function ChartPanel({ site, sourceConnected, activeParameter, activeRange, points, onParameter, onRange, onExport }: {
+export function ChartPanel({ site, sourceConnected, activeParameter, activeRange, points, onParameter, onRange, onExport, loading, error, onRetry }: {
   site: DashboardSite | null;
+  loading?: boolean;
+  error?: string | null;
+  onRetry?: () => void;
   sourceConnected: boolean;
   activeParameter: DashboardParameter;
   activeRange: RangeName;
@@ -58,15 +61,15 @@ export function ChartPanel({ site, sourceConnected, activeParameter, activeRange
         </select>
       </label>
 
-      <div className="parameter-tabs" role="tablist" aria-label="Water quality parameter">
-        {parameterDefinitions.map((parameter) => (
-          <button key={parameter.key} role="tab" aria-selected={parameter.key === activeParameter} type="button" className={parameter.key === activeParameter ? "parameter-tab active" : "parameter-tab"} onClick={() => onParameter(parameter.key)}>
+      <div className="parameter-tabs" role="group" aria-label="Water quality parameter">
+        {parameterDefinitions.slice(0, 5).map((parameter) => (
+          <button key={parameter.key} aria-pressed={parameter.key === activeParameter} type="button" className={parameter.key === activeParameter ? "parameter-tab active" : "parameter-tab"} onClick={() => onParameter(parameter.key)}>
             <span className="parameter-tab-glyph" aria-hidden="true">{parameter.glyph}</span><span>{parameter.shortLabel}</span>
           </button>
         ))}
       </div>
 
-      <TrendChart points={points} label={definition.label} decimals={definition.decimals} />
+      {loading ? <div className="chart-context-empty" role="status">Loading approved observations…</div> : error ? <div className="chart-context-empty" role="alert"><span>{error}</span><button type="button" onClick={onRetry}>Retry time series</button></div> : <TrendChart points={points} label={definition.label} decimals={definition.decimals} />}
     </section>
   );
 }

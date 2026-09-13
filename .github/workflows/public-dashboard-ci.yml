@@ -7,7 +7,8 @@ on:
       - '.github/workflows/public-dashboard-ci.yml'
   push:
     branches:
-      - final/public-dashboard-v1
+      - main
+      - integration/pa-watershed-watch-2026-09
     paths:
       - 'public-dashboard/**'
       - '.github/workflows/public-dashboard-ci.yml'
@@ -27,6 +28,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22.x'
-      - run: npm install --no-audit --no-fund
+      - run: npm ci --no-audit --no-fund
+      - run: npm test
       - run: npm run typecheck
       - run: npm run build
