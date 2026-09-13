@@ -1,4 +1,4 @@
-.trend-panel{overflow:hidden;padding:10px 12px 8px;display:grid;grid-template-rows:auto auto minmax(0,1fr)}
+.trend-panel{overflow:hidden;padding:10px 12px 8px;display:grid;grid-template-rows:auto auto auto minmax(0,1fr)}
 .trend-panel-context-empty{grid-template-rows:auto minmax(0,1fr)}
 .trend-toolbar{min-width:0;display:flex;align-items:flex-end;justify-content:space-between;gap:10px}
 .compact-context-toolbar{align-items:center}
