@@ -1,6 +1,6 @@
 # Phase 12 — Approved ArcGIS Publication and Public Dashboard Foundation
 
-## Current-state audit (2026-08-16)
+## Current-state audit (2026-09-13)
 
 The active transactional path is native mobile collection → Firestore immutable revisions → trusted validation → `PENDING_REVIEW` → authenticated QC Console review. Review approval is revision-aware and leaves the approved revision unchanged. The root Firestore schema already reserves `APPROVED`, `PUBLISHING`, `PUBLISH_FAILED`, and `PUBLISHED`, but `functions/index.mjs` previously contained only the submitted/resubmitted validation trigger.
 
@@ -15,7 +15,7 @@ That item is preserved. Phase 12 creates a separate approved-authoritative GIS s
 
 The active `web/` application is the Firebase App Hosting QC console. Its root redirects to `/review`; the earlier public dashboard implementation exists only as closed historical PR #1 and is not active production code.
 
-No current repository reference identifies the legacy screenshot's 117-site ArcGIS item/service, and a public ArcGIS Online title/keyword search on 2026-08-16 did not produce a defensible match. Do not destroy or migrate that legacy dataset until its authenticated ArcGIS item inventory, schema, duplicate profile, geometry quality, and time range are captured.
+The authenticated inventory found the historical layer: 117 records across 5 distinct site IDs, with date-only 2025 measurements and no recorded approval/provenance policy. It remains excluded from the approved-authoritative service and public dashboard.
 
 ## Target responsibility split
 
@@ -41,7 +41,7 @@ Firestore remains authoritative for operational workflow, revision history, vali
 
 `config/arcgis_publication_schema.json` is the versioned GIS contract. `config/publication_contract.json` is the server-only Firestore publication job/lease/idempotency contract.
 
-`SamplingSites` is one mutable public-safe feature per official site. `ApprovedObservations` is one immutable point feature per approved revision and uses the approved revision's actual collection geometry. It carries a wide set of typed scientific fields for fast map/popup use plus internal trace IDs and a SHA-256 record hash. `Measurements` is the normalized parameter table and includes one canonical `WATER_TEMP_C` row derived from the already-stored revision temperature. `LatestSiteConditions` is a materialized one-row-per-site view derived from the newest approved observation and approved sample count; it is never the historical record.
+`SamplingSites` is one mutable public-safe feature per official site. `ApprovedObservations` is one immutable point feature per approved revision and uses the approved revision's actual collection geometry. It carries typed public scientific fields plus private trace fields and a SHA-256 record hash. `Measurements` is the normalized parameter table and includes one canonical `WATER_TEMP_C` row derived from the already-stored revision temperature. `LatestSiteConditions` is a materialized one-row-per-site view derived from the newest approved observation and approved sample count; it is never the historical record. ArcGIS assigned the final authoritative IDs by returned dataset name: sites 0, observations 1, latest 2, measurements 3; all four hosted public views expose physical layer 0.
 
 Each dataset's `keyField` is provisioned with a unique ArcGIS attribute index. The unique constraint is a database-level last line of defense against duplicate site, approved-revision, measurement-publication-key, and latest-site rows; the publisher still performs read-before-write idempotency and immutable hash verification.
 
@@ -49,7 +49,7 @@ Scientific values are never silently recomputed by the publisher. Canonical Fire
 
 ## Privacy boundary
 
-The approved-authoritative service remains private. Separate read-only hosted views are created for sites, observations, measurements, and latest conditions, each exposing only fields marked `public: true` in the schema.
+The approved-authoritative service `b5c738cc413f4f44b213885b8500c10d` remains private. Separate read-only hosted views are created for sites `a969e961c152463080b410e040879ca6`, observations `4609ca6693ef42afbf52f0f95c42f5ed`, measurements `1094591a993449b59031e9eab25d934a`, and latest conditions `a84f9c8ea7ef4f1898cf2ffe190f02d5`, each exposing only fields marked `public: true` in the schema. All four views passed the independent anonymous verifier and currently contain zero records.
 
 Public views exclude collector account IDs, source submission/revision/event IDs, reviewer data, review comments, field notes, GPS accuracy, distance-to-site diagnostics, entered-value provenance, validator internals, and record hashes. Public `quality_score` / `quality_context` describe data confidence and validation context, not environmental impairment or regulatory compliance.
 
@@ -107,7 +107,7 @@ Do not build the public dashboard against placeholder JSON. The frontend impleme
 
 ## Legacy 117-site migration gate
 
-The old 117-site dataset remains unresolved because its ArcGIS item ID is not in the active repository and no authenticated ArcGIS inventory connector is available in this session. Once authenticated inventory is available: snapshot/export first; classify site vs observation records; profile duplicates; validate geometry; establish time range/timezone; screen private names/notes; map legacy parameter aliases without silent conversions; stage migration in a separate geodatabase; reconcile official site IDs; and publish only after historical provenance/approval policy is explicit. Never delete or overwrite the legacy item as part of this migration.
+The historical 117-record/5-site dataset is excluded because its provenance does not establish publication approval, collector/privacy handling, or canonical parameter lineage. Keep the inventory evidence private and do not migrate it until those decisions are documented.
 
 ## Test coverage
 

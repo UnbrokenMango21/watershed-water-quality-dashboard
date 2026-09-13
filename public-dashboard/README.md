@@ -27,7 +27,7 @@ If the project later publishes a reviewed public watershed view of its own, set 
 
 Production never silently falls back to sample observations. Without verified public ArcGIS monitoring resources, production must render a professional unconfigured/empty state rather than invented sites or measurements.
 
-The `public-dashboard-dev` backend is temporarily and explicitly configured with `NEXT_PUBLIC_DASHBOARD_DATA_MODE=demo` in `apphosting.yaml` so the interactive product can be exercised before real monitoring data is approved. Every demo monitoring surface is visibly labeled as synthetic. The HUC12 watershed layer is real public reference geography, not synthetic monitoring data. Removing/changing the demo setting returns the monitoring application to the production-safe data boundary while retaining the watershed reference geography.
+The `public-dashboard-dev` backend is configured with `NEXT_PUBLIC_DASHBOARD_DATA_MODE=production` and the four verified public-safe ArcGIS views. Those views are currently empty by design because no provenance-cleared approved observation is available. Demo monitoring data remains an explicit local-only mode and is never a production fallback. The HUC12 watershed layer is real public reference geography, not synthetic monitoring data.
 
 The production adapter will bind only to verified public-safe ArcGIS surfaces for:
 
