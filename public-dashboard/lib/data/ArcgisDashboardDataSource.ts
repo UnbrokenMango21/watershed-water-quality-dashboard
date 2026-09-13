@@ -25,7 +25,7 @@ const wideFields = Object.values(parameterFields).map((p) => p.field);
 const siteFields = ["site_id", "site_code", "site_name", "county", "watershed_name"];
 const allowed: Record<Dataset, string[]> = {
   sites: [...siteFields, "site_status", "latitude", "longitude"],
-  observations: [...siteFields, "observation_id", "collected_at", "approved_at", "published_at", "test_type", "weather_condition", "latitude", "longitude", "temp_f", ...wideFields, "quality_score", "quality_context"],
+  observations: [...siteFields, "observation_id", "collected_at", "approved_at", "published_at", "latitude", "longitude", "temp_f", ...wideFields, "quality_score", "quality_context"],
   measurements: ["observation_id", "site_id", "collected_at", "parameter_code", "display_name", "value", "unit_code", "qualifier", "source_type"],
   latest: [...siteFields, "observation_id", "collected_at", "sample_count", "temp_f", ...wideFields, "quality_score", "quality_context"],
 };
