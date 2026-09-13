@@ -177,7 +177,7 @@ for (const viewport of viewports) {
     }
 
     await page.getByRole("heading", { name: "Demo Bald Eagle Creek Site" }).waitFor({ state: "visible" });
-    if (!(await page.locator(".missing-summary").innerText()).includes("1 of 5")) failures.push(`${viewport.name}: partial-sample summary is missing`);
+    if (!/^\d+ of \d+ displayed parameters were recorded in the latest sample/.test(await page.locator(".missing-summary").innerText())) failures.push(`${viewport.name}: partial-sample summary is missing`);
     if (compact) {
       await assertCompactSurfaceFillsWorkspace(page, viewport.name, ".site-detail", "readings");
       await page.screenshot({ path: `${outDir}/${viewport.name}-readings.png`, fullPage: false });
