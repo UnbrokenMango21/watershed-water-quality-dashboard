@@ -27,7 +27,8 @@ export function SiteDetail({ site, condition }: { site: DashboardSite | null; co
   }
 
   const completeness = completenessFor(condition);
-  const missingCount = parameterDefinitions.filter((parameter) => !condition.measurements.some((measurement) => measurement.parameter === parameter.key)).length;
+  const recordedCount = parameterDefinitions.filter((parameter) => condition.measurements.some((measurement) => measurement.parameter === parameter.key)).length;
+  const missingCount = parameterDefinitions.length - recordedCount;
   const hasTrendInformation = parameterDefinitions.some((parameter) => Boolean(condition.previousMeasurements?.[parameter.key]));
 
   return (
@@ -54,7 +55,7 @@ export function SiteDetail({ site, condition }: { site: DashboardSite | null; co
         </div>
       </section>
 
-      <div className="missing-summary" role="status">{missingCount === 0 ? "All displayed parameters were recorded in the latest sample." : `${missingCount} displayed parameters ${missingCount === 1 ? "was" : "were"} not recorded in the latest sample. Optional measurements are not required for approval.`}</div>
+      <div className="missing-summary" role="status">{recordedCount} of {parameterDefinitions.length} displayed parameters were recorded in the latest sample{missingCount === 0 ? "." : `; ${missingCount} optional ${missingCount === 1 ? "parameter was" : "parameters were"} not recorded.`}</div>
     </aside>
   );
 }
