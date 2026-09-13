@@ -4,7 +4,7 @@ Native watershed field collection, Firebase validation and trusted QC, approved 
 
 ![CI](https://github.com/UnbrokenMango21/watershed-water-quality-dashboard/actions/workflows/mobile-ci.yml/badge.svg?branch=main)
 ![Phase](https://img.shields.io/badge/phase-11%20release%20candidate-blue)
-![TestFlight](https://img.shields.io/badge/TestFlight-next-lightgrey)
+![TestFlight](https://img.shields.io/badge/TestFlight-0.1.0%20%2813%29-in%20beta%20testing-green)
 
 ## Current product flow
 
@@ -39,9 +39,9 @@ Status vocabulary: **LIVE** means operating in a connected environment; **VERIFI
 | Automated validation | VERIFIED | Engine, persistence and trigger integration are tested; live development trigger proof is the next release gate |
 | Trusted QC Console | VERIFIED | Authenticated reviewer UI and review lifecycle tests are green |
 | ArcGIS private staging | VERIFIED | Existing ArcGIS schema/staging foundation remains; it is not the human QC system |
-| Approved-only ArcGIS publisher | NEXT | Next engineering phase after TestFlight/live lifecycle proof |
-| Public/research dashboard | NEXT | Consumes approved public-safe ArcGIS views after publisher completion |
-| iOS TestFlight | NEXT | Internal distribution and physical-device lifecycle proof |
+| Approved-only ArcGIS publisher | VERIFIED / GATED | Private authoritative service and four public-safe read-only views are provisioned and independently verified; live OAuth app credentials and a provenance-cleared non-test record remain external gates |
+| Public/research dashboard | VERIFIED / EMPTY | Production adapter reads only the four anonymous public-safe views; the views are intentionally empty until a provenance-cleared approved observation exists |
+| iOS TestFlight | VERIFIED / IN BETA | Build 13 (`0.1.0 (13)`) is `VALID` and `IN_BETA_TESTING`; physical-device installation remains to be confirmed |
 | Photo/audio/media capture | DEFERRED | Zero scientific attachments in the current production candidate |
 
 ## Repository map

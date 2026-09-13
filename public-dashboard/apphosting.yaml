@@ -1,0 +1,26 @@
+env:
+  - variable: NEXT_PUBLIC_DASHBOARD_DATA_MODE
+    value: production
+    availability:
+      - BUILD
+      - RUNTIME
+  - variable: NEXT_PUBLIC_ARCGIS_SITES_VIEW_URL
+    value: https://services9.arcgis.com/6EuFgO4fLTqfNOhu/arcgis/rest/services/Central_PA_Watershed_Public_Sites/FeatureServer/0
+    availability:
+      - BUILD
+      - RUNTIME
+  - variable: NEXT_PUBLIC_ARCGIS_OBSERVATIONS_VIEW_URL
+    value: https://services9.arcgis.com/6EuFgO4fLTqfNOhu/arcgis/rest/services/Central_PA_Watershed_Public_Observations/FeatureServer/0
+    availability:
+      - BUILD
+      - RUNTIME
+  - variable: NEXT_PUBLIC_ARCGIS_MEASUREMENTS_VIEW_URL
+    value: https://services9.arcgis.com/6EuFgO4fLTqfNOhu/arcgis/rest/services/Central_PA_Watershed_Public_Measurements/FeatureServer/0
+    availability:
+      - BUILD
+      - RUNTIME
+  - variable: NEXT_PUBLIC_ARCGIS_LATEST_CONDITIONS_VIEW_URL
+    value: https://services9.arcgis.com/6EuFgO4fLTqfNOhu/arcgis/rest/services/Central_PA_Watershed_Public_Latest/FeatureServer/0
+    availability:
+      - BUILD
+      - RUNTIME

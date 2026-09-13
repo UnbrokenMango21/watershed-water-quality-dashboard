@@ -604,7 +604,12 @@ private struct DraftPayload: Codable {
     func updateRemoteState(ownerUID: String, submissionID: UUID, workflow: WorkflowState, sync: SyncState, correctionReason: String?, validation: ValidationSummary?, flags: [ValidationFlag]) throws {
         let key = submissionID.uuidString.lowercased()
         guard let observation = try context.fetch(FetchDescriptor<LocalObservationEntity>()).first(where: { $0.ownerUID == ownerUID && $0.submissionID == key }) else { return }
-        observation.workflow = workflow.rawValue; observation.sync = sync.rawValue; observation.correctionReason = correctionReason; observation.updatedAt = .now
+        observation.workflow = workflow.rawValue
+        let pendingQueueState = try context.fetch(FetchDescriptor<LocalSyncQueueEntity>())
+            .first(where: { $0.ownerUID == ownerUID && $0.submissionID == key && $0.state != "CONFIRMED" })?.state
+        let existingSync = SyncState(rawValue: observation.sync) ?? .waiting
+        observation.sync = Self.reconciledSyncState(incoming: sync, existing: existingSync, pendingQueueState: pendingQueueState).rawValue
+        observation.correctionReason = correctionReason; observation.updatedAt = .now
         observation.validationErrorCount = validation?.errorCount; observation.validationWarningCount = validation?.warningCount
         observation.validationInfoCount = validation?.infoCount; observation.overallQualityScore = validation?.overallQualityScore
         try context.fetch(FetchDescriptor<LocalValidationFlagEntity>())
@@ -616,6 +621,15 @@ private struct DraftPayload: Codable {
 
     func queue(ownerUID: String) throws -> [LocalSyncQueueEntity] { try context.fetch(FetchDescriptor<LocalSyncQueueEntity>()).filter { $0.ownerUID == ownerUID && $0.state != "CONFIRMED" } }
     func markQueue(_ item: LocalSyncQueueEntity, state: String, error: String? = nil) throws { item.state = state; item.lastError = error; item.attempts += 1; try context.save() }
+
+    static func reconciledSyncState(incoming: SyncState, existing: SyncState, pendingQueueState: String?) -> SyncState {
+        guard incoming == .synced, let pendingQueueState, pendingQueueState != "CONFIRMED" else { return incoming }
+        switch pendingQueueState {
+        case "SYNCING": return .syncing
+        case "RETRYABLE_FAILURE": return .failed
+        default: return existing == .failed ? .failed : .waiting
+        }
+    }
 
     private static func entry(_ value: Double) -> String {
         value.formatted(.number.locale(Locale(identifier: "en_US_POSIX")).grouping(.never).precision(.significantDigits(1...12)))
@@ -667,12 +681,23 @@ private struct DraftPayload: Codable {
         let existing = try await submission.getDocument(source: .server)
         if existing.exists {
             guard existing.get("collector_user_id") as? String == snapshot.ownerUID, existing.get("event_id") as? String == snapshot.eventID.uuidString.lowercased() else { throw CanonicalizationError.invalid("Remote identity does not match") }
-            if let status = existing.get("status") as? String, Self.acknowledged.contains(status) {
-                guard existing.get("current_revision_id") as? String == snapshot.revisionID.uuidString.lowercased(), let workflow = WorkflowState.backend(status) else { throw CanonicalizationError.invalid("Server acknowledged a different revision") }
+            if let workflow = try Self.acknowledgedWorkflow(
+                status: existing.get("status") as? String,
+                remoteRevisionID: existing.get("current_revision_id") as? String,
+                snapshotRevisionID: snapshot.revisionID.uuidString.lowercased(),
+                isCorrection: snapshot.correction
+            ) {
                 return workflow
             }
-            if snapshot.correction, existing.get("status") as? String != "NEEDS_CORRECTION" { throw CanonicalizationError.invalid("Correction is not currently requested") }
-        } else {
+            if snapshot.correction {
+            let status = existing.get("status") as? String
+            guard status == "NEEDS_CORRECTION" else { throw CanonicalizationError.invalid("Correction is not currently requested") }
+            try Self.validateCorrectionSequence(
+                remoteRevisionNumber: existing.get("current_revision_no") as? Int,
+                snapshotRevisionNumber: snapshot.revisionNumber
+            )
+        }
+    } else {
             guard !snapshot.correction else { throw CanonicalizationError.invalid("Correction parent is missing") }
             try await submission.setData(FirebaseMapper.submission(snapshot, status: "DRAFT"))
         }
@@ -724,6 +749,35 @@ private struct DraftPayload: Codable {
                 }
             }
         }
+    }
+
+    static func validateCorrectionSequence(remoteRevisionNumber: Int?, snapshotRevisionNumber: Int) throws {
+        guard let remoteRevisionNumber else { throw CanonicalizationError.invalid("Server correction revision number is unavailable") }
+        let expected = remoteRevisionNumber + 1
+        guard snapshotRevisionNumber == expected else {
+            throw CanonicalizationError.invalid("The archive expects Revision \(expected), but this phone prepared Revision \(snapshotRevisionNumber). Retry the pending correction instead of creating another revision.")
+        }
+    }
+
+    /// Returns a server workflow only when the server already points at the same immutable revision.
+    /// A correction is the one intentional mismatch: while the parent is NEEDS_CORRECTION the server must
+    /// still point at revision N until the collector appends revision N+1. That state must continue into the
+    /// upload path instead of being mistaken for an acknowledgement of the new revision.
+    static func acknowledgedWorkflow(
+        status: String?,
+        remoteRevisionID: String?,
+        snapshotRevisionID: String,
+        isCorrection: Bool
+    ) throws -> WorkflowState? {
+        guard let status, acknowledged.contains(status) else { return nil }
+        if remoteRevisionID == snapshotRevisionID {
+            guard let workflow = WorkflowState.backend(status) else {
+                throw CanonicalizationError.invalid("Server workflow state is unsupported")
+            }
+            return workflow
+        }
+        if isCorrection && status == "NEEDS_CORRECTION" { return nil }
+        throw CanonicalizationError.invalid("Server acknowledged a different revision")
     }
 
     private static let acknowledged: Set<String> = ["SUBMITTED", "VALIDATING", "PENDING_REVIEW", "NEEDS_CORRECTION", "RESUBMITTED", "APPROVED", "REJECTED", "PUBLISHING", "PUBLISH_FAILED", "PUBLISHED"]
