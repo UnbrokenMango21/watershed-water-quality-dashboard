@@ -4,7 +4,7 @@ import type { ReactNode } from 'react';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'Watershed Watch QC Console',
+  title: 'PA Watershed Watch | Quality Review',
   description: 'Quality-control review interface for Central PA Watershed field observations.',
 };
 

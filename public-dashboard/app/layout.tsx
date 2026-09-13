@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Central PA Watershed",
+  title: "PA Watershed Watch | Watershed Dashboard",
   description: "Public water quality monitoring dashboard",
 };
 
