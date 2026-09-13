@@ -22,4 +22,6 @@ Build 12 includes correction acknowledgment ordering and the pending-sync guard 
 
 An authenticated real reviewer must approve accepted revision 2 through the trusted review action. Verify the unchanged revision, reviewer identity, timestamps, parent state and deterministic audit entry. Keep raw IDs and reviewer details in private operational evidence. The user’s Penn State email is still required to provision the normal reviewer account; the console now exposes Firebase’s password-reset flow without revealing passwords.
 
+The development identity `test.qc.reviewer@central-pa-watershed-dev.local` remains because `scripts/seed_qc_smoke_data.mjs` and review fixtures depend on it. It is not the normal reviewer account and is not used for public publication.
+
 Do not issue a final Phase 11 release tag until that evidence exists. TEST-014 is a controlled development record and must not silently become production monitoring science.
