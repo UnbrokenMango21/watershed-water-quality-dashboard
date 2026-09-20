@@ -13,7 +13,7 @@ ArcGIS is not a blank slate. The repository already contains a mature ArcGIS Pro
 
 That item is preserved. Phase 12 creates a separate approved-authoritative GIS service rather than changing the staging service in place.
 
-The active `web/` application is the Firebase App Hosting QC console. Its root redirects to `/review`; the earlier public dashboard implementation exists only as closed historical PR #1 and is not active production code.
+The active `web/` application remains the private Firebase App Hosting QC console and redirects to `/review`. The separate `public-dashboard/` application is now active production code: it is deployed independently, reads only the verified public ArcGIS views, and intentionally renders an empty/unavailable monitoring state until approved public records exist.
 
 The authenticated inventory found the historical layer: 117 records across 5 distinct site IDs, with date-only 2025 measurements and no recorded approval/provenance policy. It remains excluded from the approved-authoritative service and public dashboard.
 
@@ -99,11 +99,11 @@ TEST-014 must not be altered or backfilled merely to prove the publisher. Use it
 
 ## Dashboard architecture decision
 
-Use the hybrid/custom option: ArcGIS Online is the GIS publication/analysis backend; the public product should be a custom responsive Next.js dashboard using the ArcGIS Maps SDK for JavaScript and server-side ArcGIS queries. This preserves the current web engineering stack while allowing stronger site-driven interaction, scientific time-series, responsive composition, accessibility, and future researcher-mode exports than a default ArcGIS Dashboard layout. ArcGIS Pro remains the workbench for cartography, spatial enrichment, geometry QA, duplicate checks, and reproducible analysis. Core publication logic stays outside Arcade/Experience Builder.
+The implemented architecture uses the hybrid/custom option: ArcGIS Online is the GIS publication/analysis backend; the public product is a custom responsive Next.js dashboard using the ArcGIS Maps SDK for JavaScript and server-side ArcGIS queries. This preserves the current web engineering stack while allowing stronger site-driven interaction, scientific time-series, responsive composition, accessibility, and future researcher-mode exports than a default ArcGIS Dashboard layout. ArcGIS Pro remains the workbench for cartography, spatial enrichment, geometry QA, duplicate checks, and reproducible analysis. Core publication logic stays outside Arcade/Experience Builder.
 
 Experience Builder can remain an optional outreach wrapper, not a source of business/scientific publication logic.
 
-Do not build the public dashboard against placeholder JSON. The frontend implementation begins against the verified public hosted views and web map item so site selection, filters, charts, and map behavior can be tested against the real approved publication contract rather than a disconnected demo.
+Production does not use placeholder JSON or silently fall back to demo monitoring data. The deployed frontend binds to the verified public hosted views; local demo mode remains explicit and isolated for visual/interaction testing.
 
 ## Legacy 117-site migration gate
 

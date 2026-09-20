@@ -1,6 +1,6 @@
 # Phase 11 release evidence
 
-Updated September 13, 2026. Release closure is still pending final reviewer approval/readback.
+Updated September 20, 2026. Release closure is still pending physical-device verification and final human reviewer approval/readback.
 
 ## Tested release source
 
@@ -12,15 +12,15 @@ Build 12 includes correction acknowledgment ordering and the pending-sync guard 
 
 ## Current verification
 
-- Local Build 13 simulator `xcodebuild test` passed with 14 tests and the signed artifact launched to the empty sign-in screen. The physical iPhone remains unavailable to the current Mac connection, so TestFlight installation on that device is still a human/device checkpoint.
-- Android `testDebugUnitTest`, `lintDebug`, `assembleDebug` and `assembleRelease` passed after restoring the tracked `Model.kt` from Git. SDK configuration was supplied through `ANDROID_HOME`.
+- On September 20, local Xcode 27 / iOS 27 simulator verification passed 14/14 native tests on an iPhone 18 Pro simulator; the debug app installed and launched successfully. Physical TestFlight installation on the project iPhone remains a human/device checkpoint.
+- On September 20, Android local verification passed `testDebugUnitTest`, `lintDebug`, `assembleDebug`, `assembleRelease`, and `assembleDebugAndroidTest`; 3/3 connected instrumentation tests passed on the `PAWatershed_API_34` Pixel 8 AVD.
 - Firestore rules: 42 tests passed; Storage rules: 6; validation persistence: 7; review lifecycle: 16. These are emulator evidence, not substitutes for live reviewer readback.
 - Live development Firebase has the active validation function.
 - TEST-014 has accepted revision 2 in `PENDING_REVIEW`, with zero error flags. Its previous review decision refers to revision 1. No final approval of revision 2 is claimed here.
 
 ## Closure gate
 
-An authenticated real reviewer must approve accepted revision 2 through the trusted review action. Verify the unchanged revision, reviewer identity, timestamps, parent state and deterministic audit entry. Keep raw IDs and reviewer details in private operational evidence. The user’s Penn State email is still required to provision the normal reviewer account; the console now exposes Firebase’s password-reset flow without revealing passwords.
+An authenticated real reviewer must approve accepted revision 2 through the trusted review action. Verify the unchanged revision, reviewer identity, timestamps, parent state and deterministic audit entry. Keep raw IDs and reviewer details in private operational evidence. The normal Penn State reviewer identity has been provisioned with the reviewer role; password setup/login through Firebase's reset flow remains a human checkpoint.
 
 The development identity `test.qc.reviewer@central-pa-watershed-dev.local` remains because `scripts/seed_qc_smoke_data.mjs` and review fixtures depend on it. It is not the normal reviewer account and is not used for public publication.
 

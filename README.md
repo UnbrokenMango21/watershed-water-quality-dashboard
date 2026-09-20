@@ -36,8 +36,8 @@ Status vocabulary: **LIVE** means operating in a connected environment; **VERIFI
 | Native Android / Jetpack Compose | VERIFIED | Native collector kept healthy by unit, lint, build and emulator instrumentation CI |
 | Firebase Authentication | VERIFIED | Native and QC authentication integration present |
 | Firestore private staging | VERIFIED | Security Rules and persistence contracts are emulator-tested |
-| Automated validation | VERIFIED | Engine, persistence and trigger integration are tested; live development trigger proof is the next release gate |
-| Trusted QC Console | VERIFIED | Authenticated reviewer UI and review lifecycle tests are green |
+| Automated validation | VERIFIED / LIVE | Engine, persistence and trigger integration are tested; the development validation trigger is active |
+| Trusted QC Console | VERIFIED / GATED | Authenticated reviewer UI and review lifecycle tests are green; the real reviewer identity is provisioned and final live sign-in/review readback remains a human gate |
 | ArcGIS private staging | VERIFIED | Existing ArcGIS schema/staging foundation remains; it is not the human QC system |
 | Approved-only ArcGIS publisher | VERIFIED / GATED | Private authoritative service and four public-safe read-only views are provisioned and independently verified; live OAuth app credentials and a provenance-cleared non-test record remain external gates |
 | Public/research dashboard | VERIFIED / EMPTY | Production adapter reads only the four anonymous public-safe views; the views are intentionally empty until a provenance-cleared approved observation exists |
@@ -71,7 +71,7 @@ Status vocabulary: **LIVE** means operating in a connected environment; **VERIFI
 
 ## Current development target
 
-Finish the Phase 11 release lock by proving the development iPhone → Firebase → live validation → QC Console roundtrip through internal TestFlight. After that, build the **approved-only ArcGIS publisher** as a trusted, server-side, idempotent publication boundary.
+Close the Phase 11/12 pre-release gates: verify Build 13 on the physical iPhone, complete real-reviewer sign-in/readback, provision item-scoped ArcGIS OAuth credentials, then run the first provenance-cleared non-test approval → publication → public-view → dashboard readback. The approved-only publisher and public dashboard are already implemented, tested and deliberately gated until those human/external checks are complete.
 
 ## Developing
 

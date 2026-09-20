@@ -1,41 +1,30 @@
 # PA Watershed Watch Roadmap
 
-Updated: 2026-08-15
+Updated: 2026-09-20
 
-## Current: Phase 11 release lock
+## Current: pre-release closure
 
-The native mobile + trusted QC implementation is the current product. Repository consolidation and CI are prerequisites, not a new architecture phase.
+The end-to-end architecture is implemented: native collection → private Firebase workflow → trusted validation → QC review → approved-only ArcGIS publication → public-safe views → public dashboard. Current work is release verification and controlled activation, not another architecture rewrite.
 
-Remaining release-lock gates:
+Remaining pre-release gates:
 
-1. Consolidate the green authoritative lineage into `main` and remove obsolete active branches/material.
-2. Keep complete CI green on `main`.
-3. Verify the real `validateSubmittedObservation` trigger in `central-pa-watershed-dev` and prove a real submission reaches `PENDING_REVIEW` or the appropriate correction state.
-4. Produce a signed iOS Release archive, upload it to App Store Connect and wait for successful processing.
-5. Enable internal TestFlight and install the build on the project iPhone.
-6. Prove iPhone → Firebase Auth → Firestore → live validation → QC Console.
-7. Approve one controlled development observation and verify audit/reviewer/timestamp/revision invariants.
-8. Exercise Request Correction and revision N+1 when practical.
-9. Record exact non-secret evidence in `PHASE11_RELEASE_LOCK.md` and tag the tested release candidate.
+1. Keep the integration line and all CI workflows green.
+2. Confirm TestFlight Build 13 on the physical project iPhone.
+3. Complete the provisioned real reviewer account's password setup/login and preserve private review evidence.
+4. Perform the final controlled human review/readback without treating TEST-014 as publishable monitoring science.
+5. Create an ArcGIS OAuth application credential scoped only to the approved-authoritative item and store its client credentials as Firebase Functions secrets.
+6. Enable the approved-only publisher only after the OAuth scope, service URL, privacy verifier and CI are rechecked.
+7. Use a provenance-cleared, non-test observation for the first live publication; verify authoritative ArcGIS write/readback and idempotent retry behavior.
+8. Verify the resulting record through all four anonymous public-safe views and the production dashboard.
+9. Consolidate the verified release/integration lineage into `main` and tag the tested release.
 
-## Next: approved-only ArcGIS publisher
+## Implemented and gated: approved-only ArcGIS publication
 
-Build a trusted server-side publisher from an APPROVED immutable Firebase revision to private ArcGIS staging, then verify/read back publication state.
+The server-side publisher, immutable/idempotent publication contract, private approved-authoritative service, and four public-safe read-only views are implemented and verified. Live publication stays disabled until item-scoped OAuth credentials and a deliberately selected non-test record are ready.
 
-Required properties:
+## Implemented and empty: public/research dashboard
 
-- server-side only;
-- stable submission/event/revision identity;
-- idempotent retries;
-- only APPROVED revisions may publish;
-- PENDING_REVIEW, NEEDS_CORRECTION and REJECTED may not publish;
-- no mobile ArcGIS credentials;
-- ArcGIS failure cannot silently mark publication success;
-- public-safe views exclude private collector/reviewer data.
-
-## Then: public/research dashboard
-
-Consume only approved, public-safe ArcGIS views. Add researcher-oriented analytical capabilities after the publication boundary is proven.
+The responsive Next.js dashboard is implemented and deployed against the verified public-safe ArcGIS views. Production intentionally shows no monitoring observations while those views contain zero approved records. Demo monitoring data is local-only and is never a production fallback.
 
 ## Deferred
 
@@ -45,4 +34,5 @@ Consume only approved, public-safe ArcGIS views. Add researcher-oriented analyti
 - Camera/microphone permissions.
 - Additional mandatory science measurements beyond Water Temperature.
 - ArcGIS Workflow Manager as a required QC system.
-- Public App Store release (internal TestFlight comes first).
+- Historical 117-record/5-site migration until provenance is documented.
+- Public App Store release until internal TestFlight and release-lock evidence are complete.

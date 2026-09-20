@@ -14,4 +14,4 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 
 Do not put test credentials in source. Use a provisioned development collector account through the normal Firebase sign-in flow.
 
-Location, camera, and microphone permissions are requested only in the field action that needs them. Existing photos use Android's system photo picker and need no broad media-library permission.
+Location permission is requested only for the field-location workflow. Photo/audio capture and upload are deliberately deferred in the current release, so the app does not request camera or microphone permissions. Water Temperature remains the only currently confirmed mandatory science measurement.
