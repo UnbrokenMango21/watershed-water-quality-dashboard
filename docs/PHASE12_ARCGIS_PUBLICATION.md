@@ -95,7 +95,7 @@ Do not enable `publishApprovedObservation` until the new ArcGIS service and view
 
 Activation requires setting `ENABLE_ARCGIS_PUBLICATION_FUNCTION=true` together with the verified FeatureServer URL. With the default `false`, the publisher endpoint is omitted and cannot react to approvals.
 
-TEST-014 must not be altered or backfilled merely to prove the publisher. Use its existing immutable data only if/when it is deliberately approved as the controlled publication candidate.
+TEST-014 must not be altered, backfilled, approved, or published merely to prove the publisher. It is controlled test data and is ineligible to serve as the final scientific publication proof. The first live end-to-end publication proof must use a provenance-cleared, non-test observation approved by an authorized human reviewer.
 
 ## Dashboard architecture decision
 
