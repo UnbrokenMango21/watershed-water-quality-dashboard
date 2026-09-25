@@ -1,6 +1,6 @@
 # Phase 11 release evidence
 
-Updated September 20, 2026. Release closure is still pending physical-device verification and final human reviewer approval/readback.
+Updated September 25, 2026. Release closure is still pending physical-device verification, real-reviewer sign-in/readback, and an authorized decision on a provenance-cleared non-test observation.
 
 ## Tested release source
 
@@ -20,7 +20,7 @@ Build 12 includes correction acknowledgment ordering and the pending-sync guard 
 
 ## Closure gate
 
-An authenticated real reviewer must approve accepted revision 2 through the trusted review action. Verify the unchanged revision, reviewer identity, timestamps, parent state and deterministic audit entry. Keep raw IDs and reviewer details in private operational evidence. The normal Penn State reviewer identity has been provisioned with the reviewer role; password setup/login through Firebase's reset flow remains a human checkpoint.
+An authenticated real reviewer must sign in and read back accepted TEST-014 Revision 2, its unchanged science, validation flags, timestamps, and existing Revision 1 audit trail. Do not approve or otherwise change TEST-014 merely to complete release verification. A separate provenance-cleared non-test observation needs the authorized scientific review decision and deterministic audit readback before public publication. Keep raw IDs and reviewer details in private operational evidence. The normal Penn State reviewer identity has been provisioned with the reviewer role; password setup/login through Firebase's reset flow remains a human checkpoint.
 
 The development identity `test.qc.reviewer@central-pa-watershed-dev.local` remains because `scripts/seed_qc_smoke_data.mjs` and review fixtures depend on it. It is not the normal reviewer account and is not used for public publication.
 

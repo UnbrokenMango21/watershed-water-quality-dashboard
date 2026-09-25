@@ -3,8 +3,10 @@
 Native watershed field collection, Firebase validation and trusted QC, approved ArcGIS publication, and public water-quality visualization.
 
 ![CI](https://github.com/UnbrokenMango21/watershed-water-quality-dashboard/actions/workflows/mobile-ci.yml/badge.svg?branch=main)
-![Phase](https://img.shields.io/badge/phase-11%20release%20candidate-blue)
-![TestFlight](https://img.shields.io/badge/TestFlight-0.1.0%20%2813%29-in%20beta%20testing-green)
+![Release](https://img.shields.io/badge/release-closure%20in%20progress-blue)
+![TestFlight](https://img.shields.io/badge/TestFlight-0.1.0%20%2813%29%20in%20beta-green)
+
+For a plain-language map of the folders and actions, start with [PROJECT_MAP.md](PROJECT_MAP.md).
 
 ## Current product flow
 
@@ -95,4 +97,4 @@ Android and iOS are verified in `.github/workflows/mobile-ci.yml`; platform-spec
 
 ## Documentation
 
-Start with [`docs/README.md`](docs/README.md). Architecture, roadmap, scientific contracts, QC operations and deferred-feature decisions are indexed there.
+Start with [`docs/ENGINEERING_COCKPIT.md`](docs/ENGINEERING_COCKPIT.md) for the shared Mac tool environment and [`docs/README.md`](docs/README.md) for project documentation. Architecture, roadmap, scientific contracts, QC operations and deferred-feature decisions are indexed there.
