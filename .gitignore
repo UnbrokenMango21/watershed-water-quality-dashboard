@@ -55,5 +55,8 @@ Phone App/Android App/*.iml
 Phone App/**/DerivedData/
 Phone App/**/*.xcarchive
 
+# Authenticated ArcGIS inventory reports may contain private item metadata.
+artifacts/arcgis_inventory/
+
 # Firebase/Admin credentials are never repository material.
 # Firebase client configuration used by signed native apps may be tracked intentionally.
