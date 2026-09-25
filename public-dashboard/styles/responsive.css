@@ -51,8 +51,9 @@
   .brand-mark{width:28px;height:28px}.brand-block h1{font-size:16px}.brand-block p{font-size:9.5px}
   .kpi-strip{display:none}
   .source-status{justify-self:end;display:none}
-  .demo-banner{min-height:24px;justify-content:flex-start;overflow:hidden;padding:4px 9px;font-size:9px;text-overflow:ellipsis}
-  .demo-banner span{overflow:hidden;text-overflow:ellipsis}
+  .demo-banner{min-height:24px;justify-content:flex-start;padding:4px 9px;font-size:9px;white-space:normal}
+  .demo-banner strong{flex:none}
+  .demo-banner span{min-width:0;overflow:visible}
 
   .workspace[data-mobile-view="data"][data-data-subview="series"]>.center-column{padding:5px}
   .trend-panel{padding:9px}
