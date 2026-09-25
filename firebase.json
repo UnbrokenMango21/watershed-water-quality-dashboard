@@ -3,6 +3,10 @@
     {
       "backendId": "qc-console-dev",
       "rootDir": "web"
+    },
+    {
+      "backendId": "public-dashboard-dev",
+      "rootDir": "public-dashboard"
     }
   ],
   "firestore": {
@@ -19,14 +23,38 @@
     "codebase": "validation",
     "runtime": "nodejs22",
     "ignore": [
-      ".git/**",
-      ".firebase/**",
-      "node_modules/**",
-      "Phone App/**",
-      "mobile/**",
-      "web/**",
-      "tests/**",
-      "docs/**",
+      ".git",
+      ".firebase",
+      ".github",
+      ".codex",
+      ".air",
+      ".run",
+      ".idea",
+      ".next",
+      ".firebaserc",
+      ".gitignore",
+      ".mcp.json",
+      "node_modules",
+      "Phone App",
+      "mobile",
+      "web",
+      "public-dashboard",
+      "tests",
+      "docs",
+      "submission",
+      "project-control",
+      "artifacts",
+      "scripts",
+      "firebase",
+      "firebase.json",
+      "*.md",
+      "LICENSE",
+      ".env*",
+      "*.p8",
+      "*.pem",
+      "*.key",
+      "*service-account*.json",
+      "*service_account*.json",
       "*.zip",
       "*.log"
     ]

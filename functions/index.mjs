@@ -1,12 +1,36 @@
 import { initializeApp } from 'firebase-admin/app';
 import { getFirestore, Timestamp } from 'firebase-admin/firestore';
 import { logger } from 'firebase-functions';
+import { defineBoolean, defineSecret, defineString } from 'firebase-functions/params';
 import { onDocumentUpdated } from 'firebase-functions/v2/firestore';
+import { publishApprovedSubmission, shouldHandleApprovalEvent } from '../publication/orchestrator.mjs';
 import { runValidationForSubmission } from '../validation/orchestrator.mjs';
 
 initializeApp();
 
 const CLAIMABLE = new Set(['SUBMITTED', 'RESUBMITTED']);
+const ENABLE_ARCGIS_PUBLICATION_FUNCTION = defineBoolean('ENABLE_ARCGIS_PUBLICATION_FUNCTION', {
+  default: false,
+  description: 'Explicit deployment gate for the approved-only ArcGIS publisher. Keep false until ArcGIS provisioning and verification pass.',
+});
+const ARCGIS_PUBLICATION_FEATURE_SERVICE_URL = defineString('ARCGIS_PUBLICATION_FEATURE_SERVICE_URL', {
+  default: '',
+  description: 'Approved-authoritative ArcGIS FeatureServer URL; never point this at the private QC staging service.',
+});
+const ARCGIS_PORTAL_URL = defineString('ARCGIS_PORTAL_URL', {
+  default: 'https://www.arcgis.com',
+  description: 'ArcGIS Online/Enterprise portal base URL used for OAuth app authentication.',
+});
+const OMIT_ARCGIS_PUBLICATION_FUNCTION = ENABLE_ARCGIS_PUBLICATION_FUNCTION.thenElse(
+  ARCGIS_PUBLICATION_FEATURE_SERVICE_URL.equals(''),
+  true,
+);
+// Firebase resolves every declared secret in a codebase before applying --only or
+// omit. Do not declare the publisher's secrets in a disabled deployment.
+const publisherConfigured = process.env.ENABLE_ARCGIS_PUBLICATION_FUNCTION === 'true'
+  && Boolean(process.env.ARCGIS_PUBLICATION_FEATURE_SERVICE_URL);
+const ARCGIS_OAUTH_CLIENT_ID = publisherConfigured ? defineSecret('ARCGIS_OAUTH_CLIENT_ID') : null;
+const ARCGIS_OAUTH_CLIENT_SECRET = publisherConfigured ? defineSecret('ARCGIS_OAUTH_CLIENT_SECRET') : null;
 
 export async function handleSubmissionStatusChange({ before, after, submissionId, db = getFirestore() }) {
   if (!after || !submissionId) return { skipped: 'missing-event-data' };
@@ -20,6 +44,20 @@ export async function handleSubmissionStatusChange({ before, after, submissionId
     }
     throw error;
   }
+}
+
+export async function handleApprovedSubmission({ before, after, submissionId, db = getFirestore(), arcgisConfig }) {
+  if (!after || !submissionId) return { skipped: 'missing-event-data' };
+  if (!shouldHandleApprovalEvent(before, after)) return { skipped: 'not-newly-approved' };
+
+  const approvedRevisionId = after.reviewed_revision_id ?? after.current_revision_id;
+  return publishApprovedSubmission({
+    db,
+    Timestamp,
+    submissionId,
+    approvedRevisionId,
+    arcgisConfig,
+  });
 }
 
 export const validateSubmittedObservation = onDocumentUpdated(
@@ -45,3 +83,47 @@ export const validateSubmittedObservation = onDocumentUpdated(
     return result;
   },
 );
+
+export const publishApprovedObservation = publisherConfigured ? onDocumentUpdated(
+  {
+    document: 'submissions/{submissionId}',
+    region: 'us-east4',
+    timeoutSeconds: 180,
+    memory: '512MiB',
+    maxInstances: 5,
+    retry: true,
+    omit: OMIT_ARCGIS_PUBLICATION_FUNCTION,
+    secrets: [ARCGIS_OAUTH_CLIENT_ID, ARCGIS_OAUTH_CLIENT_SECRET],
+  },
+  async (event) => {
+    const submissionId = event.params.submissionId;
+    const before = event.data?.before.data();
+    const after = event.data?.after.data();
+
+    // Do not resolve secret/config values for the many unrelated submission updates
+    // that necessarily hit this document-level Firestore trigger.
+    if (!shouldHandleApprovalEvent(before, after)) {
+      return { skipped: 'not-newly-approved' };
+    }
+
+    const result = await handleApprovedSubmission({
+      before,
+      after,
+      submissionId,
+      arcgisConfig: {
+        featureServiceUrl: ARCGIS_PUBLICATION_FEATURE_SERVICE_URL.value(),
+        portalUrl: ARCGIS_PORTAL_URL.value(),
+        clientId: ARCGIS_OAUTH_CLIENT_ID.value(),
+        clientSecret: ARCGIS_OAUTH_CLIENT_SECRET.value(),
+      },
+    });
+    logger.info('Approved ArcGIS publication trigger completed', {
+      submissionId,
+      revisionId: after?.reviewed_revision_id ?? after?.current_revision_id ?? null,
+      status: result?.status ?? null,
+      skipped: result?.skipped ?? null,
+      idempotent: result?.idempotent ?? null,
+    });
+    return result;
+  },
+) : undefined;
