@@ -13,8 +13,6 @@ const ENABLE_ARCGIS_PUBLICATION_FUNCTION = defineBoolean('ENABLE_ARCGIS_PUBLICAT
   default: false,
   description: 'Explicit deployment gate for the approved-only ArcGIS publisher. Keep false until ArcGIS provisioning and verification pass.',
 });
-const ARCGIS_OAUTH_CLIENT_ID = defineSecret('ARCGIS_OAUTH_CLIENT_ID');
-const ARCGIS_OAUTH_CLIENT_SECRET = defineSecret('ARCGIS_OAUTH_CLIENT_SECRET');
 const ARCGIS_PUBLICATION_FEATURE_SERVICE_URL = defineString('ARCGIS_PUBLICATION_FEATURE_SERVICE_URL', {
   default: '',
   description: 'Approved-authoritative ArcGIS FeatureServer URL; never point this at the private QC staging service.',
@@ -27,6 +25,12 @@ const OMIT_ARCGIS_PUBLICATION_FUNCTION = ENABLE_ARCGIS_PUBLICATION_FUNCTION.then
   ARCGIS_PUBLICATION_FEATURE_SERVICE_URL.equals(''),
   true,
 );
+// Firebase resolves every declared secret in a codebase before applying --only or
+// omit. Do not declare the publisher's secrets in a disabled deployment.
+const publisherConfigured = process.env.ENABLE_ARCGIS_PUBLICATION_FUNCTION === 'true'
+  && Boolean(process.env.ARCGIS_PUBLICATION_FEATURE_SERVICE_URL);
+const ARCGIS_OAUTH_CLIENT_ID = publisherConfigured ? defineSecret('ARCGIS_OAUTH_CLIENT_ID') : null;
+const ARCGIS_OAUTH_CLIENT_SECRET = publisherConfigured ? defineSecret('ARCGIS_OAUTH_CLIENT_SECRET') : null;
 
 export async function handleSubmissionStatusChange({ before, after, submissionId, db = getFirestore() }) {
   if (!after || !submissionId) return { skipped: 'missing-event-data' };
@@ -80,7 +84,7 @@ export const validateSubmittedObservation = onDocumentUpdated(
   },
 );
 
-export const publishApprovedObservation = onDocumentUpdated(
+export const publishApprovedObservation = publisherConfigured ? onDocumentUpdated(
   {
     document: 'submissions/{submissionId}',
     region: 'us-east4',
@@ -122,4 +126,4 @@ export const publishApprovedObservation = onDocumentUpdated(
     });
     return result;
   },
-);
+) : undefined;

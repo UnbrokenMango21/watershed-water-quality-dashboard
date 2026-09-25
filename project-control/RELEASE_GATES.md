@@ -24,7 +24,7 @@ Updated 2026-09-25. Check a box only after its evidence is linked in this reposi
 - [x] Configure and read back weekly Sunday backups with 30-day retention; point-in-time recovery remains off by the user's choice. The first scheduled backup has not yet occurred.
 - [x] Reconcile the tracked Firestore index declaration with the four existing remote indexes without removing the extra historical index.
 - [x] Confirm no end-user Storage bucket exists; media upload is deferred, and the Storage rules pass emulator tests only. Do not claim live media storage for this release.
-- [ ] Resolve the validation trigger source-to-deployment gap: the active Node 22 function predates the 2026-08-16 code update. A scoped CLI redeploy currently asks for ArcGIS publisher OAuth secrets even with the publisher gated. Do not create placeholder secrets or activate publication to bypass it; see [Firebase safeguards](https://github.com/UnbrokenMango21/watershed-water-quality-dashboard/issues/37).
+- [x] Resolve the validation trigger source-to-deployment gap: [PR #40](https://github.com/UnbrokenMango21/watershed-water-quality-dashboard/pull/40) keeps the disabled ArcGIS publisher and its secrets out of the development function manifest, supplies non-secret development parameters, and packages only backend sources. A scoped deployment updated `validateSubmittedObservation` on 2026-09-25; Firebase reports Node 22 / ACTIVE and the new Cloud Run revision passed its startup probe. No publisher function or OAuth secret was deployed. A 30-day container-image cleanup policy is set for `us-east4`.
 - [ ] Confirm the first scheduled backup after it runs and record a recovery drill before calling recovery proven.
 
 ## 2. Prove the iPhone release on the actual device
