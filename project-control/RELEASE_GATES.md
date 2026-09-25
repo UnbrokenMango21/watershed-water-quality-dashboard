@@ -4,15 +4,16 @@ Updated 2026-09-25. Check a box only after its evidence is linked in this reposi
 
 ## 1. Keep the engineering line green
 
-- [x] Confirm canonical repo and GitHub lineage: PR [#35](https://github.com/UnbrokenMango21/watershed-water-quality-dashboard/pull/35) targets the integration branch; PR [#34](https://github.com/UnbrokenMango21/watershed-water-quality-dashboard/pull/34) targets `main`.
-- [x] Verify the current finalization commit: PR #35 has 5/5 successful required checks. The separately dispatched [full CI retry](https://github.com/UnbrokenMango21/watershed-water-quality-dashboard/actions/runs/36096251241) also passed all five jobs on attempt 2. Attempt 1's Android emulator went offline before tests.
-- [x] Verify the integration line: PR #34 has 16/16 successful checks.
+- [x] Confirm canonical repo and GitHub lineage: PR [#35](https://github.com/UnbrokenMango21/watershed-water-quality-dashboard/pull/35) merged into the integration branch on 2026-09-25; draft PR [#34](https://github.com/UnbrokenMango21/watershed-water-quality-dashboard/pull/34) targets `main`.
+- [x] Verify finalization: PR #35's final commit passed all nine checks, including Android emulator instrumentation, before merge. The separately dispatched [full CI retry](https://github.com/UnbrokenMango21/watershed-water-quality-dashboard/actions/runs/36096251241) passed all five jobs on attempt 2. Attempt 1's Android emulator went offline before tests.
+- [ ] Verify the merged integration line: PR #34's checks are rerunning on merge commit `d30d025`; record the final result before a release decision.
 - [x] Run local science/publication contracts: 30 validation, 15 publication, and 2 provisioning privacy tests passed on 2026-09-25.
 - [x] Finish and record the local website checker: six public-dashboard adapter tests, both TypeScript checks, and both production builds passed after targeted security updates. See [verification report](../docs/VERIFICATION_REPORT.md).
 - [x] Reinstall local generated dependencies from lockfiles and pass Firebase emulator rules, validation, review, and trigger suites.
 - [x] Patch high/critical production dependency advisories and confirm `npm audit --omit=dev` reports zero production vulnerabilities in the backend, QC Console, and public dashboard.
-- [ ] Confirm GitHub CI on the updated finalization commit; confirm CodeQL after the fix reaches PR #34/main.
-- [ ] Merge the reviewed finalization changes into the integration line, then rerun the full checks on that combined commit.
+- [x] Merge the reviewed finalization changes into the integration line without deleting the release branch.
+- [ ] Confirm CodeQL after the TestFlight workflow fix reaches PR #34/main.
+- [ ] Fix the live public dashboard connection and verify the production site's empty public-view state without demo data. The local browser check passed on 2026-09-25; deployment remains pending.
 
 ## 2. Prove the iPhone release on the actual device
 

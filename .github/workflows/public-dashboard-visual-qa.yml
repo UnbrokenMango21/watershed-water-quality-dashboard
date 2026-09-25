@@ -60,6 +60,9 @@ jobs:
           exit 1
       - name: Run responsive browser QA
         run: node scripts/visual-qa.mjs
+      - name: Check production connection to empty public views
+        if: matrix.qa_mode == 'disconnected'
+        run: node scripts/production-connection.mjs
       - name: Upload visual QA evidence
         if: always()
         uses: actions/upload-artifact@v4
