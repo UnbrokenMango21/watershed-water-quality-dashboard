@@ -2,7 +2,7 @@
 
 - [x] Architecture/privacy/status/test matrix documented.
 - [x] Independent Antigravity audit retained.
-- [ ] Fresh finalization verification complete.
+- [x] Fresh local software verification recorded in [the verification report](../docs/VERIFICATION_REPORT.md); updated-commit GitHub CI remains to be confirmed.
 - [ ] Physical Build 13 evidence captured.
 - [ ] Real reviewer login/readback captured.
 - [ ] First non-test publication proof captured.

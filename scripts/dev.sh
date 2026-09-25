@@ -26,7 +26,8 @@ if [[ $# -gt 0 ]]; then shift; fi
 case "$command" in
   doctor)
     printf 'Repository: %s\n' "$ROOT"
-    git status --short --branch
+    # An iCloud placeholder commit-graph can stall ordinary status on this Mac.
+    git -c core.commitGraph=false status --short --branch
     node --version
     java -version
     printf 'Android SDK: %s\n' "$ANDROID_HOME"

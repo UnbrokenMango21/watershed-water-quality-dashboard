@@ -1,10 +1,12 @@
 # PA Watershed Watch — System Status
 
-Updated: 2026-09-24  
-Authoritative integration branch: `integration/pa-watershed-watch-2026-09`  
+Updated: 2026-09-25
+
+Authoritative integration branch: `integration/pa-watershed-watch-2026-09`
+
 Finalization branch: `agent/codex/finalization-2026-09-24`
 
-The software architecture is implemented and verified through CI/current checks. Remaining closure items are human/external release gates, not a missing core architecture.
+The software architecture is implemented. Local scientific contracts, Firebase emulator suites, both website builds, and the production dependency audits are green on 2026-09-25; the updated finalization commit still needs GitHub CI. See [the verification report](../docs/VERIFICATION_REPORT.md). Remaining closure items are human/external release gates, not a missing core architecture.
 
 | Surface | Status | Remaining gate |
 |---|---|---|
