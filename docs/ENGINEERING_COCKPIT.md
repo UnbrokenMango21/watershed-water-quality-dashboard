@@ -26,6 +26,8 @@ Both `.codex/config.toml` and `.mcp.json` start the same `firebase-mcp` wrapper 
 
 The active aliases `default` and `dev` target `central-pa-watershed-dev`. Firestore/Storage rules are in `firebase/`, the function source is `functions/index.mjs`, and the two App Hosting roots are `web/` and `public-dashboard/`. Use emulators for tests. Do not activate the gated publisher or deploy rules as an environment check.
 
+A read-only live check on September 25 found the deployed Firestore rules match the tracked file exactly. Firebase reported no active Storage rules release; scientific media upload is deferred, so verify the bucket and deploy reviewed Storage rules before enabling that feature.
+
 IntelliJ's MCP Server plugin is installed. If not yet enabled, enable it through Settings → Tools → MCP Server and use project-level auto-configuration for Codex and Claude. Keep normal command confirmation enabled. Do not expose its local endpoint publicly. The Firebase connection works independently of the IDE server.
 
 ## Controlled worktrees
