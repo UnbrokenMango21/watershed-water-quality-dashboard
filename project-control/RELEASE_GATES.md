@@ -7,7 +7,8 @@ Updated 2026-09-25. Check a box only after its evidence is linked in this reposi
 - [x] Confirm canonical repo and GitHub lineage: PR [#35](https://github.com/UnbrokenMango21/watershed-water-quality-dashboard/pull/35) merged into the integration branch on 2026-09-25; draft PR [#34](https://github.com/UnbrokenMango21/watershed-water-quality-dashboard/pull/34) targets `main`.
 - [x] Verify finalization: PR #35's final commit passed all nine checks, including Android emulator instrumentation, before merge. The separately dispatched [full CI retry](https://github.com/UnbrokenMango21/watershed-water-quality-dashboard/actions/runs/36096251241) passed all five jobs on attempt 2. Attempt 1's Android emulator went offline before tests.
 - [x] Verify integration at `d30d025`: draft PR #34 passed all 16 checks, including Android emulator, iOS, and CodeQL. [PR #36](https://github.com/UnbrokenMango21/watershed-water-quality-dashboard/pull/36) then passed its three dashboard checks and merged as `998d3af`.
-- [ ] Verify PR #34's full checks on the newer `998d3af` integration head before a release decision.
+- [x] Merge [PR #39](https://github.com/UnbrokenMango21/watershed-water-quality-dashboard/pull/39) after all eight checks pass; it fixes the App Hosting package that failed on `998d3af` and records Firebase safeguards. Integration merge commit: `adcdd8a`.
+- [ ] Verify draft PR #34's full checks on the latest integration head before a release decision.
 - [x] Run local science/publication contracts: 30 validation, 15 publication, and 2 provisioning privacy tests passed on 2026-09-25.
 - [x] Finish and record the local website checker: six public-dashboard adapter tests, both TypeScript checks, and both production builds passed after targeted security updates. See [verification report](../docs/VERIFICATION_REPORT.md).
 - [x] Reinstall local generated dependencies from lockfiles and pass Firebase emulator rules, validation, review, and trigger suites.
@@ -22,6 +23,8 @@ Updated 2026-09-25. Check a box only after its evidence is linked in this reposi
 - [x] Enable and read back deletion protection for the development Firestore database.
 - [x] Configure and read back weekly Sunday backups with 30-day retention; point-in-time recovery remains off by the user's choice. The first scheduled backup has not yet occurred.
 - [x] Reconcile the tracked Firestore index declaration with the four existing remote indexes without removing the extra historical index.
+- [x] Confirm no end-user Storage bucket exists; media upload is deferred, and the Storage rules pass emulator tests only. Do not claim live media storage for this release.
+- [ ] Resolve the validation trigger source-to-deployment gap: the active Node 22 function predates the 2026-08-16 code update. A scoped CLI redeploy currently asks for ArcGIS publisher OAuth secrets even with the publisher gated. Do not create placeholder secrets or activate publication to bypass it; see [Firebase safeguards](https://github.com/UnbrokenMango21/watershed-water-quality-dashboard/issues/37).
 - [ ] Confirm the first scheduled backup after it runs and record a recovery drill before calling recovery proven.
 
 ## 2. Prove the iPhone release on the actual device
