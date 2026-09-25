@@ -24,8 +24,8 @@ Updated 2026-09-25. Check a box only after its evidence is linked in this reposi
 ## 3. Complete trusted human QC
 
 - [ ] Complete the provisioned real reviewer's password setup and sign-in.
-- [ ] Review the accepted TEST-014 Revision 2 through the QC Console; verify reviewer identity, unchanged revision, decision, timestamps, and audit readback in private evidence. TEST-014 is controlled development data and must not publish.
-- [ ] Select a separate provenance-cleared **non-test** observation for the eventual public scientific decision. Do not substitute the historical 117-record dataset.
+- [ ] Open TEST-014 Revision 2 in the QC Console for private reviewer sign-in and readback: verify identity, the unchanged revision, validation flags, timestamps, and the existing Revision 1 audit trail. Do not approve or otherwise change TEST-014 merely to complete this check; it is controlled development data and must not publish.
+- [ ] Select a separate provenance-cleared **non-test** observation for the authorized review and eventual public scientific decision. Do not substitute the historical 117-record dataset.
 
 ## 4. Activate ArcGIS only after scope and privacy checks
 
