@@ -26,7 +26,7 @@ jobs:
         include:
           - qa_mode: demo
             data_mode: demo
-          - qa_mode: disconnected
+          - qa_mode: empty
             data_mode: production
     env:
       NEXT_PUBLIC_DASHBOARD_DATA_MODE: ${{ matrix.data_mode }}

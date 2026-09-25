@@ -56,7 +56,7 @@ export class ArcgisDashboardDataSource implements DashboardDataSource {
   private metadata = new Map<Dataset, Promise<Metadata>>();
   private sources: ArcgisSources;
   private request: typeof fetch;
-  constructor(sources: ArcgisSources, request: typeof fetch = fetch) {
+  constructor(sources: ArcgisSources, request: typeof fetch = (input, init) => fetch(input, init)) {
     this.sources = sources; this.request = request;
     for (const value of Object.values(sources)) {
       const url = new URL(value);

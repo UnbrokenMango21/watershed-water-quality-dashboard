@@ -1,6 +1,8 @@
 # PA Watershed Watch Roadmap
 
-Updated: 2026-09-20
+Updated: 2026-09-25
+
+The [finish and publish checklist](../project-control/RELEASE_GATES.md) is the release gate record. The [weekly plan and work log](../project-control/SEMESTER_WORK_LOG.md) organizes the 300-hour semester target separately from verified time worked.
 
 ## Current: pre-release closure
 

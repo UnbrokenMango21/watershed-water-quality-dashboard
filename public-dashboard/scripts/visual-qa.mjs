@@ -10,6 +10,40 @@ const viewports = [
   { name: "tablet", width: 820, height: 1180 },
   { name: "iphone", width: 390, height: 844 },
 ];
+const emptyPublicViews = {
+  Central_PA_Watershed_Public_Sites: ["site_id", "site_code", "site_name", "latitude", "longitude"],
+  Central_PA_Watershed_Public_Observations: ["observation_id", "site_id", "collected_at", "approved_at"],
+  Central_PA_Watershed_Public_Measurements: ["observation_id", "site_id", "collected_at", "parameter_code", "value", "unit_code"],
+  Central_PA_Watershed_Public_Latest: ["observation_id", "site_id", "collected_at", "temp_c"],
+};
+
+async function serveEmptyPublicViews(page) {
+  const queried = new Set();
+  await page.route("https://services9.arcgis.com/**", async (route) => {
+    const url = new URL(route.request().url());
+    const entry = Object.entries(emptyPublicViews).find(([name]) => url.pathname.includes(`/${name}/FeatureServer`));
+    if (!entry) return route.continue();
+    const [name, requiredFields] = entry;
+    let body;
+    if (url.pathname.endsWith("/query")) {
+      queried.add(name);
+      body = { objectIds: [], exceededTransferLimit: false };
+    } else if (url.pathname.endsWith("/FeatureServer")) {
+      body = { isView: true, capabilities: "Query" };
+    } else {
+      body = {
+        objectIdField: "OBJECTID",
+        capabilities: "Query",
+        fields: [
+          { name: "OBJECTID", type: "esriFieldTypeOID" },
+          ...requiredFields.map((field) => ({ name: field, type: "esriFieldTypeString" })),
+        ],
+      };
+    }
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
+  });
+  return queried;
+}
 
 await fs.mkdir(outDir, { recursive: true });
 const browser = await chromium.launch({ headless: true });
@@ -129,6 +163,7 @@ async function assertWatershedLayerTool(page, viewportName, label) {
 
 for (const viewport of viewports) {
   const page = await browser.newPage({ viewport: { width: viewport.width, height: viewport.height } });
+  const queriedPublicViews = mode === "empty" ? await serveEmptyPublicViews(page) : null;
   const consoleErrors = [];
   page.on("console", (message) => { if (message.type() === "error") consoleErrors.push(message.text()); });
 
@@ -209,8 +244,15 @@ for (const viewport of viewports) {
     await waitForMapStable(page, viewport.name);
     await assertWatershedLayerTool(page, viewport.name, "demo");
   } else {
-    const sourceState = page.locator(".site-browser").getByText("Monitoring data unavailable", { exact: true });
+    const sourceState = page.locator(".site-browser").getByText(mode === "empty" ? "No monitoring sites available" : "Monitoring data unavailable", { exact: true });
     await sourceState.waitFor({ state: compact ? "hidden" : "visible", timeout: 30000 }).catch(() => undefined);
+    if (mode === "empty") {
+      await page.locator('.dashboard-shell[data-source-connected="true"]').waitFor({ timeout: 30000 });
+      if ((await page.locator(".source-error").count()) !== 0) failures.push(`${viewport.name}: connected empty views raised a source error`);
+      for (const name of ["Central_PA_Watershed_Public_Sites", "Central_PA_Watershed_Public_Latest"]) {
+        if (!queriedPublicViews?.has(name)) failures.push(`${viewport.name}: ${name} was not queried`);
+      }
+    }
     if (compact) {
       await page.getByRole("button", { name: "Sites", exact: true }).click();
       await sourceState.waitFor({ state: "visible" });
