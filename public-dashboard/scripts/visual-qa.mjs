@@ -248,7 +248,7 @@ for (const viewport of viewports) {
     await sourceState.waitFor({ state: compact ? "hidden" : "visible", timeout: 30000 }).catch(() => undefined);
     if (mode === "empty") {
       await page.locator('.dashboard-shell[data-source-connected="true"]').waitFor({ timeout: 30000 });
-      if ((await page.getByRole("alert").count()) !== 0) failures.push(`${viewport.name}: connected empty views raised an error`);
+      if ((await page.locator(".source-error").count()) !== 0) failures.push(`${viewport.name}: connected empty views raised a source error`);
       for (const name of ["Central_PA_Watershed_Public_Sites", "Central_PA_Watershed_Public_Latest"]) {
         if (!queriedPublicViews?.has(name)) failures.push(`${viewport.name}: ${name} was not queried`);
       }
