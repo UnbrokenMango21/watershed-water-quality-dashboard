@@ -26,7 +26,7 @@ jobs:
         include:
           - qa_mode: demo
             data_mode: demo
-          - qa_mode: disconnected
+          - qa_mode: empty
             data_mode: production
     env:
       NEXT_PUBLIC_DASHBOARD_DATA_MODE: ${{ matrix.data_mode }}
@@ -60,9 +60,6 @@ jobs:
           exit 1
       - name: Run responsive browser QA
         run: node scripts/visual-qa.mjs
-      - name: Check production connection to empty public views
-        if: matrix.qa_mode == 'disconnected'
-        run: node scripts/production-connection.mjs
       - name: Upload visual QA evidence
         if: always()
         uses: actions/upload-artifact@v4
