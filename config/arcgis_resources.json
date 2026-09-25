@@ -1,0 +1,40 @@
+{
+  "schemaVersion": "1.1.0",
+  "verifiedAt": "2026-09-09",
+  "authoritative": {
+    "itemId": "b5c738cc413f4f44b213885b8500c10d",
+    "featureServiceUrl": "https://services9.arcgis.com/6EuFgO4fLTqfNOhu/arcgis/rest/services/Central_PA_Watershed_Approved_Authoritative/FeatureServer",
+    "layerIds": {
+      "sites": 0,
+      "observations": 1,
+      "latest": 2,
+      "measurements": 3
+    }
+  },
+  "publicViews": {
+    "sites": {
+      "itemId": "a969e961c152463080b410e040879ca6",
+      "url": "https://services9.arcgis.com/6EuFgO4fLTqfNOhu/arcgis/rest/services/Central_PA_Watershed_Public_Sites/FeatureServer/0",
+      "sourceDataset": "SamplingSites",
+      "sourceLayerId": 0
+    },
+    "observations": {
+      "itemId": "4609ca6693ef42afbf52f0f95c42f5ed",
+      "url": "https://services9.arcgis.com/6EuFgO4fLTqfNOhu/arcgis/rest/services/Central_PA_Watershed_Public_Observations/FeatureServer/0",
+      "sourceDataset": "ApprovedObservations",
+      "sourceLayerId": 1
+    },
+    "measurements": {
+      "itemId": "1094591a993449b59031e9eab25d934a",
+      "url": "https://services9.arcgis.com/6EuFgO4fLTqfNOhu/arcgis/rest/services/Central_PA_Watershed_Public_Measurements/FeatureServer/0",
+      "sourceDataset": "Measurements",
+      "sourceLayerId": 3
+    },
+    "latest": {
+      "itemId": "a84f9c8ea7ef4f1898cf2ffe190f02d5",
+      "url": "https://services9.arcgis.com/6EuFgO4fLTqfNOhu/arcgis/rest/services/Central_PA_Watershed_Public_Latest/FeatureServer/0",
+      "sourceDataset": "LatestSiteConditions",
+      "sourceLayerId": 2
+    }
+  }
+}

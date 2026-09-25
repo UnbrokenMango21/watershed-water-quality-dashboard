@@ -3,6 +3,10 @@
     {
       "backendId": "qc-console-dev",
       "rootDir": "web"
+    },
+    {
+      "backendId": "public-dashboard-dev",
+      "rootDir": "public-dashboard"
     }
   ],
   "firestore": {
@@ -28,7 +32,9 @@
       "tests/**",
       "docs/**",
       "*.zip",
-      "*.log"
+      "*.log",
+      "public-dashboard/**",
+      "artifacts/**"
     ]
   },
   "emulators": {

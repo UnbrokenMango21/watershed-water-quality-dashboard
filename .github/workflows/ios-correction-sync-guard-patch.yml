@@ -1,0 +1,193 @@
+name: iOS Correction Sync Guard Patch
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: >-
+      github.event.issue.number == 26 &&
+      github.event.comment.user.login == 'UnbrokenMango21' &&
+      github.event.comment.body == '!apply-ios-correction-sync-guard'
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/ios-correction-pending-sync-guard
+          fetch-depth: 0
+          token: ${{ github.token }}
+
+      - name: Apply guarded correction-sync patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          model = Path('Phone App/iPhone App/PAWatershedWatch/PAWatershedWatch/Model.swift')
+          production = Path('Phone App/iPhone App/PAWatershedWatch/PAWatershedWatch/ProductionData.swift')
+          views = Path('Phone App/iPhone App/PAWatershedWatch/PAWatershedWatch/RecordsAccountViews.swift')
+          tests = Path('Phone App/iPhone App/PAWatershedWatch/PAWatershedWatchTests/ModelTests.swift')
+
+          def replace_once(path: Path, old: str, new: str):
+              text = path.read_text()
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{path}: expected exactly one match, found {count}')
+              path.write_text(text.replace(old, new, 1))
+
+          replace_once(model,
+          '''    func startCorrection(for record: ObservationRecord) {
+                  guard record.workflow == .needsCorrection, record.ownerUID == ownerUID else { workflowError = "This record cannot be corrected from the current account."; return }
+                  let correction = ObservationDraft(
+          ''',
+          '''    @discardableResult
+              func startCorrection(for record: ObservationRecord) -> Bool {
+                  guard record.workflow == .needsCorrection, record.ownerUID == ownerUID else {
+                      workflowError = "This record cannot be corrected from the current account."
+                      return false
+                  }
+                  guard record.sync == .synced else {
+                      workflowError = "A correction revision is already saved on this phone but has not been confirmed by the archive. Retry that sync before creating another revision."
+                      if connection == .online { retrySync(recordID: record.id) }
+                      return false
+                  }
+                  let correction = ObservationDraft(
+          ''')
+
+          replace_once(model,
+          '''        workflowState = .needsCorrection
+                  syncState = .savedLocally
+              }
+
+              func resubmitCorrection(recordID: UUID) {
+          ''',
+          '''        workflowState = .needsCorrection
+                  syncState = .savedLocally
+                  return true
+              }
+
+              func resubmitCorrection(recordID: UUID) {
+          ''')
+
+          replace_once(views,
+          '''        .safeAreaInset(edge: .bottom) {
+                      if record.workflow == .needsCorrection {
+                          VStack(spacing: 8) {
+                              PrimaryActionButton(title: "Create Correction Revision", systemImage: "doc.badge.plus") {
+                                  model.startCorrection(for: record)
+                                  model.recentPath.append(.correction(record.id))
+                              }
+          ''',
+          '''        .safeAreaInset(edge: .bottom) {
+                      if record.workflow == .needsCorrection && record.sync == .synced {
+                          VStack(spacing: 8) {
+                              PrimaryActionButton(title: "Create Correction Revision", systemImage: "doc.badge.plus") {
+                                  if model.startCorrection(for: record) {
+                                      model.recentPath.append(.correction(record.id))
+                                  }
+                              }
+          ''')
+
+          replace_once(production,
+          '''        observation.workflow = workflow.rawValue; observation.sync = sync.rawValue; observation.correctionReason = correctionReason; observation.updatedAt = .now
+                  observation.validationErrorCount = validation?.errorCount; observation.validationWarningCount = validation?.warningCount
+          ''',
+          '''        observation.workflow = workflow.rawValue
+                  let pendingQueueState = try context.fetch(FetchDescriptor<LocalSyncQueueEntity>())
+                      .first(where: { $0.ownerUID == ownerUID && $0.submissionID == key && $0.state != "CONFIRMED" })?.state
+                  let existingSync = SyncState(rawValue: observation.sync) ?? .waiting
+                  observation.sync = Self.reconciledSyncState(incoming: sync, existing: existingSync, pendingQueueState: pendingQueueState).rawValue
+                  observation.correctionReason = correctionReason; observation.updatedAt = .now
+                  observation.validationErrorCount = validation?.errorCount; observation.validationWarningCount = validation?.warningCount
+          ''')
+
+          replace_once(production,
+          '''    func queue(ownerUID: String) throws -> [LocalSyncQueueEntity] { try context.fetch(FetchDescriptor<LocalSyncQueueEntity>()).filter { $0.ownerUID == ownerUID && $0.state != "CONFIRMED" } }
+              func markQueue(_ item: LocalSyncQueueEntity, state: String, error: String? = nil) throws { item.state = state; item.lastError = error; item.attempts += 1; try context.save() }
+
+              private static func entry(_ value: Double) -> String {
+          ''',
+          '''    func queue(ownerUID: String) throws -> [LocalSyncQueueEntity] { try context.fetch(FetchDescriptor<LocalSyncQueueEntity>()).filter { $0.ownerUID == ownerUID && $0.state != "CONFIRMED" } }
+              func markQueue(_ item: LocalSyncQueueEntity, state: String, error: String? = nil) throws { item.state = state; item.lastError = error; item.attempts += 1; try context.save() }
+
+              static func reconciledSyncState(incoming: SyncState, existing: SyncState, pendingQueueState: String?) -> SyncState {
+                  guard incoming == .synced, let pendingQueueState, pendingQueueState != "CONFIRMED" else { return incoming }
+                  switch pendingQueueState {
+                  case "SYNCING": return .syncing
+                  case "RETRYABLE_FAILURE": return .failed
+                  default: return existing == .failed ? .failed : .waiting
+                  }
+              }
+
+              private static func entry(_ value: Double) -> String {
+          ''')
+
+          replace_once(production,
+          '''            if snapshot.correction, existing.get("status") as? String != "NEEDS_CORRECTION" { throw CanonicalizationError.invalid("Correction is not currently requested") }
+                  } else {
+          ''',
+          '''            if snapshot.correction {
+                      let status = existing.get("status") as? String
+                      guard status == "NEEDS_CORRECTION" else { throw CanonicalizationError.invalid("Correction is not currently requested") }
+                      try Self.validateCorrectionSequence(
+                          remoteRevisionNumber: existing.get("current_revision_no") as? Int,
+                          snapshotRevisionNumber: snapshot.revisionNumber
+                      )
+                  }
+              } else {
+          ''')
+
+          replace_once(production,
+          '''    /// Returns a server workflow only when the server already points at the same immutable revision.
+              /// A correction is the one intentional mismatch: while the parent is NEEDS_CORRECTION the server must
+          ''',
+          '''    static func validateCorrectionSequence(remoteRevisionNumber: Int?, snapshotRevisionNumber: Int) throws {
+                  guard let remoteRevisionNumber else { throw CanonicalizationError.invalid("Server correction revision number is unavailable") }
+                  let expected = remoteRevisionNumber + 1
+                  guard snapshotRevisionNumber == expected else {
+                      throw CanonicalizationError.invalid("The archive expects Revision \\(expected), but this phone prepared Revision \\(snapshotRevisionNumber). Retry the pending correction instead of creating another revision.")
+                  }
+              }
+
+              /// Returns a server workflow only when the server already points at the same immutable revision.
+              /// A correction is the one intentional mismatch: while the parent is NEEDS_CORRECTION the server must
+          ''')
+
+          insert_before = '''    func testSharedGoldenFixtureRemainsAvailableToBothNativeSuites() throws {\n'''
+          test_block = '''    @MainActor\n    func testRemoteListenerDoesNotMaskPendingCorrectionSyncState() throws {\n        XCTAssertEqual(LocalMobileStore.reconciledSyncState(incoming: .synced, existing: .failed, pendingQueueState: "RETRYABLE_FAILURE"), .failed)\n        XCTAssertEqual(LocalMobileStore.reconciledSyncState(incoming: .synced, existing: .waiting, pendingQueueState: "WAITING"), .waiting)\n        XCTAssertEqual(LocalMobileStore.reconciledSyncState(incoming: .synced, existing: .syncing, pendingQueueState: "SYNCING"), .syncing)\n        XCTAssertEqual(LocalMobileStore.reconciledSyncState(incoming: .synced, existing: .failed, pendingQueueState: "CONFIRMED"), .synced)\n    }\n\n    @MainActor\n    func testCorrectionSequenceUsesServerRevisionNumberAsAuthority() throws {\n        XCTAssertNoThrow(try FirebaseMobileService.validateCorrectionSequence(remoteRevisionNumber: 1, snapshotRevisionNumber: 2))\n        XCTAssertThrowsError(try FirebaseMobileService.validateCorrectionSequence(remoteRevisionNumber: 1, snapshotRevisionNumber: 3))\n        XCTAssertThrowsError(try FirebaseMobileService.validateCorrectionSequence(remoteRevisionNumber: nil, snapshotRevisionNumber: 2))\n    }\n\n'''
+          text = tests.read_text()
+          if text.count(insert_before) != 1:
+              raise SystemExit('ModelTests.swift: insertion anchor mismatch')
+          tests.write_text(text.replace(insert_before, test_block + insert_before, 1))
+          PY
+
+      - name: Run iOS unit tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo xcode-select -s /Applications/Xcode_26.6.app/Contents/Developer
+          destination_id="$(xcrun simctl list devices available -j | python3 -c 'import json,sys; data=json.load(sys.stdin); print(next(d["udid"] for devices in data["devices"].values() for d in devices if d["name"].startswith("iPhone")))')"
+          xcodebuild test \
+            -project 'Phone App/iPhone App/PAWatershedWatch/PAWatershedWatch.xcodeproj' \
+            -scheme PAWatershedWatch \
+            -destination "platform=iOS Simulator,id=$destination_id" \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Commit patch to fix branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add 'Phone App/iPhone App/PAWatershedWatch/PAWatershedWatch/Model.swift' \
+                  'Phone App/iPhone App/PAWatershedWatch/PAWatershedWatch/ProductionData.swift' \
+                  'Phone App/iPhone App/PAWatershedWatch/PAWatershedWatch/RecordsAccountViews.swift' \
+                  'Phone App/iPhone App/PAWatershedWatch/PAWatershedWatchTests/ModelTests.swift'
+          git diff --cached --check
+          git commit -m 'fix(ios): guard correction creation behind pending sync'
+          git push origin HEAD:fix/ios-correction-pending-sync-guard

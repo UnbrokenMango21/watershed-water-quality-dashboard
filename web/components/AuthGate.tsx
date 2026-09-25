@@ -11,7 +11,7 @@
  * Admin-SDK token verification. Hiding the UI proves nothing on its own.
  */
 import { createContext, useCallback, useContext, useEffect, useState, type FormEvent, type ReactNode } from 'react';
-import { onAuthStateChanged, signInWithEmailAndPassword, signOut, type User } from 'firebase/auth';
+import { onAuthStateChanged, sendPasswordResetEmail, signInWithEmailAndPassword, signOut, type User } from 'firebase/auth';
 
 import { Icon } from '@/components/icons';
 import { Notice } from '@/components/ui';
@@ -78,8 +78,8 @@ function AppBar({ session }: { session: ReviewerSession | null }) {
           <Icon name="waves" size={17} strokeWidth={2} />
         </span>
         <span className="brand-text">
-          <strong>Watershed Watch QC Console</strong>
-          <span>Central Pennsylvania · Scientific submission review</span>
+          <strong>PA Watershed Watch</strong>
+          <span>Quality Review · Private workspace</span>
         </span>
       </a>
 
@@ -125,6 +125,20 @@ export default function AuthGate({ children }: { children: ReactNode }) {
   const [password, setPassword] = useState('');
   const [signingIn, setSigningIn] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [resetMessage, setResetMessage] = useState<string | null>(null);
+  const [sendingReset, setSendingReset] = useState(false);
+
+  async function handlePasswordReset() {
+    setFormError(null); setResetMessage(null); setSendingReset(true);
+    try {
+      await sendPasswordResetEmail(clientAuth(), email.trim());
+      setResetMessage('If this email has an account, Firebase will send a link to set your password.');
+    } catch (error) {
+      if ((error as { code?: string }).code === 'auth/user-not-found') {
+        setResetMessage('If this email has an account, Firebase will send a link to set your password.');
+      } else { setFormError(friendlyAuthError(error)); }
+    } finally { setSendingReset(false); }
+  }
 
   useEffect(() => {
     if (!isFirebaseConfigured()) {
@@ -243,6 +257,11 @@ export default function AuthGate({ children }: { children: ReactNode }) {
                 {signingIn ? 'Signing in…' : 'Sign in'}
               </button>
             </form>
+
+            <button type="button" className="btn" disabled={sendingReset || signingIn || !email.trim()} onClick={() => void handlePasswordReset()}>
+              {sendingReset ? 'Sending reset link…' : 'Set or reset password'}
+            </button>
+            {resetMessage && <p role="status">{resetMessage}</p>}
 
             <p className="auth-foot">
               <Icon name="info" size={14} />

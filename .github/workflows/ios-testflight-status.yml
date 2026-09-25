@@ -1,0 +1,240 @@
+name: iOS TestFlight Status
+
+on:
+  workflow_dispatch:
+    inputs:
+      marketing_version:
+        description: CFBundleShortVersionString to inspect
+        required: true
+        default: 0.1.0
+      build_number:
+        description: CFBundleVersion to inspect
+        required: true
+        default: '11'
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-testflight-status
+  cancel-in-progress: true
+
+env:
+  ASC_ISSUER_ID: f8b781d7-2ab3-4182-8e23-9b2c2f137baa
+  ASC_APP_ID: '6800149959'
+  BUNDLE_ID: org.centralpawatershed.mobile
+
+jobs:
+  status:
+    name: Query App Store Connect build state
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'issue_comment' &&
+       github.event.issue.number == 26 &&
+       github.event.comment.user.login == 'UnbrokenMango21' &&
+       startsWith(github.event.comment.body, '!testflight-status '))
+    runs-on: macos-26
+    timeout-minutes: 10
+
+    steps:
+      - name: Resolve status command
+        id: request
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          COMMENT_BODY: ${{ github.event.comment.body }}
+          INPUT_VERSION: ${{ inputs.marketing_version }}
+          INPUT_BUILD: ${{ inputs.build_number }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import os, re
+          if os.environ['EVENT_NAME'] == 'issue_comment':
+              body = os.environ.get('COMMENT_BODY', '').strip()
+              m = re.fullmatch(r'!testflight-status ([0-9]+\.[0-9]+\.[0-9]+) ([0-9]+)', body)
+              if not m:
+                  raise SystemExit('Expected !testflight-status <version> <build>')
+              version, build = m.groups()
+          else:
+              version = os.environ['INPUT_VERSION'].strip()
+              build = os.environ['INPUT_BUILD'].strip()
+          if not re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+', version):
+              raise SystemExit('Invalid version')
+          if not re.fullmatch(r'[0-9]+', build):
+              raise SystemExit('Invalid build')
+          print(f'marketing_version={version}')
+          print(f'build_number={build}')
+          PY
+
+      - name: Materialize App Store Connect Team API key
+        id: auth
+        shell: bash
+        env:
+          ASC_TEAM_KEY_ID: ${{ secrets.ASC_TEAM_KEY_ID }}
+          ASC_TEAM_PRIVATE_KEY: ${{ secrets.ASC_TEAM_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          [ -n "$ASC_TEAM_KEY_ID" ] || { echo 'Missing ASC_TEAM_KEY_ID'; exit 1; }
+          [ -n "$ASC_TEAM_PRIVATE_KEY" ] || { echo 'Missing ASC_TEAM_PRIVATE_KEY'; exit 1; }
+          dir="$RUNNER_TEMP/appstoreconnect/private_keys"
+          mkdir -p "$dir"
+          path="$dir/AuthKey_${ASC_TEAM_KEY_ID}.p8"
+          printf '%s' "$ASC_TEAM_PRIVATE_KEY" > "$path"
+          chmod 600 "$path"
+          openssl pkey -in "$path" -noout >/dev/null
+          echo "key_id=$ASC_TEAM_KEY_ID" >> "$GITHUB_OUTPUT"
+          echo "key_path=$path" >> "$GITHUB_OUTPUT"
+
+      - name: Generate App Store Connect JWT
+        id: jwt
+        shell: bash
+        env:
+          KEY_ID: ${{ steps.auth.outputs.key_id }}
+          KEY_PATH: ${{ steps.auth.outputs.key_path }}
+        run: |
+          set -euo pipefail
+          token="$(ruby -ropenssl -rjson -rbase64 -e '
+            def b64url(s)
+              Base64.urlsafe_encode64(s, padding: false)
+            end
+            kid = ENV.fetch("KEY_ID")
+            issuer = ENV.fetch("ASC_ISSUER_ID")
+            key = OpenSSL::PKey.read(File.read(ENV.fetch("KEY_PATH")))
+            now = Time.now.to_i
+            header = b64url({alg:"ES256",kid:kid,typ:"JWT"}.to_json)
+            payload = b64url({iss:issuer,iat:now-5,exp:now+900,aud:"appstoreconnect-v1"}.to_json)
+            input = "#{header}.#{payload}"
+            der = key.dsa_sign_asn1(OpenSSL::Digest::SHA256.digest(input))
+            seq = OpenSSL::ASN1.decode(der)
+            r = seq.value[0].value.to_i.to_s(2).rjust(256,"0").scan(/.{8}/).map{|x| x.to_i(2)}.pack("C*")
+            s = seq.value[1].value.to_i.to_s(2).rjust(256,"0").scan(/.{8}/).map{|x| x.to_i(2)}.pack("C*")
+            puts "#{input}.#{b64url(r+s)}"
+          ')"
+          echo "token=$token" >> "$GITHUB_OUTPUT"
+
+      - name: Query Apple upload and build records
+        shell: bash
+        env:
+          TOKEN: ${{ steps.jwt.outputs.token }}
+          VERSION: ${{ steps.request.outputs.marketing_version }}
+          BUILD: ${{ steps.request.outputs.build_number }}
+        run: |
+          set -euo pipefail
+          auth=(-H "Authorization: Bearer $TOKEN" -H 'Accept: application/json')
+
+          curl --fail-with-body --silent --show-error --get \
+            "https://api.appstoreconnect.apple.com/v1/apps/${ASC_APP_ID}/buildUploads" \
+            "${auth[@]}" \
+            --data-urlencode "filter[cfBundleShortVersionString]=$VERSION" \
+            --data-urlencode "filter[cfBundleVersion]=$BUILD" \
+            --data-urlencode 'filter[platform]=IOS' \
+            --data-urlencode 'fields[buildUploads]=cfBundleShortVersionString,cfBundleVersion,createdDate,state,platform,uploadedDate,build' \
+            --data-urlencode 'include=build' \
+            --data-urlencode 'fields[builds]=version,uploadedDate,processingState,expired' \
+            --data-urlencode 'limit=20' \
+            --data-urlencode 'sort=-uploadedDate' \
+            > "$RUNNER_TEMP/build-uploads.json"
+
+          curl --fail-with-body --silent --show-error --get \
+            'https://api.appstoreconnect.apple.com/v1/builds' \
+            "${auth[@]}" \
+            --data-urlencode "filter[app]=$ASC_APP_ID" \
+            --data-urlencode "filter[version]=$BUILD" \
+            --data-urlencode "filter[preReleaseVersion.version]=$VERSION" \
+            --data-urlencode 'include=preReleaseVersion,buildBetaDetail' \
+            --data-urlencode 'fields[builds]=version,uploadedDate,expirationDate,expired,processingState,buildAudienceType,usesNonExemptEncryption,preReleaseVersion,buildBetaDetail' \
+            --data-urlencode 'fields[preReleaseVersions]=version,platform' \
+            --data-urlencode 'fields[buildBetaDetails]=internalBuildState,externalBuildState' \
+            --data-urlencode 'limit=20' \
+            --data-urlencode 'sort=-uploadedDate' \
+            > "$RUNNER_TEMP/builds.json"
+
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+
+          version = os.environ['VERSION']
+          build_no = os.environ['BUILD']
+          uploads = json.loads(Path(os.environ['RUNNER_TEMP'], 'build-uploads.json').read_text())
+          builds = json.loads(Path(os.environ['RUNNER_TEMP'], 'builds.json').read_text())
+
+          upload_rows = []
+          for row in uploads.get('data', []):
+              a = row.get('attributes') or {}
+              upload_rows.append({
+                  'id': row.get('id'),
+                  'version': a.get('cfBundleShortVersionString'),
+                  'build': a.get('cfBundleVersion'),
+                  'state': a.get('state'),
+                  'createdDate': a.get('createdDate'),
+                  'uploadedDate': a.get('uploadedDate'),
+                  'platform': a.get('platform'),
+              })
+
+          included = {item.get('id'): item for item in builds.get('included', [])}
+          build_rows = []
+          for row in builds.get('data', []):
+              a = row.get('attributes') or {}
+              rel = row.get('relationships') or {}
+              pre_id = (((rel.get('preReleaseVersion') or {}).get('data') or {}).get('id'))
+              beta_id = (((rel.get('buildBetaDetail') or {}).get('data') or {}).get('id'))
+              pre = (included.get(pre_id) or {}).get('attributes') or {}
+              beta = (included.get(beta_id) or {}).get('attributes') or {}
+              build_rows.append({
+                  'id': row.get('id'),
+                  'marketingVersion': pre.get('version'),
+                  'platform': pre.get('platform'),
+                  'build': a.get('version'),
+                  'processingState': a.get('processingState'),
+                  'uploadedDate': a.get('uploadedDate'),
+                  'expired': a.get('expired'),
+                  'expirationDate': a.get('expirationDate'),
+                  'usesNonExemptEncryption': a.get('usesNonExemptEncryption'),
+                  'internalBuildState': beta.get('internalBuildState'),
+                  'externalBuildState': beta.get('externalBuildState'),
+              })
+
+          result = {
+              'appStoreConnectAppId': os.environ['ASC_APP_ID'],
+              'bundleId': os.environ['BUNDLE_ID'],
+              'requestedVersion': version,
+              'requestedBuild': build_no,
+              'uploadRecords': upload_rows,
+              'processedBuildRecords': build_rows,
+          }
+          out = Path(os.environ['RUNNER_TEMP'], 'testflight-status.json')
+          out.write_text(json.dumps(result, indent=2) + '\n')
+          print(json.dumps(result, indent=2))
+
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as f:
+              f.write('### App Store Connect status\n\n')
+              f.write(f'- Bundle: `{os.environ["BUNDLE_ID"]}`\n')
+              f.write(f'- Requested: `{version} ({build_no})`\n')
+              if build_rows:
+                  b = build_rows[0]
+                  f.write(f'- Processing state: **{b.get("processingState")}**\n')
+                  f.write(f'- Internal TestFlight state: **{b.get("internalBuildState")}**\n')
+                  f.write(f'- External TestFlight state: **{b.get("externalBuildState")}**\n')
+                  f.write(f'- Uploaded: `{b.get("uploadedDate")}`\n')
+              elif upload_rows:
+                  u = upload_rows[0]
+                  f.write(f'- Upload state: **{u.get("state")}**\n')
+                  f.write('- Processed build record: **not present yet**\n')
+              else:
+                  f.write('- Upload record: **not found**\n')
+                  f.write('- Processed build record: **not found**\n')
+          PY
+
+      - name: Upload status evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-testflight-status-${{ github.run_id }}
+          retention-days: 14
+          if-no-files-found: ignore
+          path: |
+            ${{ runner.temp }}/build-uploads.json
+            ${{ runner.temp }}/builds.json
+            ${{ runner.temp }}/testflight-status.json

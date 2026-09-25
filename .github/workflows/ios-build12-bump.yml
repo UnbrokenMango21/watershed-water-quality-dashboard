@@ -1,0 +1,48 @@
+name: iOS Build 12 Bump
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: write
+
+jobs:
+  bump:
+    if: >-
+      github.event.issue.number == 26 &&
+      github.event.comment.user.login == 'UnbrokenMango21' &&
+      github.event.comment.body == '!bump-ios-build12'
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: release/ios-existing-app-v0.1.0-b12
+          fetch-depth: 0
+          token: ${{ github.token }}
+      - name: Bump build number
+        shell: bash
+        run: |
+          set -euo pipefail
+          pbx='Phone App/iPhone App/PAWatershedWatch/PAWatershedWatch.xcodeproj/project.pbxproj'
+          python3 - "$pbx" <<'PY'
+          import pathlib, sys
+          p = pathlib.Path(sys.argv[1])
+          s = p.read_text()
+          old = 'CURRENT_PROJECT_VERSION = 11;'
+          count = s.count(old)
+          if count != 2:
+              raise SystemExit(f'Expected exactly two build-11 settings, found {count}')
+          p.write_text(s.replace(old, 'CURRENT_PROJECT_VERSION = 12;'))
+          PY
+          grep -n 'CURRENT_PROJECT_VERSION\|MARKETING_VERSION\|PRODUCT_BUNDLE_IDENTIFIER = org.centralpawatershed.mobile' "$pbx"
+          git diff --check
+      - name: Commit build 12
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add 'Phone App/iPhone App/PAWatershedWatch/PAWatershedWatch.xcodeproj/project.pbxproj'
+          git commit -m 'chore(ios): bump TestFlight build to 12'
+          git push origin HEAD:release/ios-existing-app-v0.1.0-b12

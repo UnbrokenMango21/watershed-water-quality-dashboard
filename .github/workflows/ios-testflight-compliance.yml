@@ -1,0 +1,227 @@
+name: iOS TestFlight Compliance
+
+on:
+  workflow_dispatch:
+    inputs:
+      marketing_version:
+        description: CFBundleShortVersionString
+        required: true
+        default: 0.1.0
+      source_build:
+        description: Existing build whose compliance setting is authoritative
+        required: true
+        default: '10'
+      target_build:
+        description: Target build missing compliance
+        required: true
+        default: '11'
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-testflight-compliance
+  cancel-in-progress: false
+
+env:
+  ASC_ISSUER_ID: f8b781d7-2ab3-4182-8e23-9b2c2f137baa
+  ASC_APP_ID: '6800149959'
+  BUNDLE_ID: org.centralpawatershed.mobile
+
+jobs:
+  compliance:
+    name: Carry forward established export-compliance setting
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'issue_comment' &&
+       github.event.issue.number == 26 &&
+       github.event.comment.user.login == 'UnbrokenMango21' &&
+       startsWith(github.event.comment.body, '!testflight-copy-compliance '))
+    runs-on: macos-26
+    timeout-minutes: 10
+
+    steps:
+      - name: Resolve command
+        id: request
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          COMMENT_BODY: ${{ github.event.comment.body }}
+          INPUT_VERSION: ${{ inputs.marketing_version }}
+          INPUT_SOURCE: ${{ inputs.source_build }}
+          INPUT_TARGET: ${{ inputs.target_build }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import os, re
+          if os.environ['EVENT_NAME'] == 'issue_comment':
+              body = os.environ.get('COMMENT_BODY', '').strip()
+              m = re.fullmatch(r'!testflight-copy-compliance ([0-9]+\.[0-9]+\.[0-9]+) ([0-9]+) ([0-9]+)', body)
+              if not m:
+                  raise SystemExit('Expected !testflight-copy-compliance <version> <source-build> <target-build>')
+              version, source, target = m.groups()
+          else:
+              version = os.environ['INPUT_VERSION'].strip()
+              source = os.environ['INPUT_SOURCE'].strip()
+              target = os.environ['INPUT_TARGET'].strip()
+          if not re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+', version): raise SystemExit('Invalid version')
+          if not re.fullmatch(r'[0-9]+', source): raise SystemExit('Invalid source build')
+          if not re.fullmatch(r'[0-9]+', target): raise SystemExit('Invalid target build')
+          if source == target: raise SystemExit('Source and target builds must differ')
+          print(f'version={version}')
+          print(f'source_build={source}')
+          print(f'target_build={target}')
+          PY
+
+      - name: Materialize App Store Connect Team API key
+        id: auth
+        shell: bash
+        env:
+          ASC_TEAM_KEY_ID: ${{ secrets.ASC_TEAM_KEY_ID }}
+          ASC_TEAM_PRIVATE_KEY: ${{ secrets.ASC_TEAM_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          [ -n "$ASC_TEAM_KEY_ID" ] || { echo 'Missing ASC_TEAM_KEY_ID'; exit 1; }
+          [ -n "$ASC_TEAM_PRIVATE_KEY" ] || { echo 'Missing ASC_TEAM_PRIVATE_KEY'; exit 1; }
+          dir="$RUNNER_TEMP/appstoreconnect/private_keys"
+          mkdir -p "$dir"
+          path="$dir/AuthKey_${ASC_TEAM_KEY_ID}.p8"
+          printf '%s' "$ASC_TEAM_PRIVATE_KEY" > "$path"
+          chmod 600 "$path"
+          openssl pkey -in "$path" -noout >/dev/null
+          echo "key_id=$ASC_TEAM_KEY_ID" >> "$GITHUB_OUTPUT"
+          echo "key_path=$path" >> "$GITHUB_OUTPUT"
+
+      - name: Generate App Store Connect JWT
+        id: jwt
+        shell: bash
+        env:
+          KEY_ID: ${{ steps.auth.outputs.key_id }}
+          KEY_PATH: ${{ steps.auth.outputs.key_path }}
+        run: |
+          set -euo pipefail
+          token="$(ruby -ropenssl -rjson -rbase64 -e '
+            def b64url(s); Base64.urlsafe_encode64(s, padding: false); end
+            kid = ENV.fetch("KEY_ID")
+            issuer = ENV.fetch("ASC_ISSUER_ID")
+            key = OpenSSL::PKey.read(File.read(ENV.fetch("KEY_PATH")))
+            now = Time.now.to_i
+            h = b64url({alg:"ES256",kid:kid,typ:"JWT"}.to_json)
+            p = b64url({iss:issuer,iat:now-5,exp:now+900,aud:"appstoreconnect-v1"}.to_json)
+            input = "#{h}.#{p}"
+            der = key.dsa_sign_asn1(OpenSSL::Digest::SHA256.digest(input))
+            seq = OpenSSL::ASN1.decode(der)
+            r = seq.value[0].value.to_i.to_s(2).rjust(256,"0").scan(/.{8}/).map{|x| x.to_i(2)}.pack("C*")
+            s = seq.value[1].value.to_i.to_s(2).rjust(256,"0").scan(/.{8}/).map{|x| x.to_i(2)}.pack("C*")
+            puts "#{input}.#{b64url(r+s)}"
+          ')"
+          echo "token=$token" >> "$GITHUB_OUTPUT"
+
+      - name: Verify source and target, then carry forward compliance
+        shell: bash
+        env:
+          TOKEN: ${{ steps.jwt.outputs.token }}
+          VERSION: ${{ steps.request.outputs.version }}
+          SOURCE_BUILD: ${{ steps.request.outputs.source_build }}
+          TARGET_BUILD: ${{ steps.request.outputs.target_build }}
+        run: |
+          set -euo pipefail
+          auth=(-H "Authorization: Bearer $TOKEN" -H 'Accept: application/json')
+
+          fetch_build() {
+            local build="$1"
+            local out="$2"
+            curl --fail-with-body --silent --show-error --get \
+              'https://api.appstoreconnect.apple.com/v1/builds' \
+              "${auth[@]}" \
+              --data-urlencode "filter[app]=$ASC_APP_ID" \
+              --data-urlencode "filter[version]=$build" \
+              --data-urlencode "filter[preReleaseVersion.version]=$VERSION" \
+              --data-urlencode 'fields[builds]=version,uploadedDate,processingState,expired,usesNonExemptEncryption,buildBetaDetail' \
+              --data-urlencode 'include=buildBetaDetail' \
+              --data-urlencode 'fields[buildBetaDetails]=internalBuildState,externalBuildState' \
+              --data-urlencode 'limit=5' > "$out"
+          }
+
+          fetch_build "$SOURCE_BUILD" "$RUNNER_TEMP/source.json"
+          fetch_build "$TARGET_BUILD" "$RUNNER_TEMP/target-before.json"
+
+          python3 - <<'PY' > "$RUNNER_TEMP/patch.json"
+          import json, os
+          from pathlib import Path
+          source = json.loads(Path(os.environ['RUNNER_TEMP'], 'source.json').read_text()).get('data', [])
+          target = json.loads(Path(os.environ['RUNNER_TEMP'], 'target-before.json').read_text()).get('data', [])
+          if len(source) != 1: raise SystemExit(f'Expected exactly one source build, found {len(source)}')
+          if len(target) != 1: raise SystemExit(f'Expected exactly one target build, found {len(target)}')
+          sa = source[0].get('attributes') or {}
+          ta = target[0].get('attributes') or {}
+          if sa.get('processingState') != 'VALID': raise SystemExit('Source build is not VALID')
+          if ta.get('processingState') != 'VALID': raise SystemExit('Target build is not VALID')
+          established = sa.get('usesNonExemptEncryption')
+          if not isinstance(established, bool): raise SystemExit('Source build has no established encryption-compliance boolean')
+          current = ta.get('usesNonExemptEncryption')
+          if current is not None and current != established:
+              raise SystemExit('Target already has a conflicting compliance value; refusing to overwrite it')
+          target_id = target[0]['id']
+          body = {'data': {'type': 'builds', 'id': target_id, 'attributes': {'usesNonExemptEncryption': established}}}
+          print(json.dumps(body))
+          print(f'Established source value: {established}', file=os.sys.stderr)
+          print(f'Target build resource: {target_id}', file=os.sys.stderr)
+          PY
+
+          target_id="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["data"]["id"])' "$RUNNER_TEMP/patch.json")"
+          curl --fail-with-body --silent --show-error \
+            -X PATCH "https://api.appstoreconnect.apple.com/v1/builds/$target_id" \
+            "${auth[@]}" -H 'Content-Type: application/json' \
+            --data-binary @"$RUNNER_TEMP/patch.json" \
+            > "$RUNNER_TEMP/target-patch-response.json"
+
+          sleep 3
+          fetch_build "$TARGET_BUILD" "$RUNNER_TEMP/target-after.json"
+
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          target = json.loads(Path(os.environ['RUNNER_TEMP'], 'target-after.json').read_text())
+          data = target.get('data', [])
+          if len(data) != 1: raise SystemExit('Target build disappeared after compliance update')
+          row = data[0]
+          a = row.get('attributes') or {}
+          included = {x.get('id'): x for x in target.get('included', [])}
+          beta_id = ((((row.get('relationships') or {}).get('buildBetaDetail') or {}).get('data') or {}).get('id'))
+          beta = (included.get(beta_id) or {}).get('attributes') or {}
+          result = {
+            'buildId': row.get('id'),
+            'build': a.get('version'),
+            'processingState': a.get('processingState'),
+            'usesNonExemptEncryption': a.get('usesNonExemptEncryption'),
+            'internalBuildState': beta.get('internalBuildState'),
+            'externalBuildState': beta.get('externalBuildState'),
+          }
+          print(json.dumps(result, indent=2))
+          Path(os.environ['RUNNER_TEMP'], 'compliance-result.json').write_text(json.dumps(result, indent=2) + '\n')
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as f:
+            f.write('### TestFlight compliance carry-forward\n\n')
+            f.write(f'- Version: `{os.environ["VERSION"]}`\n')
+            f.write(f'- Source build: `{os.environ["SOURCE_BUILD"]}`\n')
+            f.write(f'- Target build: `{os.environ["TARGET_BUILD"]}`\n')
+            f.write(f'- usesNonExemptEncryption: **{a.get("usesNonExemptEncryption")}**\n')
+            f.write(f'- Processing: **{a.get("processingState")}**\n')
+            f.write(f'- Internal TestFlight: **{beta.get("internalBuildState")}**\n')
+            f.write(f'- External TestFlight: **{beta.get("externalBuildState")}**\n')
+          PY
+
+      - name: Upload compliance evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-testflight-compliance-${{ github.run_id }}
+          retention-days: 14
+          if-no-files-found: ignore
+          path: |
+            ${{ runner.temp }}/source.json
+            ${{ runner.temp }}/target-before.json
+            ${{ runner.temp }}/target-after.json
+            ${{ runner.temp }}/compliance-result.json

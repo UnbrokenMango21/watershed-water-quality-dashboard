@@ -1,0 +1,227 @@
+name: iOS TestFlight Build 13
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-testflight-build13
+  cancel-in-progress: false
+
+env:
+  APPLE_TEAM_ID: DL4B9RRLYP
+  ASC_ISSUER_ID: f8b781d7-2ab3-4182-8e23-9b2c2f137baa
+  ASC_APP_ID: '6800149959'
+  BUNDLE_ID: org.centralpawatershed.mobile
+  PROJECT_PATH: Phone App/iPhone App/PAWatershedWatch/PAWatershedWatch.xcodeproj
+  SCHEME: PAWatershedWatch
+  RELEASE_REF: release/ios-existing-app-v0.1.0-b13
+  RELEASE_SHA: a23358ad1f3c32f5b9c12a2a10e864ca5d1ca7d7
+  MARKETING_VERSION: 0.1.0
+  BUILD_NUMBER: '13'
+  ICON_PATH: Phone App/iPhone App/PAWatershedWatch/PAWatershedWatch/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png
+
+jobs:
+  upload:
+    name: Build, sign, and upload 0.1.0 (13)
+    if: >-
+      github.event.issue.number == 26 &&
+      github.event.comment.user.login == 'UnbrokenMango21' &&
+      github.event.comment.body == '!testflight-build13'
+    runs-on: macos-26
+    timeout-minutes: 60
+
+    steps:
+      - name: Verify Apple API-key secrets
+        shell: bash
+        env:
+          ASC_TEAM_KEY_ID: ${{ secrets.ASC_TEAM_KEY_ID }}
+          ASC_TEAM_PRIVATE_KEY: ${{ secrets.ASC_TEAM_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          [ -n "$ASC_TEAM_KEY_ID" ] || { echo 'Missing ASC_TEAM_KEY_ID'; exit 1; }
+          [ -n "$ASC_TEAM_PRIVATE_KEY" ] || { echo 'Missing ASC_TEAM_PRIVATE_KEY'; exit 1; }
+
+      - name: Check out pinned Build 13 release source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_REF }}
+          fetch-depth: 1
+
+      - name: Prove exact release source
+        shell: bash
+        run: |
+          set -euo pipefail
+          actual="$(git rev-parse HEAD)"
+          echo "Expected: $RELEASE_SHA"
+          echo "Actual:   $actual"
+          [ "$actual" = "$RELEASE_SHA" ] || { echo 'Release ref moved; refusing upload'; exit 1; }
+
+      - name: Select Xcode 26.6
+        shell: bash
+        run: |
+          set -euo pipefail
+          XCODE='/Applications/Xcode_26.6.app/Contents/Developer'
+          [ -d "$XCODE" ] || { echo "Required Xcode missing: $XCODE"; exit 1; }
+          sudo xcode-select -s "$XCODE"
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-version
+
+      - name: Materialize App Store Connect Team API key
+        id: auth
+        shell: bash
+        env:
+          ASC_TEAM_KEY_ID: ${{ secrets.ASC_TEAM_KEY_ID }}
+          ASC_TEAM_PRIVATE_KEY: ${{ secrets.ASC_TEAM_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          key_dir="$RUNNER_TEMP/appstoreconnect/private_keys"
+          mkdir -p "$key_dir"
+          key_path="$key_dir/AuthKey_${ASC_TEAM_KEY_ID}.p8"
+          printf '%s' "$ASC_TEAM_PRIVATE_KEY" > "$key_path"
+          chmod 600 "$key_path"
+          openssl pkey -in "$key_path" -noout >/dev/null
+          echo "key_path=$key_path" >> "$GITHUB_OUTPUT"
+          echo "key_id=$ASC_TEAM_KEY_ID" >> "$GITHUB_OUTPUT"
+
+      - name: Verify app identity and refreshed icon
+        shell: bash
+        run: |
+          set -euo pipefail
+          pbx="$PROJECT_PATH/project.pbxproj"
+          grep -q "PRODUCT_BUNDLE_IDENTIFIER = ${BUNDLE_ID};" "$pbx"
+          grep -q "MARKETING_VERSION = ${MARKETING_VERSION};" "$pbx"
+          [ -f "$ICON_PATH" ] || { echo 'App icon missing'; exit 1; }
+          file "$ICON_PATH" | tee "$RUNNER_TEMP/icon-check.txt"
+          grep -q 'PNG image data, 1024 x 1024' "$RUNNER_TEMP/icon-check.txt"
+          grep -q 'RGB' "$RUNNER_TEMP/icon-check.txt"
+          sips -g hasAlpha "$ICON_PATH" | tee -a "$RUNNER_TEMP/icon-check.txt"
+          if grep -qi 'hasAlpha: yes' "$RUNNER_TEMP/icon-check.txt"; then
+            echo 'App Store icon must not contain alpha'; exit 1
+          fi
+
+      - name: Resolve Swift packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild -resolvePackageDependencies -project "$PROJECT_PATH" -scheme "$SCHEME"
+
+      - name: Run iOS unit tests as Build 13
+        shell: bash
+        run: |
+          set -euo pipefail
+          destination_id="$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin); print(next(x["udid"] for v in d["devices"].values() for x in v if x["name"].startswith("iPhone")))')"
+          xcodebuild test \
+            -project "$PROJECT_PATH" \
+            -scheme "$SCHEME" \
+            -destination "platform=iOS Simulator,id=$destination_id" \
+            -test-timeouts-enabled YES \
+            -default-test-execution-time-allowance 60 \
+            -maximum-test-execution-time-allowance 120 \
+            CODE_SIGNING_ALLOWED=NO \
+            CURRENT_PROJECT_VERSION="$BUILD_NUMBER"
+
+      - name: Archive signed Build 13
+        id: archive
+        shell: bash
+        env:
+          KEY_PATH: ${{ steps.auth.outputs.key_path }}
+          KEY_ID: ${{ steps.auth.outputs.key_id }}
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/PAWatershedWatch.xcarchive"
+          xcodebuild archive \
+            -project "$PROJECT_PATH" \
+            -scheme "$SCHEME" \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath "$archive" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$KEY_PATH" \
+            -authenticationKeyID "$KEY_ID" \
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
+            DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
+            CODE_SIGN_STYLE=Automatic \
+            CURRENT_PROJECT_VERSION="$BUILD_NUMBER"
+          echo "archive=$archive" >> "$GITHUB_OUTPUT"
+
+      - name: Verify signed archive identity
+        shell: bash
+        env:
+          ARCHIVE: ${{ steps.archive.outputs.archive }}
+        run: |
+          set -euo pipefail
+          info="$ARCHIVE/Info.plist"
+          bundle="$(/usr/libexec/PlistBuddy -c 'Print :ApplicationProperties:CFBundleIdentifier' "$info")"
+          version="$(/usr/libexec/PlistBuddy -c 'Print :ApplicationProperties:CFBundleShortVersionString' "$info")"
+          build="$(/usr/libexec/PlistBuddy -c 'Print :ApplicationProperties:CFBundleVersion' "$info")"
+          team="$(/usr/libexec/PlistBuddy -c 'Print :ApplicationProperties:Team' "$info" 2>/dev/null || true)"
+          echo "$bundle $version ($build) Team=$team"
+          [ "$bundle" = "$BUNDLE_ID" ]
+          [ "$version" = "$MARKETING_VERSION" ]
+          [ "$build" = "$BUILD_NUMBER" ]
+          [ "$team" = "$APPLE_TEAM_ID" ]
+
+      - name: Upload Build 13 to App Store Connect / TestFlight
+        shell: bash
+        env:
+          ARCHIVE: ${{ steps.archive.outputs.archive }}
+          KEY_PATH: ${{ steps.auth.outputs.key_path }}
+          KEY_ID: ${{ steps.auth.outputs.key_id }}
+        run: |
+          set -euo pipefail
+          export_plist="$RUNNER_TEMP/ExportOptions.plist"
+          export_dir="$RUNNER_TEMP/TestFlightExport"
+          cat > "$export_plist" <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "https://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>destination</key><string>upload</string>
+            <key>teamID</key><string>${APPLE_TEAM_ID}</string>
+            <key>signingStyle</key><string>automatic</string>
+            <key>manageAppVersionAndBuildNumber</key><false/>
+            <key>uploadSymbols</key><true/>
+          </dict></plist>
+          PLIST
+          xcodebuild -exportArchive \
+            -archivePath "$ARCHIVE" \
+            -exportPath "$export_dir" \
+            -exportOptionsPlist "$export_plist" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$KEY_PATH" \
+            -authenticationKeyID "$KEY_ID" \
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
+            2>&1 | tee "$RUNNER_TEMP/testflight-build13-upload.log"
+
+      - name: Release receipt
+        if: success()
+        shell: bash
+        run: |
+          {
+            echo '### TestFlight Build 13 delivery accepted'
+            echo
+            echo "- App Store Connect App ID: $ASC_APP_ID"
+            echo "- Bundle ID: $BUNDLE_ID"
+            echo "- Version: $MARKETING_VERSION"
+            echo "- Build: $BUILD_NUMBER"
+            echo "- Release ref: $RELEASE_REF"
+            echo "- Commit: $RELEASE_SHA"
+            echo '- Includes refreshed 1024x1024 opaque RGB app icon.'
+            echo '- Apple may show Processing before TestFlight availability.'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload release diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-testflight-build13-${{ github.run_id }}
+          if-no-files-found: ignore
+          retention-days: 14
+          path: |
+            ${{ runner.temp }}/testflight-build13-upload.log
+            ${{ runner.temp }}/icon-check.txt
+            ${{ runner.temp }}/PAWatershedWatch.xcarchive/Info.plist

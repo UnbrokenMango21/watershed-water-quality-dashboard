@@ -3,8 +3,10 @@
 Native watershed field collection, Firebase validation and trusted QC, approved ArcGIS publication, and public water-quality visualization.
 
 ![CI](https://github.com/UnbrokenMango21/watershed-water-quality-dashboard/actions/workflows/mobile-ci.yml/badge.svg?branch=main)
-![Phase](https://img.shields.io/badge/phase-11%20release%20candidate-blue)
-![TestFlight](https://img.shields.io/badge/TestFlight-next-lightgrey)
+![Release](https://img.shields.io/badge/release-closure%20in%20progress-blue)
+![TestFlight](https://img.shields.io/badge/TestFlight-0.1.0%20%2813%29%20in%20beta-green)
+
+For a plain-language map of the folders and actions, start with [PROJECT_MAP.md](PROJECT_MAP.md).
 
 ## Current product flow
 
@@ -36,12 +38,12 @@ Status vocabulary: **LIVE** means operating in a connected environment; **VERIFI
 | Native Android / Jetpack Compose | VERIFIED | Native collector kept healthy by unit, lint, build and emulator instrumentation CI |
 | Firebase Authentication | VERIFIED | Native and QC authentication integration present |
 | Firestore private staging | VERIFIED | Security Rules and persistence contracts are emulator-tested |
-| Automated validation | VERIFIED | Engine, persistence and trigger integration are tested; live development trigger proof is the next release gate |
-| Trusted QC Console | VERIFIED | Authenticated reviewer UI and review lifecycle tests are green |
+| Automated validation | VERIFIED / LIVE | Engine, persistence and trigger integration are tested; the development validation trigger is active |
+| Trusted QC Console | VERIFIED / GATED | Authenticated reviewer UI and review lifecycle tests are green; the real reviewer identity is provisioned and final live sign-in/review readback remains a human gate |
 | ArcGIS private staging | VERIFIED | Existing ArcGIS schema/staging foundation remains; it is not the human QC system |
-| Approved-only ArcGIS publisher | NEXT | Next engineering phase after TestFlight/live lifecycle proof |
-| Public/research dashboard | NEXT | Consumes approved public-safe ArcGIS views after publisher completion |
-| iOS TestFlight | NEXT | Internal distribution and physical-device lifecycle proof |
+| Approved-only ArcGIS publisher | VERIFIED / GATED | Private authoritative service and four public-safe read-only views are provisioned and independently verified; live OAuth app credentials and a provenance-cleared non-test record remain external gates |
+| Public/research dashboard | VERIFIED / EMPTY | Production adapter reads only the four anonymous public-safe views; the views are intentionally empty until a provenance-cleared approved observation exists |
+| iOS TestFlight | VERIFIED / IN BETA | Build 13 (`0.1.0 (13)`) is `VALID` and `IN_BETA_TESTING`; physical-device installation remains to be confirmed |
 | Photo/audio/media capture | DEFERRED | Zero scientific attachments in the current production candidate |
 
 ## Repository map
@@ -71,7 +73,7 @@ Status vocabulary: **LIVE** means operating in a connected environment; **VERIFI
 
 ## Current development target
 
-Finish the Phase 11 release lock by proving the development iPhone → Firebase → live validation → QC Console roundtrip through internal TestFlight. After that, build the **approved-only ArcGIS publisher** as a trusted, server-side, idempotent publication boundary.
+Close the Phase 11/12 pre-release gates: verify Build 13 on the physical iPhone, complete real-reviewer sign-in/readback, provision item-scoped ArcGIS OAuth credentials, then run the first provenance-cleared non-test approval → publication → public-view → dashboard readback. The approved-only publisher and public dashboard are already implemented, tested and deliberately gated until those human/external checks are complete.
 
 ## Developing
 
@@ -95,4 +97,4 @@ Android and iOS are verified in `.github/workflows/mobile-ci.yml`; platform-spec
 
 ## Documentation
 
-Start with [`docs/README.md`](docs/README.md). Architecture, roadmap, scientific contracts, QC operations and deferred-feature decisions are indexed there.
+Start with [`docs/ENGINEERING_COCKPIT.md`](docs/ENGINEERING_COCKPIT.md) for the shared Mac tool environment and [`docs/README.md`](docs/README.md) for project documentation. Architecture, roadmap, scientific contracts, QC operations and deferred-feature decisions are indexed there.
