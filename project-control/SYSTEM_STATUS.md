@@ -6,7 +6,7 @@ Authoritative integration branch: `integration/pa-watershed-watch-2026-09`
 
 Finalization branch: `agent/codex/finalization-2026-09-24`
 
-The software architecture is implemented. Local scientific contracts, Firebase emulator suites, both website builds, and the production dependency audits are green on 2026-09-25; the updated finalization commit still needs GitHub CI. See [the verification report](../docs/VERIFICATION_REPORT.md). Remaining closure items are human/external release gates, not a missing core architecture.
+The software architecture is implemented. Local scientific contracts, Firebase emulator suites, and both website builds passed on the combined integration commit `7dcac7d` on 2026-09-25. The development dashboard was deployed and checked in a browser at desktop and phone widths; all 17 integration checks passed, including iOS, Android, and Swift security scanning. See [the verification report](../docs/VERIFICATION_REPORT.md). Remaining release gates require real reviewer, physical-device, and scientific publication evidence.
 
 | Surface | Status | Remaining gate |
 |---|---|---|
