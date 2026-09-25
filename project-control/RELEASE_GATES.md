@@ -6,14 +6,23 @@ Updated 2026-09-25. Check a box only after its evidence is linked in this reposi
 
 - [x] Confirm canonical repo and GitHub lineage: PR [#35](https://github.com/UnbrokenMango21/watershed-water-quality-dashboard/pull/35) merged into the integration branch on 2026-09-25; draft PR [#34](https://github.com/UnbrokenMango21/watershed-water-quality-dashboard/pull/34) targets `main`.
 - [x] Verify finalization: PR #35's final commit passed all nine checks, including Android emulator instrumentation, before merge. The separately dispatched [full CI retry](https://github.com/UnbrokenMango21/watershed-water-quality-dashboard/actions/runs/36096251241) passed all five jobs on attempt 2. Attempt 1's Android emulator went offline before tests.
-- [ ] Verify the merged integration line: PR #34's checks are rerunning on merge commit `d30d025`; record the final result before a release decision.
+- [x] Verify integration at `d30d025`: draft PR #34 passed all 16 checks, including Android emulator, iOS, and CodeQL. [PR #36](https://github.com/UnbrokenMango21/watershed-water-quality-dashboard/pull/36) then passed its three dashboard checks and merged as `998d3af`.
+- [ ] Verify PR #34's full checks on the newer `998d3af` integration head before a release decision.
 - [x] Run local science/publication contracts: 30 validation, 15 publication, and 2 provisioning privacy tests passed on 2026-09-25.
 - [x] Finish and record the local website checker: six public-dashboard adapter tests, both TypeScript checks, and both production builds passed after targeted security updates. See [verification report](../docs/VERIFICATION_REPORT.md).
 - [x] Reinstall local generated dependencies from lockfiles and pass Firebase emulator rules, validation, review, and trigger suites.
 - [x] Patch high/critical production dependency advisories and confirm `npm audit --omit=dev` reports zero production vulnerabilities in the backend, QC Console, and public dashboard.
 - [x] Merge the reviewed finalization changes into the integration line without deleting the release branch.
 - [ ] Confirm CodeQL after the TestFlight workflow fix reaches PR #34/main.
-- [ ] Fix the live public dashboard connection and verify the production site's empty public-view state without demo data. The local browser check passed on 2026-09-25; deployment remains pending.
+- [x] Fix the public dashboard's browser connection and verify its empty public-view state locally without demo data; PR #36 passed build and browser checks before merge.
+- [ ] Verify the development App Hosting rollout of `998d3af` and its live empty public-view state in a browser. A development deployment is not the final public release.
+
+## Firebase safeguards
+
+- [x] Enable and read back deletion protection for the development Firestore database.
+- [x] Configure and read back weekly Sunday backups with 30-day retention; point-in-time recovery remains off by the user's choice. The first scheduled backup has not yet occurred.
+- [x] Reconcile the tracked Firestore index declaration with the four existing remote indexes without removing the extra historical index.
+- [ ] Confirm the first scheduled backup after it runs and record a recovery drill before calling recovery proven.
 
 ## 2. Prove the iPhone release on the actual device
 
