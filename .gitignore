@@ -37,6 +37,7 @@ dist/
 .env
 .env.*
 !.env.example
+!.env.central-pa-watershed-dev
 *.pem
 *.p8
 *.key
