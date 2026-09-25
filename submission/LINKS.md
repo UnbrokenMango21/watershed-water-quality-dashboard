@@ -4,6 +4,7 @@
 - Integration branch: `integration/pa-watershed-watch-2026-09`
 - Finalization: [PR #35](https://github.com/UnbrokenMango21/watershed-water-quality-dashboard/pull/35)
 - Integration into `main`: [PR #34](https://github.com/UnbrokenMango21/watershed-water-quality-dashboard/pull/34)
+- [Development dashboard](https://public-dashboard-dev--central-pa-watershed-dev.us-central1.hosted.app/) (connected to approved public views; currently no approved observations; not the final published release)
 - [Current verification](../docs/VERIFICATION_REPORT.md) and [release checklist](../project-control/RELEASE_GATES.md)
 - iOS: `0.1.0 (13)`
 - Firebase: `central-pa-watershed-dev`
