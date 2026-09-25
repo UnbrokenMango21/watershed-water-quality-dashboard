@@ -67,7 +67,7 @@ Failures become `PUBLISH_FAILED` with attempt/error metadata and a failure audit
 
 Use an ArcGIS OAuth application credential with `client_credentials`, scoped only to the approved-authoritative item and granted required feature-edit privileges. Firebase Functions secrets are `ARCGIS_OAUTH_CLIENT_ID` and `ARCGIS_OAUTH_CLIENT_SECRET`. Non-secret deploy parameters are `ENABLE_ARCGIS_PUBLICATION_FUNCTION`, `ARCGIS_PUBLICATION_FEATURE_SERVICE_URL`, and `ARCGIS_PORTAL_URL=https://www.arcgis.com`.
 
-`ENABLE_ARCGIS_PUBLICATION_FUNCTION` defaults to `false`. The Firebase endpoint is declared with a parameterized `omit` gate: it is omitted from deployment/emulation unless the enable flag is true and `ARCGIS_PUBLICATION_FEATURE_SERVICE_URL` is non-empty. This turns the live-publication deployment gate into executable configuration rather than relying only on operator discipline.
+`ENABLE_ARCGIS_PUBLICATION_FUNCTION` defaults to `false`. The publisher and its OAuth secret parameters are registered only when the enable flag is true and `ARCGIS_PUBLICATION_FEATURE_SERVICE_URL` is non-empty. The endpoint also retains its parameterized `omit` gate. This matters because the Firebase CLI resolves every declared secret before applying an endpoint-specific `--only` filter; leaving the publisher disabled must not prevent a validation-only redeploy. The disabled configuration exposes no publisher endpoint and requires no ArcGIS OAuth secret.
 
 Never commit OAuth secrets, user passwords, long-lived tokens, Firebase private keys, or App Store credentials.
 
