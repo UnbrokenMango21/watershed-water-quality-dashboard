@@ -667,8 +667,12 @@ private struct DraftPayload: Codable {
         let existing = try await submission.getDocument(source: .server)
         if existing.exists {
             guard existing.get("collector_user_id") as? String == snapshot.ownerUID, existing.get("event_id") as? String == snapshot.eventID.uuidString.lowercased() else { throw CanonicalizationError.invalid("Remote identity does not match") }
-            if let status = existing.get("status") as? String, Self.acknowledged.contains(status) {
-                guard existing.get("current_revision_id") as? String == snapshot.revisionID.uuidString.lowercased(), let workflow = WorkflowState.backend(status) else { throw CanonicalizationError.invalid("Server acknowledged a different revision") }
+            if let workflow = try Self.acknowledgedWorkflow(
+                status: existing.get("status") as? String,
+                remoteRevisionID: existing.get("current_revision_id") as? String,
+                snapshotRevisionID: snapshot.revisionID.uuidString.lowercased(),
+                isCorrection: snapshot.correction
+            ) {
                 return workflow
             }
             if snapshot.correction, existing.get("status") as? String != "NEEDS_CORRECTION" { throw CanonicalizationError.invalid("Correction is not currently requested") }
@@ -724,6 +728,27 @@ private struct DraftPayload: Codable {
                 }
             }
         }
+    }
+
+    /// Returns a server workflow only when the server already points at the same immutable revision.
+    /// A correction is the one intentional mismatch: while the parent is NEEDS_CORRECTION the server must
+    /// still point at revision N until the collector appends revision N+1. That state must continue into the
+    /// upload path instead of being mistaken for an acknowledgement of the new revision.
+    static func acknowledgedWorkflow(
+        status: String?,
+        remoteRevisionID: String?,
+        snapshotRevisionID: String,
+        isCorrection: Bool
+    ) throws -> WorkflowState? {
+        guard let status, acknowledged.contains(status) else { return nil }
+        if remoteRevisionID == snapshotRevisionID {
+            guard let workflow = WorkflowState.backend(status) else {
+                throw CanonicalizationError.invalid("Server workflow state is unsupported")
+            }
+            return workflow
+        }
+        if isCorrection && status == "NEEDS_CORRECTION" { return nil }
+        throw CanonicalizationError.invalid("Server acknowledged a different revision")
     }
 
     private static let acknowledged: Set<String> = ["SUBMITTED", "VALIDATING", "PENDING_REVIEW", "NEEDS_CORRECTION", "RESUBMITTED", "APPROVED", "REJECTED", "PUBLISHING", "PUBLISH_FAILED", "PUBLISHED"]
