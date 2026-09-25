@@ -15,7 +15,7 @@ Updated 2026-09-25. Check a box only after its evidence is linked in this reposi
 - [x] Merge the reviewed finalization changes into the integration line without deleting the release branch.
 - [ ] Confirm CodeQL after the TestFlight workflow fix reaches PR #34/main.
 - [x] Fix the public dashboard's browser connection and verify its empty public-view state locally without demo data; PR #36 passed build and browser checks before merge.
-- [ ] Verify the development App Hosting rollout of `998d3af` and its live empty public-view state in a browser. A development deployment is not the final public release.
+- [x] Verify the development App Hosting rollout of dashboard packaging fix `892a7b2` and its live empty public-view state in a browser on 2026-09-25: the [hosted development dashboard](https://public-dashboard-dev--central-pa-watershed-dev.us-central1.hosted.app/) connected to the public source, showed zero sites, and displayed no ArcGIS error or demo data. The first `998d3af` rollout failed because its standalone route manifest was missing; [PR #39](https://github.com/UnbrokenMango21/watershed-water-quality-dashboard/pull/39) fixes the packaging. A development deployment is not the final public release.
 
 ## Firebase safeguards
 
