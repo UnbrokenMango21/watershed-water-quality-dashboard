@@ -185,6 +185,13 @@ for (const viewport of viewports) {
   if (!initialMetrics.fontFamily.toLowerCase().includes("avenir")) failures.push(`${viewport.name}: app typography is not using the Calcite-aligned Avenir family`);
 
   if (mode === "demo") {
+    const warning = await page.locator(".demo-banner span").evaluate((label) => ({
+      scrollWidth: label.scrollWidth,
+      clientWidth: label.clientWidth,
+      scrollHeight: label.scrollHeight,
+      clientHeight: label.clientHeight,
+    }));
+    if (warning.scrollWidth > warning.clientWidth + 1 || warning.scrollHeight > warning.clientHeight + 1) failures.push(`${viewport.name}: synthetic-data warning is clipped`);
     if ((await page.getByRole("heading", { name: "No site selected" }).count()) === 0 && !compact) failures.push(`${viewport.name}: no-selection site state is not visible initially`);
     if ((await page.locator(".sample-summary").count()) !== 0) failures.push(`${viewport.name}: sample metadata is rendered before a site is selected`);
     if ((await page.locator(".metrics").count()) !== 0) failures.push(`${viewport.name}: measurement rows are rendered before a site is selected`);
