@@ -10,7 +10,10 @@
     "test:contracts": "node --test tests/validation/*.test.mjs",
     "test:trigger": "node --test tests/validation-trigger/firestore_trigger.test.mjs",
     "test:review": "node tests/review/run-tests.cjs",
-    "test:publication": "node --test tests/publication/*.test.mjs"
+    "test:publication": "node --test tests/publication/*.test.mjs",
+    "auth:ensure-dev-admin": "node scripts/ensure_dev_admin.mjs",
+    "auth:cleanup-dev-users": "node scripts/cleanup_dev_auth_users.mjs",
+    "test:emulator-identities": "node scripts/provision_test_users.mjs --apply && node scripts/seed_qc_smoke_data.mjs --apply"
   },
   "dependencies": {
     "firebase-admin": "14.2.0",
