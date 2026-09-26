@@ -1,8 +1,10 @@
 #!/usr/bin/env node
-// Creates representative QC lifecycle records in the development project only.
-// Dry-run is credential-free; --apply requires Admin SDK credentials and the test
-// users from scripts/provision_test_users.mjs. Every apply uses new UUIDs and never
-// overwrites an existing submission or immutable revision.
+// Creates representative QC lifecycle records in the Firebase Emulator Suite only.
+//
+// This script intentionally refuses to seed the persistent development project.
+// Role-separated test identities are provisioned by scripts/provision_test_users.mjs
+// inside Auth/Firestore emulators, so live Firebase Auth can remain limited to the
+// single persistent human admin account.
 
 import { randomUUID } from 'node:crypto';
 import { initializeApp } from 'firebase-admin/app';
@@ -12,24 +14,31 @@ import { getFirestore, GeoPoint, Timestamp } from 'firebase-admin/firestore';
 import { applyReviewDecision } from '../web/lib/reviewSubmission.mjs';
 import { runValidationForSubmission } from '../validation/orchestrator.mjs';
 
-const DEV_PROJECT_ID = 'central-pa-watershed-dev';
-const COLLECTOR_EMAIL = 'test.collector.01@central-pa-watershed-dev.local';
-const REVIEWER_EMAIL = 'test.qc.reviewer@central-pa-watershed-dev.local';
+const PROJECT_ID = 'central-pa-watershed-dev';
+const COLLECTOR_EMAIL = 'test.collector.01@emulator.invalid';
+const REVIEWER_EMAIL = 'test.qc.reviewer@emulator.invalid';
 const apply = process.argv.includes('--apply');
+const authHost = process.env.FIREBASE_AUTH_EMULATOR_HOST;
+const firestoreHost = process.env.FIRESTORE_EMULATOR_HOST;
 
-console.log(`Target project: ${DEV_PROJECT_ID}${apply ? ' (APPLY)' : ' (dry run)'}`);
-console.log('Scenarios: clean PENDING_REVIEW, warning PENDING_REVIEW, blocking NEEDS_CORRECTION, correction revision 2 PENDING_REVIEW, rejection REJECTED.');
+console.log(`Target: Firebase Emulator Suite for ${PROJECT_ID}${apply ? ' (APPLY)' : ' (dry run)'}`);
+console.log(
+  'Scenarios: clean PENDING_REVIEW, warning PENDING_REVIEW, blocking NEEDS_CORRECTION, correction revision 2 PENDING_REVIEW, rejection REJECTED.',
+);
 
 if (!apply) {
-  console.log('Dry run only — no credentials were loaded and no changes were made. Re-run with --apply.');
+  console.log('Dry run only. --apply is accepted only when both Auth and Firestore emulator hosts are set.');
   process.exit(0);
 }
 
-const app = initializeApp({ projectId: DEV_PROJECT_ID });
-if (app.options.projectId !== DEV_PROJECT_ID) {
-  throw new Error(`Refusing to run outside ${DEV_PROJECT_ID}.`);
+if (!authHost || !firestoreHost) {
+  console.error(
+    'Refusing to seed persistent Firebase. Set both FIREBASE_AUTH_EMULATOR_HOST and FIRESTORE_EMULATOR_HOST.',
+  );
+  process.exit(1);
 }
 
+const app = initializeApp({ projectId: PROJECT_ID });
 const auth = getAuth(app);
 const db = getFirestore(app);
 const [collector, reviewer] = await Promise.all([
@@ -38,7 +47,7 @@ const [collector, reviewer] = await Promise.all([
 ]);
 
 if (collector.customClaims?.role !== 'COLLECTOR' || reviewer.customClaims?.role !== 'QC_REVIEWER') {
-  throw new Error('Expected dev test roles are missing. Run scripts/provision_test_users.mjs --apply first.');
+  throw new Error('Expected emulator roles are missing. Run scripts/provision_test_users.mjs --apply first.');
 }
 
 const now = new Date();
@@ -91,9 +100,9 @@ function revision(submissionId, eventId, revisionId, revisionNo, ph) {
     temp_entered_unit: 'F',
     temp_c: 20,
     temp_f: 68,
-    field_notes_original: `Development QC smoke scenario; pH ${ph}.`,
+    field_notes_original: `Emulator QC smoke scenario; pH ${ph}.`,
     schema_version: '0.1.0',
-    mobile_app_version: 'qc-smoke-seed-1',
+    mobile_app_version: 'qc-smoke-seed-emulator-1',
   };
 }
 
@@ -155,7 +164,7 @@ await applyReviewDecision({
   decision: 'NEEDS_CORRECTION',
   reviewerUid: reviewer.uid,
   reviewerRole: 'QC_REVIEWER',
-  reason: 'Development smoke fixture: verify immutable correction revision lifecycle.',
+  reason: 'Emulator smoke fixture: verify immutable correction revision lifecycle.',
   now,
 });
 
@@ -185,7 +194,7 @@ await applyReviewDecision({
   decision: 'REJECT',
   reviewerUid: reviewer.uid,
   reviewerRole: 'QC_REVIEWER',
-  reason: 'Development smoke fixture: representative rejected submission.',
+  reason: 'Emulator smoke fixture: representative rejected submission.',
   now,
 });
 
