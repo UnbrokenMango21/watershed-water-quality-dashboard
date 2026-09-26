@@ -3,7 +3,7 @@ import SwiftUI
 enum FieldTheme {
     static let hemlock = Color(light: 0x0D5C4B, dark: 0x63D3B3)
     static let water = Color(light: 0x167A8B, dark: 0x6BC9D5)
-    static let goldenrod = Color(light: 0xA76100, dark: 0xF3B65C)
+    static let goldenrod = Color(light: 0x955600, dark: 0xF3B65C)
     static let fern = Color(light: 0x2E7D52, dark: 0x66D49A)
     static let limestone = Color(light: 0xF3F1E9, dark: 0x171A18)
     static let ink = Color(light: 0x17211E, dark: 0xF1F5F3)
@@ -36,15 +36,11 @@ struct WatershedMark: View {
     var size: CGFloat = 56
 
     var body: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: size * 0.22, style: .continuous)
-                .fill(FieldTheme.hemlock)
-            Image(systemName: "water.waves")
-                .font(.system(size: size * 0.42, weight: .medium))
-                .foregroundStyle(Color(uiColor: .systemBackground))
-        }
-        .frame(width: size, height: size)
-        .accessibilityHidden(true)
+        Image("BrandIcon")
+            .resizable()
+            .clipShape(RoundedRectangle(cornerRadius: size * 0.22, style: .continuous))
+            .frame(width: size, height: size)
+            .accessibilityHidden(true)
     }
 }
 
