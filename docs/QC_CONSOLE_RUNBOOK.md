@@ -53,31 +53,40 @@ npm --prefix web run dev -- --hostname 127.0.0.1
 Open `http://127.0.0.1:3000/review`. Sign-in persists through Firebase Auth;
 there is no signup route or form.
 
-## Test users and sites
+## Test identities and sites
 
-Dry runs do not load credentials:
+The live development project keeps one persistent human Firebase Auth account:
+`pzc5420@psu.edu`. It is an `ADMIN` and is used for manual end-to-end checks.
+Automated role separation never depends on persistent live test accounts.
+
+Dry runs are credential-free:
 
 ```bash
 node scripts/provision_test_users.mjs
 node scripts/seed_test_sites.mjs
 node scripts/seed_qc_smoke_data.mjs
+node scripts/ensure_dev_admin.mjs
+node scripts/cleanup_dev_auth_users.mjs
 ```
 
-After obtaining dev-only ADC, provision the named users with an uncommitted
-temporary password and seed the fixtures:
+`provision_test_users.mjs` and `seed_qc_smoke_data.mjs` refuse `--apply`
+unless both Auth and Firestore emulator hosts are set. They create/use
+emulator-only `COLLECTOR`, `QC_REVIEWER`, and `ADMIN` identities so security
+tests continue to prove role separation without polluting live Firebase Auth.
 
-```bash
-QC_DEV_TEST_PASSWORD='<temporary-password>' node scripts/provision_test_users.mjs --apply
-node scripts/seed_test_sites.mjs --apply
-node scripts/seed_qc_smoke_data.mjs --apply
-```
+`ensure_dev_admin.mjs --apply` is the guarded live-dev repair path for the one
+persistent human account. It preserves the existing UID, sets the `ADMIN` claim,
+ensures `users/{uid}` is active with role `ADMIN`, and revokes stale sessions.
+It never creates or changes a password.
 
-The user script creates two collectors, one `QC_REVIEWER`, and one `ADMIN`, sets
-friendly display names and exact claims, and does not reset existing passwords.
-The site script upserts 18 `TEST-*` sites covering similar names, long names,
-counties, and watersheds. The QC script creates new UUID-scoped clean, warning,
-blocking, correction-revision-2, and rejected records; it never overwrites an
-existing submission or revision.
+`cleanup_dev_auth_users.mjs` is destructive and dry-runs by default. It deletes
+Firebase Auth identities only; it deliberately leaves historical Firestore user
+profiles, submissions, revisions, audit rows, and stored UIDs untouched. Apply
+requires the explicit confirmation flag printed by the dry run.
+
+The site script can seed controlled `TEST-*` catalog fixtures where needed.
+Those fixtures and emulator smoke submissions are test data, not public
+scientific evidence.
 
 ## Emulator workflow
 
@@ -92,7 +101,7 @@ Terminal 2:
 ```bash
 export FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099
 export FIRESTORE_EMULATOR_HOST=127.0.0.1:8080
-QC_DEV_TEST_PASSWORD='<emulator-only-password>' node scripts/provision_test_users.mjs --apply
+node scripts/provision_test_users.mjs --apply
 node scripts/seed_test_sites.mjs --apply
 node scripts/seed_qc_smoke_data.mjs --apply
 ```
