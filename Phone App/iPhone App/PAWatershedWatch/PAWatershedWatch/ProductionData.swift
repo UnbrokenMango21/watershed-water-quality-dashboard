@@ -3,7 +3,7 @@ import CryptoKit
 import FirebaseCore
 @preconcurrency import FirebaseFirestore
 import Foundation
-import GoogleSignIn
+@preconcurrency import GoogleSignIn
 import SwiftData
 import UIKit
 
