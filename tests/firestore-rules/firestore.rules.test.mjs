@@ -180,6 +180,18 @@ test('collector cannot create a submission owned by another uid', async () => {
   await assertFails(setDoc(doc(db, `submissions/${submissionId}`), draftSubmission()));
 });
 
+test('ADMIN can create and manage a submission it owns', async () => {
+  const db = env.authenticatedContext('admin-1', { role: 'ADMIN' }).firestore();
+  await assertSucceeds(setDoc(
+    doc(db, `submissions/${submissionId}`),
+    draftSubmission({ collector_user_id: 'admin-1' }),
+  ));
+  await assertSucceeds(updateDoc(doc(db, `submissions/${submissionId}`), {
+    mobile_app_version: '0.1.1-admin-test',
+    updated_at: nowString(),
+  }));
+});
+
 test('collector cannot inject server-owned fields into submission creation', async () => {
   const db = env.authenticatedContext('collector-a').firestore();
   await assertFails(setDoc(doc(db, `submissions/${submissionId}`), draftSubmission({ overall_quality_score: 99 })));
