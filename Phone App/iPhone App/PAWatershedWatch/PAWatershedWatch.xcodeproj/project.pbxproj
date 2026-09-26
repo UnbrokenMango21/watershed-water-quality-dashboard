@@ -23,6 +23,8 @@
 		AA0000000000000000000023 /* FirebaseFirestore in Frameworks */ = {isa = PBXBuildFile; productRef = AA0000000000000000000013 /* FirebaseFirestore */; };
 		AA0000000000000000000025 /* FirebaseAppCheck in Frameworks */ = {isa = PBXBuildFile; productRef = AA0000000000000000000015 /* FirebaseAppCheck */; };
 		AA0000000000000000000026 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000027 /* Assets.xcassets */; };
+		BB0000000000000000000001 /* GoogleSignIn in Frameworks */ = {isa = PBXBuildFile; productRef = BB0000000000000000000011 /* GoogleSignIn */; };
+		BB0000000000000000000002 /* GoogleSignInSwift in Frameworks */ = {isa = PBXBuildFile; productRef = BB0000000000000000000012 /* GoogleSignInSwift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -51,6 +53,7 @@
 		AA0000000000000000000005 /* mobile_golden.json */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.json; name = mobile_golden.json; path = "../../../tests/mobile-contract-fixtures/mobile_golden.json"; sourceTree = SOURCE_ROOT; };
 		AA0000000000000000000007 /* PAWatershedWatch.entitlements */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.entitlements; path = PAWatershedWatch.entitlements; sourceTree = "<group>"; };
 		AA0000000000000000000027 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		BB0000000000000000000003 /* Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -69,6 +72,8 @@
 				AA0000000000000000000022 /* FirebaseAuth in Frameworks */,
 				AA0000000000000000000023 /* FirebaseFirestore in Frameworks */,
 				AA0000000000000000000025 /* FirebaseAppCheck in Frameworks */,
+				BB0000000000000000000001 /* GoogleSignIn in Frameworks */,
+				BB0000000000000000000002 /* GoogleSignInSwift in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -106,6 +111,7 @@
 			isa = PBXGroup;
 			children = (
 				AA0000000000000000000007 /* PAWatershedWatch.entitlements */,
+				BB0000000000000000000003 /* Info.plist */,
 				AA0000000000000000000027 /* Assets.xcassets */,
 				AA0000000000000000000003 /* GoogleService-Info.plist */,
 				DA25B6C5C207E46EAE523F30 /* CoreViews.swift */,
@@ -159,6 +165,8 @@
 				AA0000000000000000000012 /* FirebaseAuth */,
 				AA0000000000000000000013 /* FirebaseFirestore */,
 				AA0000000000000000000015 /* FirebaseAppCheck */,
+				BB0000000000000000000011 /* GoogleSignIn */,
+				BB0000000000000000000012 /* GoogleSignInSwift */,
 			);
 			productName = PAWatershedWatch;
 			productReference = 170D1C25D23E58D6BEBA6A24 /* PAWatershedWatch.app */;
@@ -205,6 +213,7 @@
 			productRefGroup = 1E10D2345E8C5130A5428C2B /* Products */;
 			packageReferences = (
 				AA0000000000000000000010 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */,
+				BB0000000000000000000010 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */,
 			);
 			projectDirPath = "";
 			projectRoot = "";
@@ -336,6 +345,7 @@
 				CURRENT_PROJECT_VERSION = 13;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = PAWatershedWatch/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "PA Watershed Watch";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Capture the sampling position and GPS accuracy for a field observation.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -458,6 +468,7 @@
 				CURRENT_PROJECT_VERSION = 13;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = PAWatershedWatch/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "PA Watershed Watch";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Capture the sampling position and GPS accuracy for a field observation.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -517,6 +528,14 @@
 				minimumVersion = 12.0.0;
 			};
 		};
+		BB0000000000000000000010 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/google/GoogleSignIn-iOS.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 10.0.0;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -524,6 +543,8 @@
 		AA0000000000000000000012 /* FirebaseAuth */ = {isa = XCSwiftPackageProductDependency; package = AA0000000000000000000010 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */; productName = FirebaseAuth; };
 		AA0000000000000000000013 /* FirebaseFirestore */ = {isa = XCSwiftPackageProductDependency; package = AA0000000000000000000010 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */; productName = FirebaseFirestore; };
 		AA0000000000000000000015 /* FirebaseAppCheck */ = {isa = XCSwiftPackageProductDependency; package = AA0000000000000000000010 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */; productName = FirebaseAppCheck; };
+		BB0000000000000000000011 /* GoogleSignIn */ = {isa = XCSwiftPackageProductDependency; package = BB0000000000000000000010 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */; productName = GoogleSignIn; };
+		BB0000000000000000000012 /* GoogleSignInSwift */ = {isa = XCSwiftPackageProductDependency; package = BB0000000000000000000010 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */; productName = GoogleSignInSwift; };
 /* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = CCFE7EE891E74F4C6B495090 /* Project object */;

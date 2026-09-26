@@ -1,8 +1,11 @@
 import CryptoKit
 @preconcurrency import FirebaseAuth
+import FirebaseCore
 @preconcurrency import FirebaseFirestore
 import Foundation
+import GoogleSignIn
 import SwiftData
+import UIKit
 
 enum ProductionSupport: String, Codable { case fullySupported = "FULLY_SUPPORTED", featureGated = "FEATURE_GATED" }
 
@@ -642,8 +645,21 @@ private struct DraftPayload: Codable {
     }
 }
 
+enum GoogleSignInFailure: LocalizedError {
+    case missingClientID
+    case missingIDToken
+
+    var errorDescription: String? {
+        switch self {
+        case .missingClientID: "Google Sign-In is not configured for this Firebase app."
+        case .missingIDToken: "Google Sign-In did not return a valid identity token."
+        }
+    }
+}
+
 @MainActor protocol RemoteMobileRepository: AnyObject {
     func signIn(email: String, password: String) async throws -> User
+    func signInWithGoogle(presenting viewController: UIViewController) async throws -> User
     func signOut() throws
     func fetchSites() async throws -> [Site]
     func sync(_ snapshot: CanonicalSnapshot) async throws -> WorkflowState
@@ -653,8 +669,33 @@ private struct DraftPayload: Codable {
 @MainActor final class FirebaseMobileService: RemoteMobileRepository {
     private let firestore = Firestore.firestore()
 
-    func signIn(email: String, password: String) async throws -> User { try await Auth.auth().signIn(withEmail: email.trimmingCharacters(in: .whitespacesAndNewlines), password: password).user }
-    func signOut() throws { try Auth.auth().signOut() }
+    func signIn(email: String, password: String) async throws -> User {
+        try await Auth.auth().signIn(
+            withEmail: email.trimmingCharacters(in: .whitespacesAndNewlines),
+            password: password
+        ).user
+    }
+
+    func signInWithGoogle(presenting viewController: UIViewController) async throws -> User {
+        guard let clientID = FirebaseApp.app()?.options.clientID else {
+            throw GoogleSignInFailure.missingClientID
+        }
+        GIDSignIn.sharedInstance.configuration = GIDConfiguration(clientID: clientID)
+        let result = try await GIDSignIn.sharedInstance.signIn(withPresenting: viewController)
+        guard let idToken = result.user.idToken?.tokenString else {
+            throw GoogleSignInFailure.missingIDToken
+        }
+        let credential = GoogleAuthProvider.credential(
+            withIDToken: idToken,
+            accessToken: result.user.accessToken.tokenString
+        )
+        return try await Auth.auth().signIn(with: credential).user
+    }
+
+    func signOut() throws {
+        GIDSignIn.sharedInstance.signOut()
+        try Auth.auth().signOut()
+    }
 
     func fetchSites() async throws -> [Site] {
         let result = try await firestore.collection("siteCatalog").whereField("active", isEqualTo: true).getDocuments(source: .server)

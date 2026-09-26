@@ -1,3 +1,4 @@
+import GoogleSignInSwift
 import SwiftUI
 
 struct SignInView: View {
@@ -45,9 +46,28 @@ struct SignInView: View {
                 }
                 VStack(spacing: 12) {
                     PrimaryActionButton(title: "Sign In", systemImage: "arrow.right.circle.fill", action: model.signIn)
+                        .disabled(model.isAuthenticating)
+                    HStack(spacing: FieldTheme.s) {
+                        Divider()
+                        Text("or")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Divider()
+                    }
+                    GoogleSignInButton(
+                        state: model.isAuthenticating ? .disabled : .normal,
+                        action: model.signInWithGoogle
+                    )
+                    .frame(maxWidth: .infinity, minHeight: 44)
+                    .disabled(model.isAuthenticating)
+                    if model.isAuthenticating {
+                        ProgressView("Signing in…")
+                            .font(.subheadline)
+                    }
                     Button("Forgot Password?") { model.authError = "Password recovery requires a connection." }
                         .font(.subheadline.weight(.semibold))
                         .frame(minHeight: 44)
+                        .disabled(model.isAuthenticating)
                 }
             }
             .padding(.horizontal, FieldTheme.l)

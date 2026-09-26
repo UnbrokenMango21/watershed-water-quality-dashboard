@@ -5,6 +5,7 @@ import Foundation
 import Observation
 import SwiftData
 import SwiftUI
+import UIKit
 
 extension Date {
     var fieldTimestamp: String {
@@ -673,6 +674,27 @@ final class AppModel {
         }
     }
 
+    func signInWithGoogle() {
+        guard connection == .online, let remote else {
+            authError = "A network connection is required for Google Sign-In."
+            return
+        }
+        guard let presenter = Self.presentingViewController() else {
+            authError = "Google Sign-In could not open. Try again."
+            return
+        }
+        authError = nil
+        isAuthenticating = true
+        Task {
+            do {
+                _ = try await remote.signInWithGoogle(presenting: presenter)
+            } catch {
+                authError = Self.googleAuthMessage(error)
+            }
+            isAuthenticating = false
+        }
+    }
+
     func signOut() {
         do { try remote?.signOut() }
         catch { authError = "We couldn't sign out. Try again." }
@@ -900,6 +922,31 @@ final class AppModel {
             }
         }
         monitor.start(queue: monitorQueue)
+    }
+
+    private static func presentingViewController() -> UIViewController? {
+        guard let scene = UIApplication.shared.connectedScenes
+            .compactMap({ $0 as? UIWindowScene })
+            .first(where: { $0.activationState == .foregroundActive }),
+              let root = scene.windows.first(where: \.isKeyWindow)?.rootViewController
+        else { return nil }
+        var presenter = root
+        while let presented = presenter.presentedViewController { presenter = presented }
+        return presenter
+    }
+
+    private static func googleAuthMessage(_ error: Error) -> String {
+        let nsError = error as NSError
+        if nsError.domain == "com.google.GIDSignIn", nsError.code == -5 {
+            return "Google Sign-In was canceled."
+        }
+        if let code = AuthErrorCode(rawValue: nsError.code), code == .networkError {
+            return "A network connection is required for Google Sign-In."
+        }
+        if let failure = error as? GoogleSignInFailure {
+            return failure.localizedDescription
+        }
+        return "We couldn't sign you in with Google. Try again or contact your program administrator."
     }
 
     private static func authMessage(_ error: Error) -> String {

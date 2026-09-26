@@ -1,5 +1,6 @@
 import FirebaseAppCheck
 import FirebaseCore
+import GoogleSignIn
 import SwiftData
 import SwiftUI
 
@@ -26,14 +27,19 @@ struct PAWatershedWatchApp: App {
 
     var body: some Scene {
         WindowGroup {
-            if !model.authResolved {
-                ProgressView("Restoring Secure Session")
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(FieldTheme.limestone.ignoresSafeArea())
-            } else if model.isSignedIn {
-                MainTabView(model: model)
-            } else {
-                SignInView(model: model)
+            Group {
+                if !model.authResolved {
+                    ProgressView("Restoring Secure Session")
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .background(FieldTheme.limestone.ignoresSafeArea())
+                } else if model.isSignedIn {
+                    MainTabView(model: model)
+                } else {
+                    SignInView(model: model)
+                }
+            }
+            .onOpenURL { url in
+                _ = GIDSignIn.sharedInstance.handle(url)
             }
         }
         .modelContainer(container)
