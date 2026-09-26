@@ -1,0 +1,16 @@
+PA Watershed Watch — TestFlight 0.1.0 (14)
+
+What to Test
+
+This build adds the watershed identity and the iPhone Google sign-in path. Use a provisioned test account and test site only. Do not enter real observations unless your program coordinator authorizes them.
+
+1. Install build 14 on a physical iPhone. Confirm the new icon appears and the sign-in screen is readable in light and dark appearance.
+2. Choose Google sign-in with the provisioned project identity. Confirm that sign-in returns to the app and opens the expected existing account; report any new or duplicate account.
+3. Select a test site, start a visit, and check that location accuracy and measurement units are clear.
+4. Save a draft, close and reopen the app, and check that the draft remains.
+5. Save a draft offline, reconnect, and check the sync status before submitting a controlled test observation.
+6. Check the submitted record's private review status and that a correction preserves the earlier revision.
+
+Send unexpected behavior through TestFlight feedback. Include the device model, iOS version, and the step that failed, but never include a password or private observation in the report.
+
+Photo, audio, and other media capture are not part of this build. Scientific approval and public publication are separate from this TestFlight test.
