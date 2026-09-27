@@ -8,6 +8,7 @@ Curated release/submission surface.
 - `WORK_LOG.md`
 - `PUBLICATION_SUMMARY.md`
 - `LINKS.md`
+- `QC_DASHBOARD_POLISH.md` — QC console / public dashboard visual polish pass, with exact commits, verification evidence, and explicit proof limits.
 - `evidence/`
 - `screenshots/`
 
