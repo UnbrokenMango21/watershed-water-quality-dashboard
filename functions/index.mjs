@@ -1,8 +1,11 @@
 import { initializeApp } from 'firebase-admin/app';
-import { getFirestore, Timestamp } from 'firebase-admin/firestore';
+import { getAuth } from 'firebase-admin/auth';
+import { FieldValue, getFirestore, Timestamp } from 'firebase-admin/firestore';
 import { logger } from 'firebase-functions';
 import { defineBoolean, defineSecret, defineString } from 'firebase-functions/params';
 import { onDocumentUpdated } from 'firebase-functions/v2/firestore';
+import { HttpsError, onCall } from 'firebase-functions/v2/https';
+import { DisplayNameError, updateOwnDisplayName } from '../profile/display_name.mjs';
 import { publishApprovedSubmission, shouldHandleApprovalEvent } from '../publication/orchestrator.mjs';
 import { runValidationForSubmission } from '../validation/orchestrator.mjs';
 
@@ -59,6 +62,29 @@ export async function handleApprovedSubmission({ before, after, submissionId, db
     arcgisConfig,
   });
 }
+
+export async function handleDisplayNameUpdate({ auth, data, db = getFirestore(), adminAuth = getAuth() }) {
+  if (!auth?.uid) throw new HttpsError('unauthenticated', 'Sign in to update your name.');
+  try {
+    return await updateOwnDisplayName({
+      db,
+      auth: adminAuth,
+      uid: auth.uid,
+      data,
+      serverTimestamp: () => FieldValue.serverTimestamp(),
+    });
+  } catch (error) {
+    if (error instanceof DisplayNameError) throw new HttpsError(error.code, error.message);
+    throw error;
+  }
+}
+
+// The only client-callable profile write: a signed-in person may change their own display name.
+// Role, active state and every scientific record stay server-owned (see profile/display_name.mjs).
+export const updateMyDisplayName = onCall(
+  { region: 'us-east4', maxInstances: 5, timeoutSeconds: 30 },
+  async (request) => handleDisplayNameUpdate({ auth: request.auth, data: request.data }),
+);
 
 export const validateSubmittedObservation = onDocumentUpdated(
   {

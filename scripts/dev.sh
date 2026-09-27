@@ -48,6 +48,7 @@ case "$command" in
   emulators)
     ./node_modules/.bin/firebase emulators:exec --project central-pa-watershed-dev --only firestore,storage 'node tests/firestore-rules/run-tests.cjs && node tests/firestore-rules/run-storage-tests.cjs && node tests/validation-firestore/run-tests.cjs && npm run test:review'
     ./node_modules/.bin/firebase emulators:exec --project central-pa-watershed-dev --only firestore,functions 'npm run test:trigger'
+    ./node_modules/.bin/firebase emulators:exec --project central-pa-watershed-dev --only firestore,auth 'npm run test:profile'
     ;;
   android)
     cd 'Phone App/Android App'

@@ -552,6 +552,19 @@ test('QC reviewer browser cannot edit science, create audit, or escalate role', 
   await assertFails(updateDoc(doc(db, 'users/reviewer-1'), { role: 'ADMIN' }));
 });
 
+test('collector reads only their own profile and cannot write it directly, even the display name', async () => {
+  await seed('users/collector-a', { display_name: 'Collector A', role: 'COLLECTOR', active: true });
+  await seed('users/collector-b', { display_name: 'Collector B', role: 'COLLECTOR', active: true });
+  const db = env.authenticatedContext('collector-a').firestore();
+
+  await assertSucceeds(getDoc(doc(db, 'users/collector-a')));
+  await assertFails(getDoc(doc(db, 'users/collector-b')));
+  // The only self-service profile write is the server callable `updateMyDisplayName`.
+  await assertFails(updateDoc(doc(db, 'users/collector-a'), { display_name: 'Renamed Directly' }));
+  await assertFails(updateDoc(doc(db, 'users/collector-a'), { role: 'ADMIN' }));
+  await assertFails(setDoc(doc(db, 'users/collector-new'), { display_name: 'Self Provisioned' }));
+});
+
 test('ADMIN browser also uses the server review path and cannot write workflow directly', async () => {
   await seed(`submissions/${submissionId}`, draftSubmission({ status: 'PENDING_REVIEW' }));
   const db = env.authenticatedContext('admin-1', { role: 'ADMIN' }).firestore();
