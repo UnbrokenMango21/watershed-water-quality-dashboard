@@ -236,6 +236,74 @@ extension ObservationDraft {
     }
 }
 
+/// One problem found while reviewing a draft. Blocking issues stop submission; warnings are shown so
+/// the collector can double-check, and never change what is recorded.
+struct ReviewIssue: Identifiable, Hashable {
+    enum Severity: Hashable { case blocking, warning }
+    let id: String
+    let severity: Severity
+    let message: String
+    let section: WorkflowSection?
+    var measurement: MeasurementKind? = nil
+}
+
+extension ObservationDraft {
+    /// Every blocking problem at once, in workflow order. `canonicalSnapshot()` remains the authority —
+    /// this list exists so Review can show all of them instead of the first.
+    var blockingIssues: [ReviewIssue] {
+        var issues: [ReviewIssue] = []
+        func add(_ id: String, _ message: String, _ section: WorkflowSection?, _ kind: MeasurementKind? = nil) {
+            issues.append(ReviewIssue(id: id, severity: .blocking, message: message, section: section, measurement: kind))
+        }
+        if site == nil { add("site", "Choose a sampling site.", nil) }
+        if latitude == nil || longitude == nil || accuracyMeters == nil || (latitude == 0 && longitude == 0) {
+            add("gps", "Capture a GPS position at the site.", .visitDetails)
+        }
+        if collector.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { add("collector", "Add your full name in Account before submitting.", .visitDetails) }
+        if let testType {
+            if testType == .other && testTypeOther.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                add("other", "Describe the other measurement method.", .testMethod)
+            }
+            if method.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                add("method", "Add \(String(localized: testType.methodLabel).lowercased()) details.", .testMethod)
+            }
+            if instrument.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                add("source", "Add the \(String(localized: testType.sourceLabel).lowercased()).", .testMethod)
+            }
+        } else {
+            add("testType", "Choose how the observation was measured.", .testMethod)
+        }
+        for kind in requiredMeasurements where Double(values[kind] ?? "") == nil && measurementProblem(for: kind) == nil {
+            add("required-\(kind.rawValue)", "\(String(localized: kind.title)) is required.", .measurements, kind)
+        }
+        for problem in measurementProblems {
+            add("problem-\(problem.kind.rawValue)", problem.message, .measurements, problem.kind)
+        }
+        if isCorrection && revisionNote.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            add("revisionNote", "Explain what you checked and changed.", nil)
+        }
+        return issues
+    }
+
+    /// Non-blocking field checks. The server's validation makes the authoritative quality judgment.
+    var reviewWarnings: [ReviewIssue] {
+        var warnings: [ReviewIssue] = []
+        if let accuracyMeters, accuracyMeters > 20 {
+            warnings.append(ReviewIssue(id: "accuracy", severity: .warning, message: "GPS accuracy is ±\(Int(accuracyMeters.rounded())) m. Reacquire in the open if you can.", section: .visitDetails))
+        }
+        if let distance = siteDistanceMeters, let tolerance = site?.toleranceMeters, distance > tolerance {
+            warnings.append(ReviewIssue(id: "distance", severity: .warning, message: "Your position is \(Site.distanceText(distance)) from the site, beyond its expected ±\(Int(tolerance)) m. Confirm you are at the right site.", section: .visitDetails))
+        }
+        return warnings
+    }
+
+    /// Distance between the captured field position and the authoritative site location.
+    var siteDistanceMeters: Double? {
+        guard let site, let latitude, let longitude else { return nil }
+        return site.distance(latitude: latitude, longitude: longitude)
+    }
+}
+
 enum FirebaseMapper {
     static let schemaVersion = "0.1.0"
 
@@ -359,12 +427,52 @@ enum FirebaseMapper {
     var watershed: String
     var latitude: Double
     var longitude: Double
+    /// False once the catalog stops listing the site. The row is kept so historical records still show
+    /// their site name, but it is never offered for a new observation.
     var active: Bool
     var updatedAt: Date
-    init(siteID: String, name: String, county: String, watershed: String, latitude: Double, longitude: Double, active: Bool, updatedAt: Date = .now) {
+    var siteCode: String = ""
+    var toleranceMeters: Double?
+    init(siteID: String, name: String, county: String, watershed: String, latitude: Double, longitude: Double, active: Bool, updatedAt: Date = .now, siteCode: String = "", toleranceMeters: Double? = nil) {
         self.siteID = siteID; self.name = name; self.county = county; self.watershed = watershed; self.latitude = latitude; self.longitude = longitude; self.active = active; self.updatedAt = updatedAt
+        self.siteCode = siteCode; self.toleranceMeters = toleranceMeters
     }
-    var site: Site { Site(id: siteID, name: name, county: county, watershed: watershed, latitude: latitude, longitude: longitude, cached: true, distance: "") }
+    var site: Site { Site(id: siteID, name: name, code: siteCode, county: county, watershed: watershed, latitude: latitude, longitude: longitude, toleranceMeters: toleranceMeters, cached: true) }
+}
+
+/// Decodes one `siteCatalog` document. The schema fields are `county` and `watershed_name`; earlier
+/// app builds read `county_display` / `watershed_display`, which are accepted as a fallback so either
+/// shape displays without a data migration. Inactive or malformed documents are never selectable.
+enum SiteCatalogDecoder {
+    static func site(documentID: String, data: [String: Any]) -> Site? {
+        guard data["active"] as? Bool == true,
+              data["site_id"] as? String == documentID,
+              let name = (data["site_name_display"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty,
+              let latitude = number(data["latitude"]) ?? (data["location"] as? GeoPoint)?.latitude,
+              let longitude = number(data["longitude"]) ?? (data["location"] as? GeoPoint)?.longitude,
+              (-90...90).contains(latitude), (-180...180).contains(longitude), !(latitude == 0 && longitude == 0)
+        else { return nil }
+        return Site(
+            id: documentID, name: name, code: text(data["site_code"]),
+            county: text(data["county"] ?? data["county_display"]),
+            watershed: text(data["watershed_name"] ?? data["watershed_display"]),
+            latitude: latitude, longitude: longitude,
+            toleranceMeters: number(data["site_tolerance_m"]).flatMap { $0 > 0 ? $0 : nil }, cached: false
+        )
+    }
+
+    private static func text(_ value: Any?) -> String {
+        (value as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    }
+
+    private static func number(_ value: Any?) -> Double? {
+        switch value {
+        case let value as Double: value.isFinite ? value : nil
+        case let value as Int: Double(value)
+        case let value as NSNumber: value.doubleValue
+        default: nil
+        }
+    }
 }
 
 @Model final class LocalValidationFlagEntity {
@@ -432,7 +540,7 @@ private struct DraftPayload: Codable {
     let revisionNumber: Int, ownerUID: String, createdAt: Date, siteID: String?, collectedAt: Date, collector: String
     let latitude: Double?, longitude: Double?, accuracyMeters: Double?, gpsState: GPSState, testType: TestType?, testTypeOther: String
     let method: String, instrument: String, values: [MeasurementKind: String], unitIDs: [MeasurementKind: String]
-    let labResultsPending: Bool, requestedAnalytes: Set<MeasurementKind>, notes: String, attachments: [AttachmentRecord]
+    let notes: String, attachments: [AttachmentRecord]
     let currentStep: Int, isCorrection: Bool, baseRevision: Int?, correctionReason: String?, revisionNote: String, savedAt: Date
 }
 
@@ -462,8 +570,7 @@ private struct DraftPayload: Codable {
             ownerUID: draft.ownerUID, createdAt: draft.createdAt, siteID: draft.site?.id, collectedAt: draft.date, collector: draft.collector,
             latitude: draft.latitude, longitude: draft.longitude, accuracyMeters: draft.accuracyMeters, gpsState: draft.gpsState,
             testType: draft.testType, testTypeOther: draft.testTypeOther, method: draft.method, instrument: draft.instrument,
-            values: draft.values, unitIDs: draft.selectedUnits.mapValues(\.id), labResultsPending: draft.labResultsPending,
-            requestedAnalytes: draft.requestedAnalytes, notes: draft.notes, attachments: draft.attachments,
+            values: draft.values, unitIDs: draft.selectedUnits.mapValues(\.id), notes: draft.notes, attachments: draft.attachments,
             currentStep: draft.currentStep, isCorrection: draft.isCorrection, baseRevision: draft.baseRevision,
             correctionReason: draft.correctionReason, revisionNote: draft.revisionNote, savedAt: draft.lastSaved
         )
@@ -487,16 +594,32 @@ private struct DraftPayload: Codable {
         draft.values = value.values; draft.selectedUnits = value.unitIDs.reduce(into: [:]) { result, entry in
             if let unit = MeasurementKind.allCases.flatMap(\.unitOptions).first(where: { $0.id == entry.value }) { result[entry.key] = unit }
         }
-        draft.labResultsPending = value.labResultsPending; draft.requestedAnalytes = value.requestedAnalytes; draft.notes = value.notes; draft.attachments = value.attachments
+        draft.notes = value.notes; draft.attachments = value.attachments
         draft.currentStep = value.currentStep; draft.isCorrection = value.isCorrection; draft.baseRevision = value.baseRevision
         draft.correctionReason = value.correctionReason; draft.revisionNote = value.revisionNote; draft.lastSaved = value.savedAt
         return draft
     }
 
-    func cachedSites() throws -> [Site] { try context.fetch(FetchDescriptor<LocalSiteEntity>()).filter(\.active).map(\.site) }
+    /// Sites a collector may choose: active catalog entries only.
+    func cachedSites() throws -> [Site] {
+        try context.fetch(FetchDescriptor<LocalSiteEntity>()).filter(\.active).map(\.site).sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+    }
+
+    /// Replaces the selectable catalog with the server's active list. A site that disappears is marked
+    /// inactive rather than deleted, so records collected there keep their site name on this phone.
     func replaceSites(_ sites: [Site]) throws {
-        try context.fetch(FetchDescriptor<LocalSiteEntity>()).forEach(context.delete)
-        sites.forEach { context.insert(LocalSiteEntity(siteID: $0.id, name: $0.name, county: $0.county, watershed: $0.watershed, latitude: $0.latitude, longitude: $0.longitude, active: true)) }
+        let incoming = Dictionary(sites.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        var existing: [String: LocalSiteEntity] = [:]
+        for entity in try context.fetch(FetchDescriptor<LocalSiteEntity>()) {
+            guard let site = incoming[entity.siteID] else { entity.active = false; continue }
+            entity.name = site.name; entity.county = site.county; entity.watershed = site.watershed
+            entity.latitude = site.latitude; entity.longitude = site.longitude; entity.siteCode = site.code
+            entity.toleranceMeters = site.toleranceMeters; entity.active = true; entity.updatedAt = .now
+            existing[entity.siteID] = entity
+        }
+        for site in sites where existing[site.id] == nil {
+            context.insert(LocalSiteEntity(siteID: site.id, name: site.name, county: site.county, watershed: site.watershed, latitude: site.latitude, longitude: site.longitude, active: true, siteCode: site.code, toleranceMeters: site.toleranceMeters))
+        }
         try context.save()
     }
 
@@ -544,7 +667,8 @@ private struct DraftPayload: Codable {
     }
 
     func loadRecords(ownerUID: String) throws -> [ObservationRecord] {
-        let sites = Dictionary(uniqueKeysWithValues: try cachedSites().map { ($0.id, $0) })
+        // Every cached site, including ones no longer selectable, so historical records keep their names.
+        let sites = Dictionary(try context.fetch(FetchDescriptor<LocalSiteEntity>()).map { ($0.siteID, $0.site) }, uniquingKeysWith: { first, _ in first })
         return try context.fetch(FetchDescriptor<LocalObservationEntity>())
             .filter { $0.ownerUID == ownerUID }
             .sorted { $0.updatedAt > $1.updatedAt }
@@ -554,7 +678,7 @@ private struct DraftPayload: Codable {
                     .sorted { $0.revisionNumber < $1.revisionNumber }
                 guard let current = revisions.first(where: { $0.revisionID == observation.currentRevisionID }) else { return nil }
                 let snapshot = try decoder.decode(CanonicalSnapshot.self, from: current.snapshot)
-                let site = sites[snapshot.siteID] ?? Site(id: snapshot.siteID, name: "Cached site unavailable", county: "", watershed: "", latitude: 0, longitude: 0, cached: true, distance: "")
+                let site = sites[snapshot.siteID] ?? Site(id: snapshot.siteID, name: "Site details not on this phone", county: "", watershed: "", latitude: 0, longitude: 0)
                 let temperatureUnit: MeasurementUnit = snapshot.temperatureEnteredUnit == "F" ? .fahrenheit : .celsius
                 let measurements = [MeasurementValue(
                     id: CanonicalID.measurement(revisionID: snapshot.revisionID, parameterCode: "WATER_TEMP_C"),
@@ -645,6 +769,51 @@ private struct DraftPayload: Codable {
     }
 }
 
+/// Calls the `updateMyDisplayName` HTTPS callable with the signed-in user's ID token. Using the
+/// documented callable wire protocol keeps the app off an extra SDK for one request.
+enum ProfileCallable {
+    static let region = "us-east4"
+
+    static func updateDisplayName(_ name: String, user: User) async throws {
+        guard let projectID = FirebaseApp.app()?.options.projectID else { return }
+        let url = FirebaseEnvironment.usesEmulators
+            ? URL(string: "http://\(FirebaseEnvironment.emulatorHost):5001/\(projectID)/\(region)/updateMyDisplayName")!
+            : URL(string: "https://\(region)-\(projectID).cloudfunctions.net/updateMyDisplayName")!
+        var request = URLRequest(url: url, timeoutInterval: 20)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer \(try await user.getIDToken())", forHTTPHeaderField: "Authorization")
+        request.httpBody = try JSONSerialization.data(withJSONObject: ["data": ["displayName": name]])
+        let (_, response) = try await URLSession.shared.data(for: request)
+        guard (response as? HTTPURLResponse)?.statusCode == 200 else { throw URLError(.badServerResponse) }
+    }
+}
+
+/// Debug-only switch that points the app at the local Firebase emulators, so onboarding, account
+/// creation and the correction round trip can be exercised without touching live accounts or data.
+/// Launch with `-PWWUseFirebaseEmulators YES`. Release builds always use the configured project.
+enum FirebaseEnvironment {
+    static let emulatorHost = "127.0.0.1"
+
+    static var usesEmulators: Bool {
+        #if DEBUG
+        UserDefaults.standard.bool(forKey: "PWWUseFirebaseEmulators")
+        #else
+        false
+        #endif
+    }
+
+    static func configureEmulatorsIfRequested() {
+        guard usesEmulators else { return }
+        Auth.auth().useEmulator(withHost: emulatorHost, port: 9099)
+        let settings = Firestore.firestore().settings
+        settings.host = "\(emulatorHost):8080"
+        settings.isSSLEnabled = false
+        settings.cacheSettings = MemoryCacheSettings()
+        Firestore.firestore().settings = settings
+    }
+}
+
 enum GoogleSignInFailure: LocalizedError {
     case missingClientID
     case missingIDToken
@@ -660,6 +829,9 @@ enum GoogleSignInFailure: LocalizedError {
 @MainActor protocol RemoteMobileRepository: AnyObject {
     func signIn(email: String, password: String) async throws -> User
     func signInWithGoogle(presenting viewController: UIViewController) async throws -> User
+    func createAccount(fullName: String, email: String, password: String) async throws -> User
+    func sendPasswordReset(email: String) async throws
+    func updateDisplayName(_ name: String) async throws
     func signOut() throws
     func fetchSites() async throws -> [Site]
     func sync(_ snapshot: CanonicalSnapshot) async throws -> WorkflowState
@@ -692,6 +864,33 @@ enum GoogleSignInFailure: LocalizedError {
         return try await Auth.auth().signIn(with: credential).user
     }
 
+    func createAccount(fullName: String, email: String, password: String) async throws -> User {
+        let user = try await Auth.auth().createUser(withEmail: email, password: password).user
+        let change = user.createProfileChangeRequest()
+        change.displayName = fullName
+        try await change.commitChanges()
+        // Verification is offered, not required: the program has not decided to gate collection on it.
+        try? await user.sendEmailVerification()
+        try? await ProfileCallable.updateDisplayName(fullName, user: user)
+        return user
+    }
+
+    func sendPasswordReset(email: String) async throws {
+        try await Auth.auth().sendPasswordReset(withEmail: email)
+    }
+
+    /// The Auth profile name is what new observations record as `data_collected_by`, so it is updated
+    /// first and directly. The research profile (`users/{uid}`) is then mirrored through the
+    /// `updateMyDisplayName` callable; if that server step is unavailable the Auth change still stands
+    /// and the mirror catches up on the next successful change.
+    func updateDisplayName(_ name: String) async throws {
+        guard let user = Auth.auth().currentUser else { throw CanonicalizationError.invalid("Sign in to change your name.") }
+        let change = user.createProfileChangeRequest()
+        change.displayName = name
+        try await change.commitChanges()
+        try? await ProfileCallable.updateDisplayName(name, user: user)
+    }
+
     func signOut() throws {
         GIDSignIn.sharedInstance.signOut()
         try Auth.auth().signOut()
@@ -699,16 +898,7 @@ enum GoogleSignInFailure: LocalizedError {
 
     func fetchSites() async throws -> [Site] {
         let result = try await firestore.collection("siteCatalog").whereField("active", isEqualTo: true).getDocuments(source: .server)
-        return result.documents.compactMap { document in
-            let data = document.data()
-            guard data["site_id"] as? String == document.documentID,
-                  let name = data["site_name_display"] as? String,
-                  let latitude = data["latitude"] as? Double ?? (data["location"] as? GeoPoint)?.latitude,
-                  let longitude = data["longitude"] as? Double ?? (data["location"] as? GeoPoint)?.longitude,
-                  (-90...90).contains(latitude), (-180...180).contains(longitude)
-            else { return nil }
-            return Site(id: document.documentID, name: name, county: data["county_display"] as? String ?? "", watershed: data["watershed_display"] as? String ?? "", latitude: latitude, longitude: longitude, cached: false, distance: "")
-        }
+        return result.documents.compactMap { SiteCatalogDecoder.site(documentID: $0.documentID, data: $0.data()) }
     }
 
     /// Media capture is deferred for this release, so `snapshot.attachments` is always empty for a new

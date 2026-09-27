@@ -304,7 +304,8 @@ final class ModelTests: XCTestCase {
             let draft = ObservationDraft()
             draft.testType = testType
             XCTAssertEqual(draft.requiredMeasurements, [.temperature], "\(testType.contractValue) must require only Water Temperature")
-            XCTAssertEqual(Set(draft.optionalMeasurements), Set(MeasurementKind.allCases.filter { $0 != .temperature }))
+            // Optional = every other parameter the production contract enables; planned parameters are hidden.
+            XCTAssertEqual(Set(draft.optionalMeasurements), Set(MeasurementKind.allCases.filter { $0 != .temperature && $0.productionSpec.support == .fullySupported }))
         }
     }
 
@@ -342,14 +343,15 @@ final class ModelTests: XCTestCase {
     @MainActor
     private func temperatureOnlyDraft(testType: TestType) -> ObservationDraft {
         let draft = ObservationDraft(ownerUID: "collector-a")
-        draft.site = Site(id: "SITE-TEST-001", name: "Spring Creek at Houserville Road Bridge", county: "Centre County", watershed: "Spring Creek", latitude: 40.79, longitude: -77.86, cached: true, distance: "")
+        draft.site = Site(id: "SITE-TEST-001", name: "Spring Creek at Houserville Road Bridge", county: "Centre County", watershed: "Spring Creek", latitude: 40.79, longitude: -77.86)
         draft.date = Date(timeIntervalSince1970: 1_754_684_200)
         draft.collector = "Maya Chen"
         draft.latitude = 40.7934; draft.longitude = -77.86; draft.accuracyMeters = 4.2; draft.gpsState = .good
         draft.testType = testType
         if testType == .other { draft.testTypeOther = "Custom protocol" }
-        draft.method = testType.suggestedMethod
-        draft.instrument = testType.suggestedInstrument.isEmpty ? "Field notebook" : testType.suggestedInstrument
+        // Test fixture values entered explicitly; the app never pre-fills method details.
+        draft.method = "Fixture method"
+        draft.instrument = "Fixture instrument or laboratory"
         draft[valueFor: .temperature] = "20"
         return draft
     }
@@ -360,7 +362,7 @@ final class ModelTests: XCTestCase {
         ownerUID: String = "collector-a", createdAt: Date = .now
     ) -> ObservationDraft {
         let draft = ObservationDraft(id: id, eventID: eventID, revisionID: revisionID, revisionNumber: revisionNumber, ownerUID: ownerUID, createdAt: createdAt)
-        draft.site = Site(id: "SITE-TEST-001", name: "Spring Creek at Houserville Road Bridge", county: "Centre County", watershed: "Spring Creek", latitude: 40.79, longitude: -77.86, cached: true, distance: "")
+        draft.site = Site(id: "SITE-TEST-001", name: "Spring Creek at Houserville Road Bridge", county: "Centre County", watershed: "Spring Creek", latitude: 40.79, longitude: -77.86)
         draft.date = Date(timeIntervalSince1970: 1_754_684_200)
         draft.collector = "Maya Chen"
         draft.latitude = 40.7934; draft.longitude = -77.86; draft.accuracyMeters = 4.2; draft.gpsState = .good

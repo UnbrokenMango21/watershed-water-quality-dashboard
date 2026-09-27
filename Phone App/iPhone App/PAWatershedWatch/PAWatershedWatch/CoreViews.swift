@@ -1,114 +1,4 @@
-import GoogleSignInSwift
 import SwiftUI
-
-struct SignInView: View {
-    let model: AppModel
-    @FocusState private var focusedField: Field?
-
-    private enum Field { case email, password }
-
-    var body: some View {
-        @Bindable var model = model
-        ScrollView {
-            VStack(alignment: .leading, spacing: FieldTheme.xl) {
-                SignInIdentity()
-                VStack(spacing: FieldTheme.m) {
-                    TextField("Institution email", text: $model.email)
-                        .textContentType(.username)
-                        .keyboardType(.emailAddress)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                        .focused($focusedField, equals: .email)
-                        .submitLabel(.next)
-                        .onSubmit { focusedField = .password }
-                        .fieldInputStyle()
-                    SecureField("Password", text: $model.password)
-                        .textContentType(.password)
-                        .focused($focusedField, equals: .password)
-                        .submitLabel(.go)
-                        .onSubmit(model.signIn)
-                        .fieldInputStyle()
-                        .overlay(alignment: .trailing) {
-                            if !model.password.isEmpty {
-                                Image(systemName: "checkmark.circle.fill")
-                                    .foregroundStyle(FieldTheme.fern)
-                                    .padding(.trailing, FieldTheme.m)
-                                    .accessibilityHidden(true)
-                            }
-                        }
-                        .accessibilityHint(model.password.isEmpty ? "Password is empty" : "Password is filled")
-                    if let error = model.authError {
-                        Label(error, systemImage: "exclamationmark.circle.fill")
-                            .font(.subheadline)
-                            .foregroundStyle(.red)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                }
-                VStack(spacing: 12) {
-                    PrimaryActionButton(title: "Sign In", systemImage: "arrow.right.circle.fill", action: model.signIn)
-                        .disabled(model.isAuthenticating)
-                    HStack(spacing: FieldTheme.s) {
-                        Divider()
-                        Text("or")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        Divider()
-                    }
-                    GoogleSignInButton(
-                        state: model.isAuthenticating ? .disabled : .normal,
-                        action: model.signInWithGoogle
-                    )
-                    .frame(maxWidth: .infinity, minHeight: 44)
-                    .disabled(model.isAuthenticating)
-                    if model.isAuthenticating {
-                        ProgressView("Signing in…")
-                            .font(.subheadline)
-                    }
-                    Button("Forgot Password?") { model.authError = "Password recovery requires a connection." }
-                        .font(.subheadline.weight(.semibold))
-                        .frame(minHeight: 44)
-                        .disabled(model.isAuthenticating)
-                }
-            }
-            .padding(.horizontal, FieldTheme.l)
-            .padding(.top, 52)
-            .padding(.bottom, FieldTheme.xl)
-        }
-        .scrollDismissesKeyboard(.interactively)
-        .background(FieldTheme.limestone.ignoresSafeArea())
-        .tint(FieldTheme.hemlock)
-    }
-}
-
-struct SignInIdentity: View {
-    var body: some View {
-        VStack(alignment: .leading, spacing: FieldTheme.m) {
-            WatershedMark(size: 68)
-            VStack(alignment: .leading, spacing: FieldTheme.s) {
-                Text("PA Watershed Watch")
-                    .font(.largeTitle.bold())
-                    .foregroundStyle(FieldTheme.ink)
-                Text("Field Data Collection")
-                    .font(.headline)
-                    .foregroundStyle(.secondary)
-            }
-        }
-    }
-}
-
-private extension View {
-    func fieldInputStyle() -> some View {
-        font(.body)
-            .padding(.horizontal, FieldTheme.m)
-            .padding(.vertical, 16)
-            .contentShape([.interaction, .accessibility], Rectangle())
-            .background(Color(uiColor: .systemBackground), in: RoundedRectangle(cornerRadius: FieldTheme.radiusM, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: FieldTheme.radiusM, style: .continuous)
-                    .stroke(Color(uiColor: .separator), lineWidth: 0.5)
-            }
-    }
-}
 
 struct HomeView: View {
     let model: AppModel
@@ -131,8 +21,8 @@ struct HomeView: View {
                 if let draft = model.draft, model.workflowState == .draft {
                     ResumeDraftPanel(draft: draft, action: model.resumeObservation)
                 }
-                if model.records.contains(where: { $0.sync == .failed || $0.sync == .waiting }) {
-                    SyncAttentionPanel(model: model)
+                if model.records.contains(where: AttentionPanel.needsAttention) {
+                    AttentionPanel(model: model)
                 }
                 RecentPreview(model: model)
             }
@@ -143,14 +33,7 @@ struct HomeView: View {
         .fieldScreen()
         .navigationTitle("PA Watershed Watch")
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button("Account", systemImage: "person.crop.circle.fill") {
-                    model.selectedTab = .account
-                }
-                .labelStyle(.iconOnly)
-            }
-        }
+        .toolbar { AccountToolbarButton(model: model) }
         .alert("Start New Observation?", isPresented: $confirmNewObservation) {
             Button("Resume Current Draft") { model.resumeObservation() }
             Button("Discard Draft and Start New", role: .destructive) { model.startNewObservation() }
@@ -170,7 +53,7 @@ struct HomeFieldHeader: View {
             VStack(alignment: .leading, spacing: FieldTheme.xs) {
                 Text(name.isEmpty ? "Field Researcher" : name)
                     .font(.title2.bold())
-                Text("\(cachedSiteCount) Cached Site\(cachedSiteCount == 1 ? "" : "s")")
+                Text(cachedSiteCount == 0 ? "No sites available yet" : "\(cachedSiteCount) site\(cachedSiteCount == 1 ? "" : "s") available")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
@@ -288,38 +171,49 @@ struct ResumeDraftPanel: View {
     }
 }
 
-struct SyncAttentionPanel: View {
+/// Observations that need the collector: a reviewer's correction request first, then anything the
+/// archive has not confirmed yet.
+struct AttentionPanel: View {
     let model: AppModel
 
+    static func needsAttention(_ record: ObservationRecord) -> Bool {
+        record.workflow == .needsCorrection || record.sync == .failed || record.sync == .waiting
+    }
+
     var body: some View {
+        let items = model.records.filter(Self.needsAttention)
+            .sorted { ($0.workflow == .needsCorrection ? 0 : 1) < ($1.workflow == .needsCorrection ? 0 : 1) }
         VStack(alignment: .leading, spacing: 12) {
-            FieldSectionHeader(title: "Sync")
-            ForEach(model.records.filter { $0.sync == .failed || $0.sync == .waiting }.prefix(2)) { record in
+            FieldSectionHeader(title: "Needs Your Attention")
+            ForEach(items.prefix(3)) { record in
+                let correction = record.workflow == .needsCorrection
                 Button {
                     model.selectedTab = .recent
                     model.recentPath = [.detail(record.id)]
                 } label: {
                     HStack(spacing: 12) {
-                        Image(systemName: record.sync.icon)
-                            .foregroundStyle(record.sync.color)
+                        Image(systemName: correction ? record.workflow.icon : record.sync.icon)
+                            .foregroundStyle(correction ? record.workflow.color : record.sync.color)
                             .frame(width: 32, height: 32)
-                            .background(record.sync.color.opacity(0.1), in: Circle())
+                            .background((correction ? record.workflow.color : record.sync.color).opacity(0.1), in: Circle())
+                            .accessibilityHidden(true)
                         VStack(alignment: .leading, spacing: 2) {
                             Text(record.site.name)
                                 .font(.subheadline.weight(.semibold))
                                 .foregroundStyle(.primary)
                                 .fixedSize(horizontal: false, vertical: true)
-                            Text(record.sync.title)
+                            Text(correction ? "Correction requested · Revision \(record.revision)" : String(localized: record.sync.title))
                                 .font(.caption)
-                                .foregroundStyle(record.sync.color)
+                                .foregroundStyle(correction ? record.workflow.color : record.sync.color)
                         }
                         Spacer()
-                        Image(systemName: "chevron.right").foregroundStyle(.tertiary)
+                        Image(systemName: "chevron.right").foregroundStyle(.tertiary).accessibilityHidden(true)
                     }
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .frame(minHeight: 52)
+                .accessibilityElement(children: .combine)
             }
         }
         .padding(FieldTheme.m)
@@ -334,9 +228,17 @@ struct RecentPreview: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 FieldSectionHeader(title: "Recent Observations")
-                Button("See All") { model.selectedTab = .recent }
-                    .font(.subheadline.weight(.semibold))
-                    .frame(minHeight: 44)
+                if !model.records.isEmpty {
+                    Button("See All") { model.selectedTab = .recent }
+                        .font(.subheadline.weight(.semibold))
+                        .frame(minHeight: 44)
+                }
+            }
+            if model.records.isEmpty {
+                Label("Observations you submit appear here with their review status.", systemImage: "tray")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .padding(.vertical, FieldTheme.s)
             }
             ForEach(model.records.prefix(2)) { record in
                 Button {

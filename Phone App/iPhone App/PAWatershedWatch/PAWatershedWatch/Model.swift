@@ -1,8 +1,10 @@
+import CoreLocation
 import Foundation
 @preconcurrency import FirebaseAuth
 @preconcurrency import FirebaseFirestore
 @preconcurrency import Network
 import Observation
+import OSLog
 import SwiftData
 import SwiftUI
 import UIKit
@@ -18,10 +20,11 @@ extension Date {
     }
 }
 
-enum AppTab: Hashable { case home, recent, account }
+/// Bottom navigation is operational only. Account and settings open from the top-right control.
+enum AppTab: Hashable { case home, recent }
 
 enum HomeRoute: Hashable {
-    case selectSite, visitDetails, testMethod, measurements, media, review, submit, status
+    case selectSite, visitDetails, testMethod, measurements, media, review, status
 }
 
 enum RecentRoute: Hashable {
@@ -95,7 +98,7 @@ enum SyncState: String, Hashable, Equatable {
     }
 }
 
-enum WorkflowState: String, Hashable, Equatable, Codable {
+enum WorkflowState: String, CaseIterable, Hashable, Equatable, Codable {
     case draft, submitted, validating, pendingReview, needsCorrection, resubmitted, approved, rejected, publishing, publishFailed, published
     var title: LocalizedStringResource {
         switch self {
@@ -112,14 +115,20 @@ enum WorkflowState: String, Hashable, Equatable, Codable {
         case .published: "Published"
         }
     }
+    /// Each state has its own shape, so status never depends on color alone.
     var icon: String {
         switch self {
         case .draft: "pencil"
-        case .submitted, .pendingReview, .approved, .published: "doc.badge.checkmark"
-        case .validating, .publishing: "arrow.triangle.2.circlepath"
+        case .submitted: "paperplane.fill"
+        case .validating: "arrow.triangle.2.circlepath"
+        case .pendingReview: "hourglass"
         case .needsCorrection: "exclamationmark.bubble.fill"
         case .resubmitted: "arrow.uturn.forward.circle.fill"
-        case .rejected, .publishFailed: "xmark.octagon.fill"
+        case .approved: "checkmark.seal.fill"
+        case .rejected: "xmark.octagon.fill"
+        case .publishing: "icloud.and.arrow.up"
+        case .publishFailed: "exclamationmark.triangle.fill"
+        case .published: "globe.americas.fill"
         }
     }
     var color: Color {
@@ -163,34 +172,113 @@ enum GPSState: String, CaseIterable, Identifiable, Equatable, Codable {
     }
 }
 
+/// An authoritative catalog site. Coordinates come only from `siteCatalog`; collectors select a site,
+/// they never move one.
 struct Site: Identifiable, Hashable {
     let id: String
     let name: String
+    var code: String = ""
     let county: String
     let watershed: String
     let latitude: Double
     let longitude: Double
-    let cached: Bool
-    let distance: String
+    /// `site_tolerance_m`: the expected sampling radius used by server validation for its distance warning.
+    var toleranceMeters: Double? = nil
+    var cached: Bool = true
+
+    var coordinate: CLLocationCoordinate2D { CLLocationCoordinate2D(latitude: latitude, longitude: longitude) }
+
+    var subtitle: String { [county, watershed].filter { !$0.isEmpty }.joined(separator: " · ") }
+
+    func distance(from location: CLLocation) -> CLLocationDistance {
+        location.distance(from: CLLocation(latitude: latitude, longitude: longitude))
+    }
+
+    func distance(latitude: Double, longitude: Double) -> CLLocationDistance {
+        distance(from: CLLocation(latitude: latitude, longitude: longitude))
+    }
+
+    func matches(_ query: String) -> Bool {
+        let query = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return true }
+        return [name, code, county, watershed].contains { $0.localizedStandardContains(query) }
+    }
 
     var position: String {
         "\(latitude.formatted(.number.precision(.fractionLength(4))))° N · \(abs(longitude).formatted(.number.precision(.fractionLength(4))))° W"
     }
+
+    /// Distance for display, in the collector's regional units.
+    static func distanceText(_ meters: CLLocationDistance) -> String {
+        Measurement(value: meters, unit: UnitLength.meters).formatted(.measurement(width: .abbreviated, usage: .road))
+    }
 }
 
+/// How an observation was measured. Display labels are plain language; the stored value is always
+/// `contractValue`, which the Firestore rules and validation engine enumerate exactly.
 enum TestType: String, CaseIterable, Identifiable, Hashable, Codable {
     case fieldInstrument, pennStateLab, externalLab, fieldKit, sonde, mixed, other
     var id: Self { self }
+
+    /// Choices offered for a new observation. Sonde and combined field-and-lab stay valid stored values
+    /// (older records and corrections still show them) but are not offered until the program confirms
+    /// they are part of this collection protocol — see docs/SUPERVISOR_QUESTIONS.md.
+    static let offeredForNewObservations: [TestType] = [.fieldInstrument, .fieldKit, .pennStateLab, .externalLab, .other]
+
     var title: LocalizedStringResource {
         switch self {
-        case .fieldInstrument: "In-situ / Field Instrument"
-        case .pennStateLab: "Penn State Lab"
-        case .externalLab: "External Lab"
-        case .fieldKit: "Field Kit / Colorimetric"
-        case .sonde: "Continuous Sensor / Sonde"
-        case .mixed: "Mixed In-situ + Lab"
-        case .other: "Other"
+        case .fieldInstrument: "Field instrument (in situ)"
+        case .pennStateLab: "Penn State laboratory"
+        case .externalLab: "External laboratory"
+        case .fieldKit: "Field test kit / colorimetric"
+        case .sonde: "Continuous sensor / sonde"
+        case .mixed: "Field instrument and laboratory"
+        case .other: "Other method"
         }
+    }
+
+    var detail: LocalizedStringResource {
+        switch self {
+        case .fieldInstrument: "A meter or probe read directly in the water."
+        case .pennStateLab: "A sample analyzed by a Penn State laboratory."
+        case .externalLab: "A sample analyzed by another laboratory."
+        case .fieldKit: "A test kit or color comparison done on site."
+        case .sonde: "A deployed sensor that logs readings over time."
+        case .mixed: "Some values read in the field, others from a lab."
+        case .other: "Describe the approach below."
+        }
+    }
+
+    var isLaboratory: Bool { self == .pennStateLab || self == .externalLab }
+
+    /// Label for `instrument_name`: what produced the values.
+    var sourceLabel: LocalizedStringResource {
+        switch self {
+        case .fieldInstrument, .sonde: "Instrument"
+        case .fieldKit: "Test kit"
+        case .pennStateLab, .externalLab: "Laboratory"
+        case .mixed: "Instrument and laboratory"
+        case .other: "Instrument, kit, or laboratory"
+        }
+    }
+
+    var sourcePrompt: LocalizedStringResource {
+        switch self {
+        case .fieldInstrument, .sonde: "Make and model you used"
+        case .fieldKit: "Kit name or manufacturer"
+        case .pennStateLab, .externalLab: "Laboratory name"
+        case .mixed: "Instrument used and laboratory name"
+        case .other: "What produced these values"
+        }
+    }
+
+    /// Label for `method_name`: how the reading or sample was taken.
+    var methodLabel: LocalizedStringResource {
+        isLaboratory ? "Sample collection" : "Method"
+    }
+
+    var methodPrompt: LocalizedStringResource {
+        isLaboratory ? "How the sample was collected" : "How the reading was taken"
     }
     var icon: String {
         switch self {
@@ -201,29 +289,6 @@ enum TestType: String, CaseIterable, Identifiable, Hashable, Codable {
         case .sonde: "waveform.path.ecg"
         case .mixed: "arrow.triangle.branch"
         case .other: "ellipsis.circle"
-        }
-    }
-    var suggestedMethod: String {
-        switch self {
-        case .fieldInstrument: "Direct instrument reading"
-        case .pennStateLab: "Grab sample"
-        case .externalLab: "Grab sample"
-        case .fieldKit: "Colorimetric field test"
-        case .sonde: "15 minute deployment"
-        case .mixed: "Direct reading and grab sample"
-        case .other: "Other"
-        }
-    }
-
-    var suggestedInstrument: String {
-        switch self {
-        case .fieldInstrument: "YSI ProDSS · Unit 4412"
-        case .pennStateLab: "Penn State Agricultural Analytical Services Laboratory"
-        case .externalLab: "DEP Accredited Laboratory"
-        case .fieldKit: "Hach Colorimetric Field Kit"
-        case .sonde: "EXO2 Multiparameter Sonde"
-        case .mixed: "YSI ProDSS · Unit 4412"
-        case .other: ""
         }
     }
 }
@@ -507,8 +572,6 @@ final class ObservationDraft {
     var instrument = "" { didSet { touch() } }
     var values: [MeasurementKind: String] = [:] { didSet { touch() } }
     var selectedUnits: [MeasurementKind: MeasurementUnit] = [:] { didSet { touch() } }
-    var labResultsPending = true { didSet { touch() } }
-    var requestedAnalytes: Set<MeasurementKind> = [.chloride, .nitrate, .phosphate] { didSet { touch() } }
     var notes = "" { didSet { touch() } }
     var attachments: [AttachmentRecord] = [] { didSet { touch() } }
     var lastSaved = Date.now
@@ -534,16 +597,19 @@ final class ObservationDraft {
         onChange?()
     }
 
-    var includesLab: Bool {
-        testType == .pennStateLab || testType == .externalLab || testType == .mixed
-    }
-
     /// Water Temperature is the only required measurement, for every test type, without exception —
     /// see docs/PHASE_11_SUPERVISOR_DECISIONS.md. Every other supported measurement is optional.
     var requiredMeasurements: [MeasurementKind] { [.temperature] }
 
+    /// Optional measurements the production contract enables. A parameter that is not enabled is never
+    /// shown to collectors — unless an older draft already holds a value for it, in which case the row
+    /// stays visible so the collector can clear it (it cannot be submitted).
     var optionalMeasurements: [MeasurementKind] {
-        MeasurementKind.allCases.filter { !requiredMeasurements.contains($0) }
+        MeasurementKind.allCases.filter { kind in
+            guard !requiredMeasurements.contains(kind) else { return false }
+            return kind.productionSpec.support == .fullySupported
+                || !values[kind, default: ""].trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
     }
 
     var completedRequiredCount: Int {
@@ -631,11 +697,24 @@ final class AppModel {
     var isAuthenticating = false
     var email = ""
     var password = ""
+    /// Full name typed while creating an account.
+    var fullName = ""
     var authError: String?
+    /// A non-error outcome to confirm, such as "reset email sent".
+    var authNotice: String?
     var workflowError: String?
+    /// The collector's research-facing name, from the Firebase Auth profile. Never an email fragment:
+    /// when it is missing the app asks for a real name before collection starts.
     var userDisplayName = ""
     var userEmail = ""
+    var userEmailVerified = false
+    var signInProviders: [SignInProvider] = []
+    /// Set once the person has confirmed the name that will identify their observations on this device.
+    var identityConfirmed = false
+    var isSavingName = false
     var selectedTab: AppTab = .home
+    var showAccount = false
+    var lastSubmittedID: UUID?
     var homePath: [HomeRoute] = []
     var recentPath: [RecentRoute] = []
     var connection: ConnectionState = .online
@@ -662,16 +741,96 @@ final class AppModel {
         }
     }
 
+    var needsIdentity: Bool { isSignedIn && (!identityConfirmed || userDisplayName.isEmpty) }
+
     func signIn() {
         let cleanEmail = email.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleanEmail.isEmpty, !password.isEmpty else { authError = "Enter your email and password."; return }
         guard connection == .online, let remote else { authError = "A network connection is required for sign-in."; return }
-        authError = nil; isAuthenticating = true
+        authError = nil; authNotice = nil; isAuthenticating = true
         Task {
-            do { _ = try await remote.signIn(email: cleanEmail, password: password) }
+            do { _ = try await remote.signIn(email: cleanEmail, password: password); password = "" }
             catch { authError = Self.authMessage(error) }
             isAuthenticating = false
         }
+    }
+
+    /// Creates an email/password account and records the full name on the Auth profile before the
+    /// first observation. Firebase keeps one account per email, so an address already registered
+    /// (including through Google) is reported instead of creating a second person.
+    func createAccount() {
+        let cleanEmail = email.trimmingCharacters(in: .whitespacesAndNewlines)
+        let name = IdentityName.normalized(fullName)
+        if let problem = IdentityName.problem(fullName) { authError = problem; return }
+        guard !cleanEmail.isEmpty else { authError = "Enter your email address."; return }
+        guard password.count >= 8 else { authError = "Use a password with at least 8 characters."; return }
+        guard connection == .online, let remote else { authError = "A network connection is required to create an account."; return }
+        authError = nil; authNotice = nil; isAuthenticating = true
+        Task {
+            do {
+                let user = try await remote.createAccount(fullName: name, email: cleanEmail, password: password)
+                Self.authLog.info("Account created")
+                password = ""
+                applySession(user, displayNameOverride: name)
+                identityConfirmed = true
+                storeIdentityConfirmation(uid: user.uid)
+            } catch { authError = Self.authMessage(error) }
+            isAuthenticating = false
+        }
+    }
+
+    /// Sends Firebase's password-reset email. The confirmation is the same whether or not the address
+    /// has an account, so the screen never reveals who is registered.
+    func sendPasswordReset(to address: String? = nil) {
+        let cleanEmail = (address ?? email).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleanEmail.isEmpty, cleanEmail.contains("@") else { authError = "Enter the email address you sign in with."; return }
+        guard connection == .online, let remote else { authError = "A network connection is required to reset a password."; return }
+        authError = nil; authNotice = nil; isAuthenticating = true
+        Task {
+            do {
+                try await remote.sendPasswordReset(email: cleanEmail)
+                authNotice = "If an account uses \(cleanEmail), a password reset email is on its way. Check your inbox and spam folder."
+            } catch {
+                if let code = AuthErrorCode(rawValue: (error as NSError).code), code == .userNotFound {
+                    authNotice = "If an account uses \(cleanEmail), a password reset email is on its way. Check your inbox and spam folder."
+                } else {
+                    authError = Self.authMessage(error)
+                }
+            }
+            isAuthenticating = false
+        }
+    }
+
+    /// Changes the name that identifies new observations. Historical revisions keep the name they were
+    /// submitted with; only future records and the research profile change.
+    @discardableResult
+    func updateDisplayName(_ raw: String) async -> Bool {
+        if let problem = IdentityName.problem(raw) { authError = problem; return false }
+        let name = IdentityName.normalized(raw)
+        guard connection == .online, let remote else { authError = "A network connection is required to change your name."; return false }
+        authError = nil; isSavingName = true
+        defer { isSavingName = false }
+        do {
+            try await remote.updateDisplayName(name)
+            userDisplayName = name
+            if let draft, !draft.isCorrection { draft.collector = name }
+            return true
+        } catch {
+            authError = "Your name could not be saved. Check your connection and try again."
+            return false
+        }
+    }
+
+    /// Confirms (and if needed saves) the name shown on the Ready step of onboarding.
+    func confirmIdentity(_ raw: String) async {
+        let name = IdentityName.normalized(raw)
+        if name != userDisplayName {
+            guard await updateDisplayName(raw) else { return }
+        } else if let problem = IdentityName.problem(raw) {
+            authError = problem; return
+        }
+        identityConfirmed = true
+        if let ownerUID { storeIdentityConfirmation(uid: ownerUID) }
     }
 
     func signInWithGoogle() {
@@ -696,15 +855,17 @@ final class AppModel {
     }
 
     func signOut() {
-        do { try remote?.signOut() }
+        Self.authLog.info("Sign-out requested")
+        do { try remote?.signOut(); showAccount = false }
         catch { authError = "We couldn't sign out. Try again." }
     }
 
     func startNewObservation() {
         guard let ownerUID else { authError = "Sign in before starting an observation."; return }
+        guard !userDisplayName.isEmpty else { identityConfirmed = false; return }
         if let draft { try? store.deleteDraft(ownerUID: ownerUID, submissionID: draft.id) }
         let value = ObservationDraft(ownerUID: ownerUID)
-        value.collector = userDisplayName.isEmpty ? userEmail : userDisplayName
+        value.collector = userDisplayName
         draft = value
         attachAutosave(to: value)
         saveDraft(value)
@@ -755,6 +916,7 @@ final class AppModel {
             if draft.isCorrection && note.isEmpty { throw CanonicalizationError.invalid("Document what you checked before resubmitting") }
             try store.persist(snapshot, workflow: workflow, sync: .waiting, note: note)
             workflowState = workflow; syncState = .waiting; workflowError = nil
+            lastSubmittedID = snapshot.submissionID
             reloadRecords()
             if !homePath.contains(.status) { homePath.append(.status) }
             if connection == .online { retrySync(recordID: snapshot.submissionID) }
@@ -838,17 +1000,29 @@ final class AppModel {
         }
     }
 
-    private func applySession(_ user: User?) {
+    private func applySession(_ user: User?, displayNameOverride: String? = nil) {
         authResolved = true
-        remoteListener?.remove(); remoteListener = nil
         guard let user else {
-            ownerUID = nil; isSignedIn = false; userDisplayName = ""; userEmail = ""
+            Self.authLog.info("Session ended")
+            remoteListener?.remove(); remoteListener = nil
+            ownerUID = nil; isSignedIn = false; userDisplayName = ""; userEmail = ""; userEmailVerified = false
+            signInProviders = []; identityConfirmed = false; showAccount = false
             draft = nil; records = []; homePath = []; recentPath = []; selectedTab = .home
             return
         }
+        let sameSession = ownerUID == user.uid && isSignedIn
+        Self.authLog.info("Session applied: sameSession=\(sameSession, privacy: .public) hasName=\(!(user.displayName ?? "").isEmpty, privacy: .public)")
         ownerUID = user.uid; isSignedIn = true; userEmail = user.email ?? ""
-        userDisplayName = user.displayName?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
-            ?? user.email?.split(separator: "@").first.map(String.init) ?? "Field Researcher"
+        userEmailVerified = user.isEmailVerified
+        signInProviders = user.providerData.compactMap { SignInProvider(rawValue: $0.providerID) }
+        userDisplayName = displayNameOverride
+            ?? user.displayName.map(IdentityName.normalized)?.nilIfEmpty
+            ?? (sameSession ? userDisplayName : "")
+        identityConfirmed = identityConfirmed(uid: user.uid) && !userDisplayName.isEmpty
+        // A repeat callback for the same account (for example after its profile name is set) keeps the
+        // existing listener and draft; only a new account resets them.
+        guard !sameSession else { return }
+        remoteListener?.remove(); remoteListener = nil
         sites = (try? store.cachedSites()) ?? []
         draft = try? store.loadDraft(ownerUID: user.uid, sites: sites)
         if let draft { attachAutosave(to: draft) }
@@ -866,6 +1040,16 @@ final class AppModel {
         }
         refreshSites()
         if connection == .online { retrySync() }
+    }
+
+    private static let identityKeyPrefix = "identityConfirmed."
+
+    private func identityConfirmed(uid: String) -> Bool {
+        UserDefaults.standard.bool(forKey: Self.identityKeyPrefix + uid)
+    }
+
+    private func storeIdentityConfirmation(uid: String) {
+        UserDefaults.standard.set(true, forKey: Self.identityKeyPrefix + uid)
     }
 
     private func attachAutosave(to value: ObservationDraft) {
@@ -937,6 +1121,7 @@ final class AppModel {
 
     private static func googleAuthMessage(_ error: Error) -> String {
         let nsError = error as NSError
+        authLog.error("Google sign-in failed: \(nsError.domain, privacy: .public) \(nsError.code, privacy: .public)")
         if nsError.domain == "com.google.GIDSignIn", nsError.code == -5 {
             return "Google Sign-In was canceled."
         }
@@ -946,20 +1131,67 @@ final class AppModel {
         if let failure = error as? GoogleSignInFailure {
             return failure.localizedDescription
         }
+        if let code = AuthErrorCode(rawValue: nsError.code) {
+            switch code {
+            case .accountExistsWithDifferentCredential, .credentialAlreadyInUse:
+                return "This email already has a PA Watershed Watch account that uses a password. Sign in with your email and password instead."
+            case .userDisabled:
+                return "This account is disabled. Contact your watershed program administrator."
+            default: break
+            }
+        }
         return "We couldn't sign you in with Google. Try again or contact your program administrator."
     }
 
+    private static let authLog = Logger(subsystem: "org.centralpawatershed.mobile", category: "auth")
+
     private static func authMessage(_ error: Error) -> String {
+        let nsError = error as NSError
+        // Domain and code only: never the email, password, or token.
+        authLog.error("Auth request failed: \(nsError.domain, privacy: .public) \(nsError.code, privacy: .public)")
         guard let code = AuthErrorCode(rawValue: (error as NSError).code) else { return "We couldn't sign you in. Try again." }
         return switch code {
         case .userDisabled: "This account is disabled. Contact your watershed program administrator."
-        case .wrongPassword, .userNotFound, .invalidCredential, .invalidEmail: "Email or password is incorrect."
-        case .networkError: "A network connection is required for sign-in."
-        default: "We couldn't sign you in. Try again or contact your program administrator."
+        case .wrongPassword, .userNotFound, .invalidCredential: "Email or password is incorrect."
+        case .invalidEmail: "Enter a valid email address."
+        case .emailAlreadyInUse: "An account already uses this email. Sign in instead — use Continue with Google if that is how the account was created."
+        case .weakPassword: "Choose a stronger password with at least 8 characters."
+        case .tooManyRequests: "Too many attempts. Wait a few minutes, then try again."
+        case .operationNotAllowed: "Email sign-up is not enabled for this program. Use Continue with Google or contact your program administrator."
+        case .networkError: "A network connection is required. Saved field records remain on this phone."
+        default: "We couldn't complete that request. Try again or contact your program administrator."
         }
     }
 }
 
 private extension String {
     var nilIfEmpty: String? { isEmpty ? nil : self }
+}
+
+enum SignInProvider: String, Hashable {
+    case password, google = "google.com"
+    var title: LocalizedStringResource {
+        switch self {
+        case .password: "Email and password"
+        case .google: "Google"
+        }
+    }
+}
+
+/// The research identity rule, mirrored by `profile/display_name.mjs` on the server: a real name of
+/// 2–80 characters with whitespace collapsed. It is not a username.
+enum IdentityName {
+    static func normalized(_ raw: String) -> String {
+        raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            .split(whereSeparator: \.isWhitespace)
+            .joined(separator: " ")
+    }
+
+    static func problem(_ raw: String) -> String? {
+        let value = normalized(raw)
+        if value.count < 2 { return "Enter your full name as your research team knows you." }
+        if value.count > 80 { return "Full name must be 80 characters or fewer." }
+        if value.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) }) { return "Full name contains characters that can't be used." }
+        return nil
+    }
 }

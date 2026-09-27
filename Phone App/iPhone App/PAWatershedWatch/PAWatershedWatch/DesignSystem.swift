@@ -1,3 +1,4 @@
+import Combine
 import SwiftUI
 
 enum FieldTheme {
@@ -205,28 +206,87 @@ struct NoticeBanner: View {
     }
 }
 
+/// Tracks whether the software keyboard is on screen so bottom action bars can compact themselves
+/// instead of leaving a tall band between the content and the keyboard.
+struct KeyboardVisibilityModifier: ViewModifier {
+    @Binding var isVisible: Bool
+
+    func body(content: Content) -> some View {
+        content
+            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in isVisible = true }
+            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in isVisible = false }
+    }
+}
+
+extension View {
+    func trackingKeyboard(_ isVisible: Binding<Bool>) -> some View {
+        modifier(KeyboardVisibilityModifier(isVisible: isVisible))
+    }
+}
+
+/// Keyboard controls that live inside a screen's bottom bar rather than in a floating keyboard toolbar,
+/// so the bar sits directly on the keyboard and never overlaps the primary action.
+struct KeyboardControlsRow: View {
+    var onNextField: (() -> Void)?
+    let onDone: () -> Void
+
+    var body: some View {
+        HStack {
+            if let onNextField {
+                Button("Next Field", systemImage: "arrow.down", action: onNextField)
+                    .accessibilityIdentifier("keyboard.next")
+            }
+            Spacer()
+            Button("Done", action: onDone)
+                .fontWeight(.semibold)
+                .accessibilityIdentifier("keyboard.done")
+        }
+        .font(.subheadline)
+        .buttonStyle(.borderless)
+        .frame(minHeight: 44)
+    }
+}
+
 struct FlowFooter: View {
     let step: Int
     let total: Int
     let actionTitle: LocalizedStringResource
-    var saveText: LocalizedStringResource = "Saved"
+    var saveText: LocalizedStringResource = "Saved on this phone"
+    /// Shown while the keyboard is up; nil hides the keyboard controls for screens without text entry.
+    var onDismissKeyboard: (() -> Void)?
+    var onNextField: (() -> Void)?
     let action: () -> Void
+    @State private var keyboardVisible = false
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
         VStack(spacing: 8) {
-            HStack {
-                Label { Text(saveText) } icon: { Image(systemName: "checkmark.circle") }
-                    .font(.caption.weight(.medium))
-                    .foregroundStyle(FieldTheme.fern)
-                Spacer()
-                Text("Step \(step) of \(total)")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
+            if keyboardVisible {
+                if let onDismissKeyboard {
+                    KeyboardControlsRow(onNextField: onNextField, onDone: onDismissKeyboard)
+                }
+            } else {
+                // Progress returns when the keyboard closes. At accessibility sizes the save note is
+                // dropped so the bar stays compact; the step count remains.
+                HStack {
+                    if !dynamicTypeSize.isAccessibilitySize {
+                        Label { Text(saveText) } icon: { Image(systemName: "checkmark.circle") }
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(FieldTheme.fern)
+                    }
+                    Spacer()
+                    Text("Step \(step) of \(total)")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                }
+                ProgressView(value: Double(step), total: Double(total))
+                    .tint(FieldTheme.hemlock)
+                    .accessibilityLabel("Step \(step) of \(total)")
             }
-            ProgressView(value: Double(step), total: Double(total))
-                .tint(FieldTheme.hemlock)
             PrimaryActionButton(title: actionTitle, action: action)
+                .accessibilityIdentifier("flow.next")
         }
+        .trackingKeyboard($keyboardVisible)
         .padding(.horizontal, FieldTheme.m)
         .padding(.top, 12)
         .padding(.bottom, 8)

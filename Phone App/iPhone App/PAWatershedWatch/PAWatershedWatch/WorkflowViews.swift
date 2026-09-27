@@ -76,143 +76,6 @@ final class LocationPermissionRequester: NSObject, ObservableObject, CLLocationM
     }
 }
 
-struct SelectSiteView: View {
-    let model: AppModel
-    @State private var searchText = ""
-
-    var body: some View {
-        let visibleSites = searchText.isEmpty
-            ? model.sites
-            : model.sites.filter {
-                $0.name.localizedStandardContains(searchText)
-                || $0.county.localizedStandardContains(searchText)
-                || $0.watershed.localizedStandardContains(searchText)
-            }
-        ScrollView {
-            LazyVStack(alignment: .leading, spacing: FieldTheme.m) {
-                if model.connection == .offline {
-                    StatusPill(title: "Cached Sites", systemImage: "internaldrive.fill", color: FieldTheme.water)
-                } else if model.sitesLoading {
-                    HStack(spacing: 8) {
-                        ProgressView()
-                        Text("Updating Sites")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                    }
-                    .frame(minHeight: 44)
-                }
-                if let nearest = model.sites.first {
-                    NearestSiteCallout(site: nearest) { choose(nearest) }
-                } else if !model.sitesLoading {
-                    ContentUnavailableView(
-                        "No Sites Available",
-                        systemImage: "map",
-                        description: Text(model.connection == .offline ? "Connect once to cache the site catalog on this phone." : "Site data could not be loaded. Try again.")
-                    )
-                }
-                FieldSectionHeader(title: "Nearby Sites", isRequired: true)
-                if visibleSites.isEmpty {
-                    ContentUnavailableView.search
-                        .padding(.vertical, 48)
-                } else {
-                    SiteResultsList(sites: visibleSites, connection: model.connection, onChoose: choose)
-                }
-            }
-            .padding(.horizontal, FieldTheme.m)
-            .padding(.bottom, FieldTheme.xl)
-        }
-        .fieldScreen()
-        .navigationTitle("Select Site")
-        .navigationBarTitleDisplayMode(.inline)
-        .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Site, county, or watershed")
-        .task { model.refreshSites() }
-    }
-
-    private func choose(_ site: Site) {
-        guard model.connection == .online || site.cached else { return }
-        model.draft?.site = site
-        model.advance(to: .visitDetails, step: 2)
-    }
-}
-
-struct NearestSiteCallout: View {
-    let site: Site
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: 16) {
-                Image(systemName: "location.fill")
-                    .font(.title2)
-                    .foregroundStyle(FieldTheme.hemlock)
-                    .frame(width: 48, height: 48)
-                    .background(FieldTheme.hemlock.opacity(0.12), in: Circle())
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Nearest · \(site.distance)")
-                        .font(.subheadline.bold())
-                        .foregroundStyle(FieldTheme.hemlock)
-                    Text(site.name)
-                        .font(.headline)
-                        .foregroundStyle(.primary)
-                        .multilineTextAlignment(.leading)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                Spacer(minLength: FieldTheme.s)
-                Image(systemName: "arrow.right.circle.fill")
-                    .font(.title2)
-                    .foregroundStyle(FieldTheme.hemlock)
-            }
-            .padding(FieldTheme.m)
-            .background(Color(uiColor: .systemBackground), in: RoundedRectangle(cornerRadius: FieldTheme.radiusM, style: .continuous))
-        }
-        .buttonStyle(.plain)
-    }
-}
-
-struct SiteResultsList: View {
-    let sites: [Site]
-    let connection: ConnectionState
-    let onChoose: (Site) -> Void
-
-    var body: some View {
-        VStack(spacing: 0) {
-            ForEach(sites) { site in
-                Button { onChoose(site) } label: {
-                    HStack(alignment: .top, spacing: 12) {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(site.name)
-                                .font(.body.weight(.semibold))
-                                .foregroundStyle(.primary)
-                                .multilineTextAlignment(.leading)
-                            Text("\(site.county) · \(site.watershed)")
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                                .multilineTextAlignment(.leading)
-                            if connection == .offline {
-                                Label(site.cached ? "Available Offline" : "Not Cached", systemImage: site.cached ? "checkmark.circle.fill" : "icloud.slash")
-                                    .font(.caption.weight(.semibold))
-                                    .foregroundStyle(site.cached ? FieldTheme.fern : .red)
-                            }
-                        }
-                        Spacer(minLength: FieldTheme.s)
-                        VStack(alignment: .trailing, spacing: FieldTheme.s) {
-                            Text(site.distance).font(.caption).foregroundStyle(.secondary)
-                            Image(systemName: "chevron.right").foregroundStyle(.tertiary)
-                        }
-                    }
-                    .padding(.vertical, 16)
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .disabled(connection == .offline && !site.cached)
-                Divider()
-            }
-        }
-        .padding(.horizontal, FieldTheme.m)
-        .background(Color(uiColor: .systemBackground), in: RoundedRectangle(cornerRadius: FieldTheme.radiusM, style: .continuous))
-    }
-}
-
 struct VisitDetailsView: View {
     let model: AppModel
 
@@ -251,6 +114,7 @@ struct VisitDetailsContent: View {
                 .padding(FieldTheme.m)
                 .background(Color(uiColor: .systemBackground), in: RoundedRectangle(cornerRadius: FieldTheme.radiusM, style: .continuous))
                 GPSQualityPanel(draft: draft)
+                SiteDistanceNote(draft: draft)
                 if showLocationValidation && (draft.latitude == nil || draft.longitude == nil || draft.accuracyMeters == nil) {
                     NoticeBanner(title: "Field Position Required", message: "Capture a current device GPS reading before continuing.", systemImage: "location.slash.fill", color: .red)
                 }
@@ -264,13 +128,44 @@ struct VisitDetailsContent: View {
         .navigationBarTitleDisplayMode(.inline)
         .environment(\.timeZone, EasternTime.zone)
         .safeAreaInset(edge: .bottom) {
-            FlowFooter(step: 2, total: 6, actionTitle: "Test and Method") {
+            FlowFooter(step: 2, total: 6, actionTitle: "Choose Method") {
                 guard draft.latitude != nil, draft.longitude != nil, draft.accuracyMeters != nil else {
                     showLocationValidation = true
                     return
                 }
                 model.advance(to: .testMethod, step: 3)
             }
+        }
+    }
+}
+
+/// Distance from the captured position to the authoritative site. Informational only: the collector
+/// cannot move the site, and server validation makes the scored proximity judgment.
+struct SiteDistanceNote: View {
+    let draft: ObservationDraft
+
+    var body: some View {
+        if let distance = draft.siteDistanceMeters {
+            let beyond = draft.site?.toleranceMeters.map { distance > $0 } ?? false
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: beyond ? "exclamationmark.triangle.fill" : "scope")
+                    .foregroundStyle(beyond ? FieldTheme.goldenrod : FieldTheme.water)
+                    .frame(width: 24)
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("\(Site.distanceText(distance)) from the site location")
+                        .font(.subheadline.weight(.semibold))
+                    if beyond, let tolerance = draft.site?.toleranceMeters {
+                        Text("Beyond this site's expected ±\(Int(tolerance)) m. Confirm you are at the selected site, then reacquire GPS if needed.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+            .padding(FieldTheme.m)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background((beyond ? FieldTheme.goldenrod : FieldTheme.water).opacity(0.1), in: RoundedRectangle(cornerRadius: FieldTheme.radiusM, style: .continuous))
+            .accessibilityElement(children: .combine)
         }
     }
 }
@@ -285,9 +180,11 @@ struct SelectedSiteHeader: View {
                 .foregroundStyle(FieldTheme.fern)
             Text(site.name)
                 .font(.title3.bold())
-            Text("\(site.county) · \(site.watershed)")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+            if !site.subtitle.isEmpty {
+                Text(site.subtitle)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -313,7 +210,7 @@ struct GPSQualityPanel: View {
                     .frame(minHeight: 48)
             } else {
                 KeyValueRow(
-                    label: "Position",
+                    label: "Coordinates",
                     value: coordinateText,
                     emphasized: true
                 )
@@ -396,7 +293,7 @@ struct CollectorPanel: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            FieldSectionHeader(title: "Collector")
+            FieldSectionHeader(title: "Collector", detail: "From your account. Change it in Account → Full name.")
             Label(name, systemImage: "person.crop.circle.fill")
                 .font(.body.weight(.semibold))
                 .foregroundStyle(FieldTheme.ink)
@@ -423,50 +320,34 @@ struct TestMethodContent: View {
     let model: AppModel
     let draft: ObservationDraft
     @State private var showValidation = false
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @FocusState private var focusedField: MethodField?
+
+    enum MethodField: Hashable { case other, method, source }
 
     var body: some View {
         @Bindable var draft = draft
         ScrollView {
             VStack(alignment: .leading, spacing: FieldTheme.l) {
-                FieldSectionHeader(title: "Test Type", isRequired: true)
-                if showValidation {
-                    NoticeBanner(title: "Complete Test Details", message: "Select a test type and complete its method, instrument or laboratory, and description when Other is selected.", systemImage: "exclamationmark.circle.fill", color: .red)
+                VStack(alignment: .leading, spacing: FieldTheme.xs) {
+                    Text("How was this observation measured?")
+                        .font(.title2.bold())
+                        .foregroundStyle(FieldTheme.ink)
+                        .accessibilityAddTraits(.isHeader)
+                    Text("Choose the approach, then record what you used. Enter only what you know.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+                if showValidation, let issue = methodIssues.first {
+                    NoticeBanner(title: "Complete the Method", verbatimMessage: issue, systemImage: "exclamationmark.circle.fill", color: .red)
                 } else if let error = model.workflowError {
                     NoticeBanner(title: "Fix This to Continue", verbatimMessage: error, systemImage: "exclamationmark.circle.fill", color: .red)
                 }
-                TestTypeList(selected: draft.testType) { type in
-                    withAnimation(reduceMotion ? nil : .snappy) {
-                        draft.testType = type
-                        draft.method = type.suggestedMethod
-                        draft.instrument = type.suggestedInstrument
-                        draft.lastSaved = .now
-                        showValidation = false
-                    }
+                TestTypeList(options: typeOptions, selected: draft.testType) { type in
+                    draft.testType = type
+                    showValidation = false
                 }
-                if draft.testType != nil {
-                    VStack(alignment: .leading, spacing: FieldTheme.l) {
-                        if draft.testType == .other {
-                            FieldSectionHeader(title: "Other Test Type", isRequired: true)
-                            TextField("Describe the test type", text: $draft.testTypeOther, axis: .vertical)
-                                .lineLimit(2...4)
-                                .padding(16)
-                                .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: FieldTheme.radiusS, style: .continuous))
-                        }
-                        FieldSectionHeader(title: "Method", isRequired: true)
-                        TextField("Method", text: $draft.method, axis: .vertical)
-                            .lineLimit(2...5)
-                            .padding(16)
-                            .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: FieldTheme.radiusS, style: .continuous))
-                        FieldSectionHeader(title: "Instrument or Lab", isRequired: true)
-                        TextField("Instrument or Lab", text: $draft.instrument, axis: .vertical)
-                            .lineLimit(2...5)
-                            .padding(16)
-                            .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: FieldTheme.radiusS, style: .continuous))
-                    }
-                    .padding(FieldTheme.m)
-                    .background(Color(uiColor: .systemBackground), in: RoundedRectangle(cornerRadius: FieldTheme.radiusM, style: .continuous))
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                if let type = draft.testType {
+                    MethodDetailsCard(type: type, draft: draft, suggestions: suggestions(for: type), focusedField: $focusedField, showValidation: showValidation)
                 }
             }
             .padding(.horizontal, FieldTheme.m)
@@ -474,56 +355,179 @@ struct TestMethodContent: View {
         }
         .fieldScreen()
         .scrollDismissesKeyboard(.interactively)
-        .navigationTitle("Test and Method")
+        .navigationTitle("Method")
         .navigationBarTitleDisplayMode(.inline)
         .safeAreaInset(edge: .bottom) {
-            FlowFooter(step: 3, total: 6, actionTitle: "Enter Measurements") {
-                guard let testType = draft.testType,
-                      !draft.method.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-                      !draft.instrument.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-                      testType != .other || !draft.testTypeOther.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                else {
+            FlowFooter(step: 3, total: 6, actionTitle: "Enter Measurements", onDismissKeyboard: { focusedField = nil }) {
+                guard methodIssues.isEmpty else {
                     showValidation = true
+                    focusedField = firstIncompleteField
                     return
                 }
+                focusedField = nil
                 model.advance(to: .measurements, step: 4)
             }
         }
     }
+
+    /// The offered choices, plus a legacy value already on this draft so it is never silently lost.
+    private var typeOptions: [TestType] {
+        var options = TestType.offeredForNewObservations
+        if let current = draft.testType, !options.contains(current) { options.insert(current, at: options.count - 1) }
+        return options
+    }
+
+    private var methodIssues: [String] {
+        draft.blockingIssues.filter { $0.section == .testMethod }.map(\.message)
+    }
+
+    private var firstIncompleteField: MethodField? {
+        if draft.testType == .other && draft.testTypeOther.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return .other }
+        if draft.instrument.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return .source }
+        if draft.method.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return .method }
+        return nil
+    }
+
+    /// The collector's own earlier entries for this approach, newest first — never invented defaults.
+    private func suggestions(for type: TestType) -> (sources: [String], methods: [String]) {
+        let mine = model.records.filter { $0.testType == type }
+        func unique(_ values: [String]) -> [String] {
+            var seen = Set<String>()
+            return values.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty && seen.insert($0.lowercased()).inserted }
+                .prefix(3).map { $0 }
+        }
+        return (unique(mine.map(\.instrument)), unique(mine.map(\.method)))
+    }
 }
 
 struct TestTypeList: View {
+    let options: [TestType]
     let selected: TestType?
     let onSelect: (TestType) -> Void
 
     var body: some View {
         VStack(spacing: 0) {
-            ForEach(TestType.allCases) { type in
+            ForEach(options) { type in
                 Button { onSelect(type) } label: {
-                    HStack(spacing: 16) {
+                    HStack(spacing: 14) {
                         Image(systemName: type.icon)
                             .font(.title3)
-                            .foregroundStyle(selected == type ? FieldTheme.hemlock : .secondary)
+                            .foregroundStyle(selected == type ? FieldTheme.hemlock : FieldTheme.water)
                             .frame(width: 30)
-                        Text(type.title)
-                            .font(.body.weight(.semibold))
-                            .foregroundStyle(.primary)
-                            .multilineTextAlignment(.leading)
+                            .accessibilityHidden(true)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(type.title)
+                                .font(.body.weight(.semibold))
+                                .foregroundStyle(.primary)
+                            Text(type.detail)
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                        }
+                        .multilineTextAlignment(.leading)
                         Spacer(minLength: FieldTheme.s)
                         Image(systemName: selected == type ? "checkmark.circle.fill" : "circle")
                             .font(.title3)
                             .foregroundStyle(selected == type ? FieldTheme.hemlock : Color(uiColor: .tertiaryLabel))
+                            .accessibilityHidden(true)
                     }
-                    .padding(.vertical, 16)
+                    .padding(.vertical, 14)
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .frame(minHeight: 54)
-                Divider()
+                .frame(minHeight: 60)
+                .accessibilityAddTraits(selected == type ? [.isButton, .isSelected] : .isButton)
+                .accessibilityIdentifier("method.type.\(type.rawValue)")
+                if type != options.last { Divider() }
             }
         }
         .padding(.horizontal, FieldTheme.m)
         .background(Color(uiColor: .systemBackground), in: RoundedRectangle(cornerRadius: FieldTheme.radiusM, style: .continuous))
+    }
+}
+
+/// The one permanent details section. Both fields are required by the current data contract
+/// (`instrument_name`, `method_name`); nothing is pre-filled, and suggestions come only from the
+/// collector's own earlier observations.
+struct MethodDetailsCard: View {
+    let type: TestType
+    let draft: ObservationDraft
+    let suggestions: (sources: [String], methods: [String])
+    let focusedField: FocusState<TestMethodContent.MethodField?>.Binding
+    let showValidation: Bool
+
+    var body: some View {
+        @Bindable var draft = draft
+        VStack(alignment: .leading, spacing: FieldTheme.m) {
+            FieldSectionHeader(title: "Method details", detail: "Needed so reviewers can trace how each value was produced.")
+            if type == .other {
+                MethodField(
+                    title: "Describe the approach", prompt: "What kind of measurement was this?",
+                    text: $draft.testTypeOther, suggestions: [], missing: showValidation,
+                    focus: focusedField, field: .other
+                )
+            }
+            MethodField(
+                title: type.sourceLabel, prompt: type.sourcePrompt,
+                text: $draft.instrument, suggestions: suggestions.sources, missing: showValidation,
+                focus: focusedField, field: .source
+            )
+            MethodField(
+                title: type.methodLabel, prompt: type.methodPrompt,
+                text: $draft.method, suggestions: suggestions.methods, missing: showValidation,
+                focus: focusedField, field: .method
+            )
+        }
+        .padding(FieldTheme.m)
+        .background(Color(uiColor: .systemBackground), in: RoundedRectangle(cornerRadius: FieldTheme.radiusM, style: .continuous))
+    }
+}
+
+private struct MethodField: View {
+    let title: LocalizedStringResource
+    let prompt: LocalizedStringResource
+    @Binding var text: String
+    let suggestions: [String]
+    let missing: Bool
+    let focus: FocusState<TestMethodContent.MethodField?>.Binding
+    let field: TestMethodContent.MethodField
+
+    var body: some View {
+        let isEmpty = text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        VStack(alignment: .leading, spacing: FieldTheme.s) {
+            HStack(spacing: FieldTheme.xs) {
+                Text(title).font(.subheadline.weight(.semibold))
+                RequiredMark()
+            }
+            TextField(String(localized: prompt), text: $text, axis: .vertical)
+                .lineLimit(1...4)
+                .focused(focus, equals: field)
+                .padding(14)
+                .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: FieldTheme.radiusS, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: FieldTheme.radiusS, style: .continuous)
+                        .stroke(missing && isEmpty ? Color.red : (focus.wrappedValue == field ? FieldTheme.hemlock : .clear), lineWidth: 1.5)
+                }
+                .accessibilityLabel(Text(title))
+                .accessibilityIdentifier("method.\(field)")
+            if missing && isEmpty {
+                Text("Required").font(.caption.weight(.semibold)).foregroundStyle(.red)
+            }
+            if isEmpty && !suggestions.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: FieldTheme.s) {
+                        Text("Used before:").font(.caption).foregroundStyle(.secondary)
+                        ForEach(suggestions, id: \.self) { value in
+                            Button(value) { text = value }
+                                .font(.caption.weight(.semibold))
+                                .buttonStyle(.bordered)
+                                .buttonBorderShape(.capsule)
+                                .accessibilityHint("Fills \(String(localized: title)) with your earlier entry")
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -546,17 +550,10 @@ struct MeasurementsContent: View {
     @FocusState private var focusedMeasurement: MeasurementKind?
 
     var body: some View {
-        let isLab = draft.testType == .pennStateLab || draft.testType == .externalLab
         ScrollView {
             LazyVStack(alignment: .leading, spacing: FieldTheme.l) {
                 if showValidation {
                     MeasurementValidationBanner(draft: draft)
-                }
-                if isLab {
-                    LabResultTimingPanel(draft: draft)
-                    if draft.labResultsPending {
-                        RequestedAnalytesPanel(draft: draft)
-                    }
                 }
                 MeasurementGroup(
                     title: "Required Measurements",
@@ -565,9 +562,6 @@ struct MeasurementsContent: View {
                     focused: $focusedMeasurement,
                     showsProgress: true
                 )
-                if draft.testType == .mixed {
-                    RequestedAnalytesPanel(draft: draft)
-                }
                 MeasurementGroup(
                     title: "Optional Measurements",
                     kinds: draft.optionalMeasurements,
@@ -583,7 +577,11 @@ struct MeasurementsContent: View {
         .navigationTitle("Measurements")
         .navigationBarTitleDisplayMode(.inline)
         .safeAreaInset(edge: .bottom) {
-            FlowFooter(step: 4, total: 6, actionTitle: "Notes") {
+            FlowFooter(
+                step: 4, total: 6, actionTitle: "Notes",
+                onDismissKeyboard: { focusedMeasurement = nil },
+                onNextField: nextFocusTarget.map { next in { focusedMeasurement = next } }
+            ) {
                 guard measurementsAreValid else {
                     showValidation = true
                     focusedMeasurement = draft.measurementProblems.first?.kind ?? draft.firstIncompleteRequirement
@@ -593,15 +591,6 @@ struct MeasurementsContent: View {
                 model.advance(to: .media, step: 5)
             }
         }
-        .toolbar {
-            ToolbarItemGroup(placement: .keyboard) {
-                Spacer()
-                if let next = nextFocusTarget {
-                    Button("Next") { focusedMeasurement = next }
-                }
-                Button("Done") { focusedMeasurement = nil }
-            }
-        }
         .task { await claimPendingFocus() }
         .onChange(of: model.pendingMeasurementFocus) { _, _ in
             Task { await claimPendingFocus() }
@@ -609,8 +598,7 @@ struct MeasurementsContent: View {
     }
 
     private var measurementsAreValid: Bool {
-        let labSelectionValid = !draft.includesLab || !draft.labResultsPending || !draft.requestedAnalytes.isEmpty
-        return labSelectionValid && draft.measurementProblems.isEmpty && draft.completedRequiredCount == draft.requiredMeasurements.count
+        draft.measurementProblems.isEmpty && draft.completedRequiredCount == draft.requiredMeasurements.count
     }
 
     /// Entry order of the fields the collector can actually type into.
@@ -639,67 +627,12 @@ struct MeasurementValidationBanner: View {
 
     var body: some View {
         if draft.values.contains(where: { !$0.value.isEmpty && $0.key.productionSpec.support == .featureGated }) {
-            NoticeBanner(title: "Measurement Not Yet Enabled", message: "Clear values marked unavailable before continuing. They cannot be silently omitted from a scientific record.", systemImage: "lock.fill", color: .red)
+            NoticeBanner(title: "Clear Unsupported Value", message: "This draft holds a value for a measurement that is not collected in this release. Clear it before continuing.", systemImage: "exclamationmark.circle.fill", color: .red)
         } else if let problem = draft.measurementProblems.first {
             NoticeBanner(title: "Check This Entry", verbatimMessage: problem.message, systemImage: "exclamationmark.circle.fill", color: .red)
-        } else if draft.includesLab && draft.labResultsPending && draft.requestedAnalytes.isEmpty {
-            NoticeBanner(title: "Analysis Required", message: "Select at least one analysis.", systemImage: "exclamationmark.circle.fill", color: .red)
         } else {
             NoticeBanner(title: "Measurements Required", message: "Complete all required measurements.", systemImage: "exclamationmark.circle.fill", color: .red)
         }
-    }
-}
-
-struct LabResultTimingPanel: View {
-    let draft: ObservationDraft
-
-    var body: some View {
-        @Bindable var draft = draft
-        VStack(alignment: .leading, spacing: 12) {
-            FieldSectionHeader(title: "Result Status")
-            Picker("Result Status", selection: $draft.labResultsPending) {
-                Text("Pending Lab").tag(true)
-                Text("Available Now").tag(false)
-            }
-            .pickerStyle(.segmented)
-        }
-        .padding(FieldTheme.m)
-        .background(Color(uiColor: .systemBackground), in: RoundedRectangle(cornerRadius: FieldTheme.radiusM, style: .continuous))
-    }
-}
-
-struct RequestedAnalytesPanel: View {
-    let draft: ObservationDraft
-    private let analytes: [MeasurementKind] = [.chloride, .sulfate, .nitrate, .phosphate]
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            FieldSectionHeader(title: "Requested Lab Analyses")
-            ForEach(analytes) { kind in
-                Button {
-                    if draft.requestedAnalytes.contains(kind) {
-                        draft.requestedAnalytes.remove(kind)
-                    } else {
-                        draft.requestedAnalytes.insert(kind)
-                    }
-                } label: {
-                    HStack {
-                        Text(kind.title)
-                            .font(.body.weight(.semibold))
-                            .foregroundStyle(.primary)
-                        Spacer()
-                        Image(systemName: draft.requestedAnalytes.contains(kind) ? "checkmark.circle.fill" : "circle")
-                            .font(.title3)
-                            .foregroundStyle(draft.requestedAnalytes.contains(kind) ? FieldTheme.hemlock : Color(uiColor: .tertiaryLabel))
-                    }
-                    .frame(minHeight: 48)
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-            }
-        }
-        .padding(FieldTheme.m)
-        .background(Color(uiColor: .systemBackground), in: RoundedRectangle(cornerRadius: FieldTheme.radiusM, style: .continuous))
     }
 }
 
@@ -722,15 +655,8 @@ struct MeasurementGroup: View {
                         .foregroundStyle(draft.completedRequiredCount == draft.requiredMeasurements.count ? FieldTheme.fern : Color.secondary)
                 }
             }
-            if kinds.isEmpty {
-                Label("No measurements required while lab results are pending", systemImage: "checkmark.circle")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .padding(.vertical, 8)
-            } else {
-                ForEach(kinds) { kind in
-                    MeasurementEntryRow(kind: kind, isRequired: draft.requiredMeasurements.contains(kind), draft: draft, focused: focused)
-                }
+            ForEach(kinds) { kind in
+                MeasurementEntryRow(kind: kind, isRequired: draft.requiredMeasurements.contains(kind), draft: draft, focused: focused)
             }
         }
     }
@@ -759,9 +685,11 @@ struct MeasurementEntryRow: View {
                     Image(systemName: kind.symbol).foregroundStyle(FieldTheme.water)
                 }
                 Spacer()
-                Image(systemName: isEnabled ? (valueIsValid ? "checkmark.circle.fill" : "circle") : "lock.fill")
-                    .foregroundStyle(valueIsValid ? FieldTheme.fern : Color.secondary)
-                    .accessibilityLabel(valueIsValid ? "Complete" : "Incomplete")
+                if valueIsValid {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(FieldTheme.fern)
+                        .accessibilityLabel("Entered")
+                }
             }
             HStack(alignment: .center, spacing: 8) {
                 TextField("0.0", text: $draft[valueFor: kind])
@@ -769,6 +697,7 @@ struct MeasurementEntryRow: View {
                     .keyboardType(.decimalPad)
                     .focused(focused, equals: kind)
                     .accessibilityLabel(String(localized: kind.title))
+                    .accessibilityIdentifier("measurement.\(kind.rawValue)")
                     .accessibilityHint("Enter " + selectedUnit.spokenName)
                     .layoutPriority(1)
                     .disabled(!isEnabled)
@@ -794,14 +723,14 @@ struct MeasurementEntryRow: View {
                     .foregroundStyle(FieldTheme.water)
             }
             if !isEnabled {
+                // Only reachable for an older draft that already holds a value for this parameter.
                 HStack {
-                    Text("Visible for field planning; production mapping is not yet approved.")
+                    Text("Not collected in this release. Clear this value to continue.")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.secondary)
-                    if !draft[valueFor: kind].isEmpty {
-                        Button("Clear") { draft[valueFor: kind] = "" }
-                            .font(.caption.weight(.bold))
-                    }
+                    Button("Clear Value") { draft[valueFor: kind] = "" }
+                        .font(.caption.weight(.bold))
+                        .frame(minHeight: 44)
                 }
             }
             if let problem = draft.measurementProblem(for: kind) {
@@ -817,7 +746,6 @@ struct MeasurementEntryRow: View {
         }
         .padding(FieldTheme.m)
         .background(Color(uiColor: .systemBackground), in: RoundedRectangle(cornerRadius: FieldTheme.radiusM, style: .continuous))
-        .opacity(isEnabled ? 1 : 0.72)
         .alert("Change Unit and Clear Value?", isPresented: unitChangeNeedsConfirmation) {
             Button("Clear Value and Change Unit", role: .destructive) {
                 if let pendingUnit {
@@ -854,11 +782,13 @@ struct MeasurementUnitMenu: View {
     var body: some View {
         if options.count > 1 {
             Menu {
-                ForEach(options) { option in
-                    Button { onSelect(option) } label: {
-                        Label(option.menuTitle, systemImage: option == selected ? "checkmark" : "circle")
+                // A menu Picker draws the standard system checkmark beside the current unit only.
+                Picker("Unit", selection: Binding(get: { selected }, set: onSelect)) {
+                    ForEach(options) { option in
+                        Text(option.menuTitle).tag(option)
                     }
                 }
+                .pickerStyle(.inline)
             } label: {
                 HStack(spacing: 5) {
                     ScientificUnitLabel(unit: selected)
@@ -915,31 +845,67 @@ struct NotesMediaView: View {
 struct NotesMediaContent: View {
     let model: AppModel
     let draft: ObservationDraft
+    @FocusState private var editorFocused: Bool
 
     var body: some View {
         @Bindable var draft = draft
-        ScrollView {
-            VStack(alignment: .leading, spacing: FieldTheme.l) {
-                VStack(alignment: .leading, spacing: 12) {
-                    FieldSectionHeader(title: "Field Notes")
-                    TextField("Describe conditions, sample context, or anything unusual", text: $draft.notes, axis: .vertical)
-                        .font(.body)
-                        .lineLimit(6...10)
-                        .padding(8)
-                        .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: FieldTheme.radiusS, style: .continuous))
+        VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: FieldTheme.xs) {
+                HStack(alignment: .firstTextBaseline) {
+                    Text("Field notes")
+                        .font(.title2.bold())
+                        .foregroundStyle(FieldTheme.ink)
+                        .accessibilityAddTraits(.isHeader)
+                    Text("Optional")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
                 }
-                .padding(FieldTheme.m)
-                .background(Color(uiColor: .systemBackground), in: RoundedRectangle(cornerRadius: FieldTheme.radiusM, style: .continuous))
+                Text("Conditions, sample context, or anything a reviewer should know.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
             }
-            .padding(.horizontal, FieldTheme.m)
-            .padding(.bottom, FieldTheme.l)
+            ZStack(alignment: .topLeading) {
+                TextEditor(text: $draft.notes)
+                    .font(.body)
+                    .focused($editorFocused)
+                    .scrollContentBackground(.hidden)
+                    .padding(12)
+                    .accessibilityLabel("Field notes")
+                    .accessibilityIdentifier("notes.editor")
+                if draft.notes.isEmpty {
+                    Text("Weather, flow, water color or odor, recent rain, access issues…")
+                        .font(.body)
+                        .foregroundStyle(Color(uiColor: .placeholderText))
+                        .padding(.horizontal, 17)
+                        .padding(.vertical, 20)
+                        .allowsHitTesting(false)
+                        .accessibilityHidden(true)
+                }
+            }
+            .frame(maxWidth: .infinity, minHeight: 180, maxHeight: .infinity)
+            .background(Color(uiColor: .systemBackground), in: RoundedRectangle(cornerRadius: FieldTheme.radiusM, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: FieldTheme.radiusM, style: .continuous)
+                    .stroke(editorFocused ? FieldTheme.hemlock : Color(uiColor: .separator), lineWidth: editorFocused ? 1.5 : 0.5)
+            }
+            .contentShape(Rectangle())
+            .onTapGesture { editorFocused = true }
+            if !draft.notes.isEmpty {
+                Text("\(draft.notes.count) characters · saved on this phone")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
         }
+        .padding(.horizontal, FieldTheme.m)
+        .padding(.top, FieldTheme.s)
+        .padding(.bottom, FieldTheme.s)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .fieldScreen()
-        .scrollDismissesKeyboard(.interactively)
         .navigationTitle("Notes")
         .navigationBarTitleDisplayMode(.inline)
         .safeAreaInset(edge: .bottom) {
-            FlowFooter(step: 5, total: 6, actionTitle: "Review Observation") {
+            FlowFooter(step: 5, total: 6, actionTitle: "Review Observation", onDismissKeyboard: { editorFocused = false }) {
+                editorFocused = false
                 model.advance(to: .review, step: 6)
             }
         }

@@ -25,10 +25,22 @@
 		AA0000000000000000000026 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000027 /* Assets.xcassets */; };
 		BB0000000000000000000001 /* GoogleSignIn in Frameworks */ = {isa = PBXBuildFile; productRef = BB0000000000000000000011 /* GoogleSignIn */; };
 		BB0000000000000000000002 /* GoogleSignInSwift in Frameworks */ = {isa = PBXBuildFile; productRef = BB0000000000000000000012 /* GoogleSignInSwift */; };
+		CC0000000000000000000002 /* OnboardingAuthViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC0000000000000000000001 /* OnboardingAuthViews.swift */; };
+		CC0000000000000000000004 /* AccountViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC0000000000000000000003 /* AccountViews.swift */; };
+		CC0000000000000000000006 /* SitePickerViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC0000000000000000000005 /* SitePickerViews.swift */; };
+		CC0000000000000000000008 /* ProductContractTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC0000000000000000000007 /* ProductContractTests.swift */; };
+		DD0000000000000000000002 /* WorkflowUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD0000000000000000000001 /* WorkflowUITests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
 		C1E09CE15C7989968F1DE62A /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = CCFE7EE891E74F4C6B495090 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 02FB57CA069F8BB35A74FCA9;
+			remoteInfo = PAWatershedWatch;
+		};
+		DD000000000000000000000B /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = CCFE7EE891E74F4C6B495090 /* Project object */;
 			proxyType = 1;
@@ -54,6 +66,12 @@
 		AA0000000000000000000007 /* PAWatershedWatch.entitlements */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.entitlements; path = PAWatershedWatch.entitlements; sourceTree = "<group>"; };
 		AA0000000000000000000027 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		BB0000000000000000000003 /* Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		CC0000000000000000000001 /* OnboardingAuthViews.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = OnboardingAuthViews.swift; sourceTree = "<group>"; };
+		CC0000000000000000000003 /* AccountViews.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AccountViews.swift; sourceTree = "<group>"; };
+		CC0000000000000000000005 /* SitePickerViews.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SitePickerViews.swift; sourceTree = "<group>"; };
+		CC0000000000000000000007 /* ProductContractTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ProductContractTests.swift; sourceTree = "<group>"; };
+		DD0000000000000000000001 /* WorkflowUITests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = WorkflowUITests.swift; sourceTree = "<group>"; };
+		DD0000000000000000000003 /* PAWatershedWatchUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = PAWatershedWatchUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -77,6 +95,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		DD0000000000000000000006 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -93,6 +118,7 @@
 			children = (
 				170D1C25D23E58D6BEBA6A24 /* PAWatershedWatch.app */,
 				CC2AEC05DF99A062BDFC2908 /* PAWatershedWatchTests.xctest */,
+				DD0000000000000000000003 /* PAWatershedWatchUITests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -104,6 +130,7 @@
 				15BB67D89D13BB67462C3FF1 /* Frameworks */,
 				462AC696DB2F35F760B4DB20 /* PAWatershedWatch */,
 				48F3347216EE49DC76B90E48 /* PAWatershedWatchTests */,
+				DD0000000000000000000004 /* PAWatershedWatchUITests */,
 			);
 			sourceTree = "<group>";
 		};
@@ -122,6 +149,9 @@
 				20E09F98898DE6386048A01F /* RecordsAccountViews.swift */,
 				5CF4E4B30C3C4497F45685EB /* ReviewSubmissionViews.swift */,
 				E186245AFE2848662761BFE0 /* WorkflowViews.swift */,
+				CC0000000000000000000005 /* SitePickerViews.swift */,
+				CC0000000000000000000003 /* AccountViews.swift */,
+				CC0000000000000000000001 /* OnboardingAuthViews.swift */,
 			);
 			name = PAWatershedWatch;
 			path = PAWatershedWatch;
@@ -131,6 +161,7 @@
 			isa = PBXGroup;
 			children = (
 				3C8A23B1B29D070FD2670D87 /* ModelTests.swift */,
+				CC0000000000000000000007 /* ProductContractTests.swift */,
 				AA0000000000000000000005 /* mobile_golden.json */,
 			);
 			name = PAWatershedWatchTests;
@@ -142,6 +173,14 @@
 			children = (
 			);
 			name = iOS;
+			sourceTree = "<group>";
+		};
+		DD0000000000000000000004 /* PAWatershedWatchUITests */ = {
+			isa = PBXGroup;
+			children = (
+				DD0000000000000000000001 /* WorkflowUITests.swift */,
+			);
+			path = PAWatershedWatchUITests;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -190,6 +229,23 @@
 			productReference = CC2AEC05DF99A062BDFC2908 /* PAWatershedWatchTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
+		DD0000000000000000000007 /* PAWatershedWatchUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = DD0000000000000000000008 /* Build configuration list for PBXNativeTarget "PAWatershedWatchUITests" */;
+			buildPhases = (
+				DD0000000000000000000005 /* Sources */,
+				DD0000000000000000000006 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				DD000000000000000000000C /* PBXTargetDependency */,
+			);
+			name = PAWatershedWatchUITests;
+			productName = PAWatershedWatchUITests;
+			productReference = DD0000000000000000000003 /* PAWatershedWatchUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -220,6 +276,7 @@
 			targets = (
 				02FB57CA069F8BB35A74FCA9 /* PAWatershedWatch */,
 				4B751A349A90FE4A7B0AD9DA /* PAWatershedWatchTests */,
+				DD0000000000000000000007 /* PAWatershedWatchUITests */,
 			);
 		};
 /* End PBXProject section */
@@ -250,6 +307,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				6F939C59FE90AFCB99067499 /* ModelTests.swift in Sources */,
+				CC0000000000000000000008 /* ProductContractTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -265,6 +323,17 @@
 				24226C48E8F909F128D75405 /* RecordsAccountViews.swift in Sources */,
 				2C6A17F985A8FE0CDDEE015D /* ReviewSubmissionViews.swift in Sources */,
 				69A55ED5E84FB230A53ECF02 /* WorkflowViews.swift in Sources */,
+				CC0000000000000000000006 /* SitePickerViews.swift in Sources */,
+				CC0000000000000000000004 /* AccountViews.swift in Sources */,
+				CC0000000000000000000002 /* OnboardingAuthViews.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		DD0000000000000000000005 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				DD0000000000000000000002 /* WorkflowUITests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -276,6 +345,11 @@
 			name = PAWatershedWatch;
 			target = 02FB57CA069F8BB35A74FCA9 /* PAWatershedWatch */;
 			targetProxy = C1E09CE15C7989968F1DE62A /* PBXContainerItemProxy */;
+		};
+		DD000000000000000000000C /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 02FB57CA069F8BB35A74FCA9 /* PAWatershedWatch */;
+			targetProxy = DD000000000000000000000B /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -347,13 +421,13 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = PAWatershedWatch/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "PA Watershed Watch";
-				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Capture the sampling position and GPS accuracy for a field observation.";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Show sampling sites near you and record the sampling position and GPS accuracy for each field observation.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
-				MARKETING_VERSION = 0.1.0;
+				MARKETING_VERSION = 1.0.0;
 				PRODUCT_BUNDLE_IDENTIFIER = org.centralpawatershed.mobile;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
@@ -470,13 +544,13 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = PAWatershedWatch/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "PA Watershed Watch";
-				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Capture the sampling position and GPS accuracy for a field observation.";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Show sampling sites near you and record the sampling position and GPS accuracy for each field observation.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
-				MARKETING_VERSION = 0.1.0;
+				MARKETING_VERSION = 1.0.0;
 				PRODUCT_BUNDLE_IDENTIFIER = org.centralpawatershed.mobile;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
@@ -486,6 +560,32 @@
 				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Debug;
+		};
+		DD0000000000000000000009 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				PRODUCT_BUNDLE_IDENTIFIER = org.watershed.pawatershedwatch.uitests;
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_TARGET_NAME = PAWatershedWatch;
+			};
+			name = Debug;
+		};
+		DD000000000000000000000A /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				PRODUCT_BUNDLE_IDENTIFIER = org.watershed.pawatershedwatch.uitests;
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_TARGET_NAME = PAWatershedWatch;
+			};
+			name = Release;
 		};
 /* End XCBuildConfiguration section */
 
@@ -513,6 +613,15 @@
 			buildConfigurations = (
 				6D541E0ADDE6D28431B56A1E /* Debug */,
 				4C209C3B4E3C648FD161A8C2 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		DD0000000000000000000008 /* Build configuration list for PBXNativeTarget "PAWatershedWatchUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				DD0000000000000000000009 /* Debug */,
+				DD000000000000000000000A /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
