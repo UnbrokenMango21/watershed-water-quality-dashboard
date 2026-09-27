@@ -10,11 +10,11 @@ Release-safe screenshots only:
 
 Never include passwords, tokens, reset links, private IDs or OAuth material.
 
-## Web polish evidence (pending — see `../QC_DASHBOARD_POLISH.md`)
+## Web polish evidence (see `../QC_DASHBOARD_POLISH.md`)
 
-No browser tool was available in the session that made the `agent/claude-final-polish`
-hemlock-brand/accessibility pass, so the following before/after captures are
-still outstanding, not yet taken:
+The hosted development surfaces were checked live after the polish pass. The
+following image files are still outstanding and should be captured only after
+redacting private identities and notes:
 - `web/review` signed-out screen, showing the re-hued auth card and app bar.
 - `web/review` record view with a reviewer session (identities/notes obscured
   per the rule above).

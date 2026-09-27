@@ -1,17 +1,21 @@
 # QC console / public dashboard visual polish
 
-Isolated frontend-polish pass on `agent/claude-final-polish`, base `62fd499`
-(the tip of `main` at the time this branch started). Scope was restricted to
-`web/`, `public-dashboard/`, and `submission/` docs/screenshots. No
-backend, science, publication, config, credential, or auth-logic files were
-touched, and nothing in this branch has been deployed or merged.
+Isolated frontend-polish pass on `agent/claude-final-polish`, based on
+`62fd499`, then reviewed and cherry-picked into the release branch. Scope was
+restricted to `web/`, `public-dashboard/`, and `submission/` docs/screenshots.
+No backend, science, publication, config, credential, or auth-logic files were
+touched.
 
 ## Commits
 
 - `3a221b4` — QC console: hemlock brand palette + `<nav>`/`<main>` landmarks.
 - `c1dd85f` — Public dashboard: hemlock brand palette + demo-banner emphasis.
+- `7b7cb7d` — submission documentation and screenshot checklist.
 
-Diff `62fd499..c1dd85f` touches 8 files, all in `web/` or `public-dashboard/`.
+The three commits were reviewed individually and integrated as `6638b04`,
+`6134ca2`, and `563cd77` on the release branch. The source polish diff touches
+only `web/` and `public-dashboard/`; the documentation commit touches
+`submission/`.
 
 ## What changed and why
 
@@ -55,14 +59,12 @@ through the wrapper script for the dependency-install step.
 
 ## Proof limits — explicit
 
-- **No browser screenshots.** This session had no browser tool available
-  (checked via tool search; none of the built-in-browser or
-  Claude-in-Chrome connectors were present). Every claim above is typecheck
-  /build/test evidence only, not a rendered-pixel check. Before/after
-  screenshots of `web/review` (signed-out and, with a reviewer session, the
-  record view) and `public-dashboard` (with `NEXT_PUBLIC_DASHBOARD_DATA_MODE=demo`,
-  which needs no live Firebase/ArcGIS credentials) are the natural next
-  step and are listed in `submission/screenshots/README.md`.
+- **Live browser verification was performed separately.** The hosted QC
+  console was opened with the ADMIN session and a live TEST-014 Revision 2
+  readback was verified without taking a review action. The hosted public
+  dashboard was opened anonymously and showed the connected empty source with
+  ArcGIS attribution and no synthetic fallback. Those checks are evidence of
+  live behavior; image files were not committed to this repository.
 - **Brand-mark image files not copied.** The task brief allowed copying
   `qc-brand-mark.png` / `dashboard-brand-mark.png` from
   `Watershed-release-evidence/2026-09-27/` into `web/public/brand-mark.png`
@@ -76,11 +78,12 @@ through the wrapper script for the dependency-install step.
   and `DashboardShell.tsx`'s `≈` span for an `<img src="/brand-mark.png">`
   is a small follow-up someone with filesystem access outside this worktree
   can do directly.
-- **No live data, no deployment.** Nothing here was run against
-  `central-pa-watershed-dev`, no Firestore/Storage rules were touched, and
-  no `apphosting`/Firebase deploy command was invoked.
+- **No deployment was invoked by the polish branch.** The integrated commits
+  passed the release web checks. The existing hosted development QC console
+  and dashboard were verified separately; no Firestore/Storage rules or
+  scientific records were changed.
 - **Not reviewed for scientific or release sign-off.** This is a frontend
-  polish diff, evaluated against exact commit `c1dd85f`. It does not
+  polish diff. It does not
   authorize activating publication, approving science, or certifying
   semester hours (per `CLAUDE.md`).
 
