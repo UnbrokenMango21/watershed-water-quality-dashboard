@@ -10,7 +10,7 @@ import { exportSeriesCsv } from "./dashboard/exportCsv";
 import { MapSurface } from "./dashboard/MapSurface";
 import { SiteBrowser } from "./dashboard/SiteBrowser";
 import { SiteDetail } from "./dashboard/SiteDetail";
-import { formatShortDate, parameterDefinitions, rangeStart, type MobileView, type RangeName } from "./dashboard/dashboard-utils";
+import { CalciteIcon, formatShortDate, parameterDefinitions, rangeStart, type MobileView, type RangeName } from "./dashboard/dashboard-utils";
 
 type DataSubview = "readings" | "series";
 
@@ -142,7 +142,13 @@ export function DashboardShell() {
       </header>
 
       {dataError && <div className="source-error" role="alert"><span>{dataError}</span><button type="button" onClick={() => setRetry((value) => value + 1)}>Retry monitoring data</button></div>}
-      {demoMode && <div className="demo-banner" role="status"><strong>DEMO MODE</strong><span>· Synthetic test sites and measurements — not production observations</span></div>}
+      {demoMode && (
+        <div className="demo-banner" role="status">
+          <CalciteIcon icon="exclamation-mark-triangle" />
+          <strong>DEMO MODE</strong>
+          <span>· Synthetic test sites and measurements — not production observations</span>
+        </div>
+      )}
 
       <nav className="mobile-view-tabs" aria-label="Dashboard view">
         {(["sites", "map", "data"] as MobileView[]).map((view) => (

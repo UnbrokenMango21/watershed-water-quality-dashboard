@@ -9,11 +9,14 @@
   --surface: #ffffff;
   --surface-soft: #f6f8fa;
   --canvas: #edf1f4;
-  --accent: #007ac2;
-  --accent-deep: #005a91;
-  --accent-soft: #eaf4fb;
-  --success: #2d6f47;
-  --warning: #9a650c;
+  /* Hemlock green, matching the watershed mark and the QC console's brand
+     tokens (`web/app/globals.css`) and the native-app brand-spec
+     (`Phone App/iPhone App/PAWatershedWatch/brand-spec.md`). */
+  --accent: #167a63;
+  --accent-deep: #0d5c4b;
+  --accent-soft: #eef8f4;
+  --success: #2e7d52;
+  --warning: #955600;
   --neutral: #707e8a;
   --s1: 4px;
   --s2: 8px;
@@ -29,7 +32,7 @@ html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; }
 body { background: var(--canvas); color: var(--ink); font-family: var(--font-ui); font-size: 14px; }
 button, input, select { font: inherit; }
 button { color: inherit; }
-button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focus-visible { outline: 2px solid #4fa7dc; outline-offset: 2px; }
+a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focus-visible { outline: 2px solid var(--accent-deep); outline-offset: 2px; }
 
 .dashboard-shell {
   width: 100%;
@@ -67,8 +70,9 @@ button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focu
 .source-status { min-height: 32px; padding: 0 10px; display: inline-flex; align-items: center; gap: 7px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface-soft); color: var(--muted); font-size: 10px; font-weight: 600; }
 .source-status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--neutral); }
 
-.demo-banner { flex: 0 0 auto; min-height: 27px; padding: 5px var(--s3); display: flex; align-items: center; justify-content: center; gap: var(--s1); background: #fff8e7; border-bottom: 1px solid #e8d6a7; color: #674b18; font-size: 10px; line-height: 1.3; white-space: nowrap; }
-.demo-banner strong { font-size: 9px; letter-spacing: .07em; }
+.demo-banner { flex: 0 0 auto; min-height: 30px; padding: 6px var(--s3); display: flex; align-items: center; justify-content: center; gap: 7px; background: #fff8e7; border-bottom: 2px solid #e8b93f; color: #674b18; font-size: 10.5px; font-weight: 600; line-height: 1.3; white-space: nowrap; }
+.demo-banner calcite-icon { color: #a3720f; }
+.demo-banner strong { font-size: 10px; letter-spacing: .07em; }
 
 .mobile-view-tabs, .data-subview-tabs { display: none; }
 .mobile-view-tabs { flex: 0 0 auto; }
