@@ -138,7 +138,7 @@ struct ResumeDraftPanel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack {
-                FieldSectionHeader(title: "Draft")
+                FieldSectionHeader(title: "In progress")
                 StatusPill(title: "Draft", systemImage: "pencil", color: FieldTheme.water)
             }
             if let site = draft.site {

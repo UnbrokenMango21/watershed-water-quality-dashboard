@@ -67,6 +67,7 @@ case "$command" in
     # Suppress the simulator's one-time keyboard tutorials, which otherwise swallow typed text.
     xcrun simctl spawn "$udid" defaults write com.apple.keyboard.preferences DidShowContinuousPathIntroduction -bool true
     xcrun simctl spawn "$udid" defaults write com.apple.keyboard.preferences DidShowGestureKeyboardIntroduction -bool true
+    xcrun simctl ui "$udid" appearance "${IOS_UI_APPEARANCE:-light}"
     # About 20 m from the TEST-001 fixture site.
     xcrun simctl location "$udid" set 40.79355,-77.86010
     printf 'UI simulator: %s (%s)\n' "$device_name" "$udid"

@@ -210,6 +210,58 @@ final class WorkflowUITests: XCTestCase {
         XCTAssertTrue(app.buttons["flow.next"].isHittable)
     }
 
+    /// Account: the name can be changed and reaches the research profile through the callable; a draft
+    /// survives the app being terminated and relaunched.
+    func testNameChangeAndDraftSurvivesRelaunch() async throws {
+        app.launch()
+        signOutIfRestored()
+        if app.buttons["welcome.continue"].waitForExistence(timeout: 5) { app.buttons["welcome.continue"].tap() }
+        XCTAssertTrue(app.buttons["auth.submit"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["Local Firebase emulators"].exists, "App is not in emulator mode; refusing to create an account")
+        app.segmentedControls.buttons["Create Account"].tap()
+        type("Sam Ortiz", into: app.textFields["Full name"])
+        type("name-\(UUID().uuidString.prefix(8).lowercased())@example.test", into: app.textFields["Email"])
+        typePassword("field-sample-2026", into: app.secureTextFields["Password"])
+        app.buttons["auth.submit"].tap()
+        XCTAssertTrue(app.buttons["Start New Observation"].waitForExistence(timeout: 20))
+
+        // Change the name in Account.
+        XCTAssertTrue(app.buttons["Account and settings"].waitForExistence(timeout: 5))
+        app.buttons["Account and settings"].tap()
+        XCTAssertTrue(app.navigationBars["Account"].waitForExistence(timeout: 5))
+        snapshot("20-account")
+        app.buttons.containing(NSPredicate(format: "label BEGINSWITH 'Full name'")).firstMatch.tap()
+        let field = app.textFields["Full name"]
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
+        field.tap()
+        field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 20) + "Samantha Ortiz")
+        snapshot("21-edit-name")
+        app.navigationBars.buttons["Save"].tap()
+        XCTAssertTrue(app.staticTexts["Samantha Ortiz"].waitForExistence(timeout: 15))
+        app.navigationBars["Account"].buttons["Done"].tap()
+        XCTAssertTrue(app.staticTexts["Samantha Ortiz"].waitForExistence(timeout: 5), "Home should show the new name")
+
+        // The research profile mirror was written by the server callable, not by the client.
+        let profiles = try await listDocuments("users")
+        XCTAssertTrue(profiles.contains { $0.string("display_name") == "Samantha Ortiz" }, "users/{uid}.display_name was not updated by the callable")
+
+        // Start a draft, pick a site, then terminate and relaunch.
+        app.buttons["Start New Observation"].tap()
+        let site = app.buttons["site.\(siteID)"]
+        XCTAssertTrue(site.waitForExistence(timeout: 20))
+        site.tap()
+        app.buttons["site.continue"].tap()
+        XCTAssertTrue(app.navigationBars["Visit Details"].waitForExistence(timeout: 5))
+        app.terminate()
+        app.launch()
+        let resume = app.buttons["Resume"]
+        XCTAssertTrue(resume.waitForExistence(timeout: 15), "Draft was not restored after relaunch")
+        XCTAssertTrue(app.staticTexts["Spring Creek at Houserville Road Bridge"].exists)
+        snapshot("22-draft-restored")
+        resume.tap()
+        XCTAssertTrue(app.navigationBars["Visit Details"].waitForExistence(timeout: 5) || app.navigationBars["Choose Site"].waitForExistence(timeout: 2))
+    }
+
     // MARK: - UI helpers
 
     private func type(_ text: String, into element: XCUIElement) {

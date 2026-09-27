@@ -68,14 +68,9 @@ struct AccountView: View {
                 }
 
                 Section {
-                    LabeledContent {
-                        StatusPill(
-                            title: model.connection == .online ? "Online" : "Offline",
-                            systemImage: model.connection == .online ? "wifi" : "wifi.slash",
-                            color: model.connection == .online ? FieldTheme.fern : FieldTheme.goldenrod
-                        )
-                    } label: {
-                        Text("Connection")
+                    LabeledContent("Connection") {
+                        Label(model.connection == .online ? "Online" : "Offline", systemImage: model.connection == .online ? "wifi" : "wifi.slash")
+                            .foregroundStyle(model.connection == .online ? FieldTheme.fern : FieldTheme.goldenrod)
                     }
                     LabeledContent("Waiting to sync", value: unsyncedCount.formatted())
                     LabeledContent("Sites available", value: model.sites.count.formatted())
