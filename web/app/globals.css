@@ -19,21 +19,24 @@
 :root {
   color-scheme: light;
 
-  /* ---------------------------------------------------------------- brand */
-  --navy: #0d2f3f;
-  --navy-deep: #092331;
-  --brand-800: #0e3d4d;
-  --brand-700: #135467;
-  --brand-600: #1a6a84;
-  --brand-500: #2b8aa6;
-  --brand-100: #d5e6ec;
-  --brand-050: #eef5f8;
+  /* ---------------------------------------------------------------- brand
+     Hemlock green, matching the watershed mark and native-app brand-spec
+     (`Phone App/iPhone App/PAWatershedWatch/brand-spec.md`), so the QC
+     console and the public dashboard read as one product. */
+  --navy: #0b3d33;
+  --navy-deep: #082a23;
+  --brand-800: #0a4a3c;
+  --brand-700: #0d5c4b;
+  --brand-600: #167a63;
+  --brand-500: #2b9a80;
+  --brand-100: #d3ece4;
+  --brand-050: #eef8f4;
 
   /* -------------------------------------------------------------- neutrals */
   --bg: #f2f5f8;
   --surface: #ffffff;
   --surface-sunken: #f7f9fb;
-  --surface-hover: #eef5f8;
+  --surface-hover: #eef7f2;
   --border: #dfe5eb;
   --border-soft: #ebeff3;
   --border-strong: #b3c1cc;

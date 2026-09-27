@@ -137,7 +137,7 @@ export default function QueueRail({ selectedId }: { selectedId: string | null })
   const filtered = query.trim().length > 0 || filters.size > 0;
 
   return (
-    <div className="rail" data-density={dense ? 'compact' : 'comfortable'}>
+    <nav className="rail" aria-label="Review queue" data-density={dense ? 'compact' : 'comfortable'}>
       <div className="rail-head">
         <div className="rail-title-row">
           <h1>Review queue</h1>
@@ -334,6 +334,6 @@ export default function QueueRail({ selectedId }: { selectedId: string | null })
           </button>
         </span>
       </div>
-    </div>
+    </nav>
   );
 }
