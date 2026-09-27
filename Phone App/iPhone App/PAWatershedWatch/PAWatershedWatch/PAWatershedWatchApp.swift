@@ -48,7 +48,9 @@ struct RootView: View {
         Group {
             if !model.authResolved {
                 LaunchPlaceholder()
-            } else if !model.isSignedIn {
+            } else if !model.isSignedIn || (model.isAuthenticating && model.needsIdentity) {
+                // Account creation reports the new user before its name is attached; staying on the
+                // sign-in screen until the request finishes avoids flashing the name step.
                 if hasSeenWelcome {
                     AuthenticationView(model: model)
                 } else {
