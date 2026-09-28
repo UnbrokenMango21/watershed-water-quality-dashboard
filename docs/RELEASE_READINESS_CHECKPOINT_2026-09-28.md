@@ -2,6 +2,13 @@
 
 This is a source and CI assessment, not authorization to merge, deploy, approve scientific records, or upload an app. Recheck moving GitHub heads and CI before acting.
 
+## Coordinator update — 2026-09-28, 08:12 EDT
+
+- PR #44 merged after all five reported checks passed at `8d1c4f5f6632595fb3ed6b95e02ccc3286cc7f76`. The integration branch and draft PR #34 now point to exact SHA `8ef568421f9d74ce7ef6aeb73244742bfebb3522`; GitHub reports PR #34 mergeable. Combined non-Android CI is running at this SHA. Backend, QC, publication, hygiene, and three CodeQL jobs had succeeded at the 08:12 readback; iOS, dashboard build/visual QA, and Java/Kotlin/Swift CodeQL were still running. No TestFlight upload or Firebase deployment has occurred.
+- Antigravity's isolated branch `agent/antigravity-public-verification` is clean and pushed at `c5ecea37bf87e834d5a5a22e2b03e16d8992a2c9`. Draft PR #45 into integration contains the human physical-iPhone runbook and historical public-system verification checkpoint. The development dashboard was verified from `1da94e0`, not yet reverified from the newer integration head. Anonymous ArcGIS public-safe views had zero records; no real observation was published.
+- Codex's isolated `docs/publication-ready-repository` branch is pushed at `ad1392e0e55f5935c4efad74b33fed5378dc4d44` and draft PR #46 is open into integration. It contains README, metrics, portfolio, gallery/social preview, release checklist and notes. Codex is reconciling all current release SHA claims after PR #44. The 300-hour program is a planning target, not verified hours completed.
+- Firebase remains **NOT READY for the live iPhone test**. Live custom claims and reviewer Auth linkage are not yet proven; deployed rules/QC predate release source. Do not deploy stricter rules or QC until the read-only role/profile preflight passes against live data. The exact human-gated `SITE-SYNTHETIC-001.active: true → false` proposal remains unapplied. UltraReview finding texts/IDs remain unavailable, **0/5 accounted**.
+
 ## Morning coordinator update — 2026-09-28, 07:55 EDT
 
 - Parth's later instruction explicitly authorized routine engineering, a signed TestFlight candidate from the final reviewed integration SHA, and the completed PR #42 merge. The earlier authorization wording below is historical. Scientific decisions, live `siteCatalog` mutation, real-data publication, PR #34 merge, and personal submission attestation remain gated.
