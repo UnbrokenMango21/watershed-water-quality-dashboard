@@ -6,8 +6,8 @@ service firebase.storage {
       return request.auth != null;
     }
 
-    // Same rule as Firestore reads and the QC review API: reviewer claim plus an active
-    // administrator-managed reviewer profile.
+    // Same claim and active-profile checks as the Firestore rules. Rules cannot see the Auth
+    // `disabled` flag; deactivating the profile is the immediate suspension control.
     function privilegedReader() {
       return signedIn()
         && "role" in request.auth.token
