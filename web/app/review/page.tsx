@@ -12,7 +12,7 @@ import { useEffect, useState } from 'react';
 import { Icon } from '@/components/icons';
 import { useQueue } from '@/components/QueueProvider';
 import { Notice, splitCounts } from '@/components/ui';
-import { EMPTY, formatElapsed, humanizeCode } from '@/lib/format';
+import { formatElapsed, humanizeCode } from '@/lib/format';
 import type { QueueRow } from '@/lib/types';
 
 function counts(row: QueueRow) {
@@ -43,13 +43,13 @@ export default function ReviewIndexPage() {
       const c = counts(row);
       return c.errors > 0 || c.warnings > 0;
     }).length ?? 0;
-  const oldest = rows && rows.length > 0 && now !== null ? formatElapsed(rows[0].submission.updated_at, now) : EMPTY;
+  const oldest = rows && rows.length > 0 && now !== null ? formatElapsed(rows[0].submission.updated_at, now) : 'None';
 
   return (
     <div className="record-inner">
       {reviewed ? (
         <Notice kind="ok">
-          Decision recorded — <strong>{humanizeCode(reviewed)}</strong>. That submission has left the queue.
+          Decision recorded: <strong>{humanizeCode(reviewed)}</strong>. The submission has left the queue.
         </Notice>
       ) : null}
 
@@ -64,8 +64,8 @@ export default function ReviewIndexPage() {
             </h1>
             <p className="muted" style={{ maxWidth: '44ch', margin: '0 auto' }}>
               {waiting === 0
-                ? 'Submissions appear in the queue as soon as validation finishes and they enter pending review.'
-                : 'Pick a record from the queue on the left. The full scientific record, validation findings and decision controls open here.'}
+                ? 'New submissions appear here after validation.'
+                : 'Choose a submission from the queue to open it here.'}
             </p>
           </div>
 

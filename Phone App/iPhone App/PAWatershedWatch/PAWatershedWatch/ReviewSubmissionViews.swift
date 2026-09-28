@@ -1,5 +1,7 @@
 import SwiftUI
 
+// MARK: - Review
+
 struct ReviewView: View {
     let model: AppModel
 
@@ -12,174 +14,307 @@ struct ReviewView: View {
     }
 }
 
+/// Step 6: a scannable summary in the order the observation was collected, with every blocking issue
+/// listed at once and non-blocking warnings kept visually separate.
 struct ReviewContent: View {
     let model: AppModel
     let draft: ObservationDraft
+    @State private var confirmSubmit = false
 
     var body: some View {
+        let issues = draft.blockingIssues
+        let warnings = draft.reviewWarnings
         ScrollView {
-            VStack(alignment: .leading, spacing: FieldTheme.xl) {
-                if let error = model.workflowError {
-                    NoticeBanner(title: "Observation Not Ready", verbatimMessage: error, systemImage: "exclamationmark.circle.fill", color: .red)
+            VStack(alignment: .leading, spacing: FieldTheme.m) {
+                ReadinessCard(issues: issues, warnings: warnings, onFix: fix)
+                if let error = model.workflowError, issues.isEmpty {
+                    NoticeBanner(title: "Not Submitted", verbatimMessage: error, systemImage: "exclamationmark.circle.fill", tone: .error)
                 }
-                ReviewSummarySection(title: "Measurements", edit: { model.homePath.append(.measurements) }) {
-                    if draft.values.values.allSatisfy({ $0.isEmpty }) && (!draft.includesLab || draft.requestedAnalytes.isEmpty) {
-                        Text("No Measurements")
-                            .foregroundStyle(.red)
+                ReviewCard(title: "Site", systemImage: "mappin.and.ellipse", edit: { edit(.selectSite, step: 1) }) {
+                    if let site = draft.site {
+                        Text(site.name).font(.headline)
+                        if !site.subtitle.isEmpty || !site.code.isEmpty {
+                            Text([site.code, site.subtitle].filter { !$0.isEmpty }.joined(separator: ", "))
+                                .font(.subheadline).foregroundStyle(FieldTheme.inkMuted)
+                        }
                     } else {
-                        ForEach(draft.values.keys.sorted(by: { $0.rawValue < $1.rawValue })) { kind in
-                            if let value = draft.values[kind], !value.isEmpty {
-                                KeyValueRow(label: kind.title, value: draft.displayValue(for: kind), emphasized: true)
+                        MissingValue("No site selected")
+                    }
+                }
+                ReviewCard(title: "Date and time", systemImage: "calendar", edit: { edit(.visitDetails, step: 2) }) {
+                    Text(draft.date.fieldTimestamp).font(.headline).monospacedDigit()
+                    Text("Pennsylvania time (Eastern)").font(.subheadline).foregroundStyle(FieldTheme.inkMuted)
+                }
+                ReviewCard(title: "Location", systemImage: "location", edit: { edit(.visitDetails, step: 2) }) {
+                    if let latitude = draft.latitude, let longitude = draft.longitude {
+                        Text(Self.coordinates(latitude, longitude)).font(.headline).monospacedDigit()
+                        Text([
+                            draft.accuracyMeters.map { String(localized: "±\(Int($0.rounded())) m accuracy") },
+                            draft.siteDistanceMeters.map { String(localized: "\(Site.distanceText($0)) from site") },
+                        ].compactMap { $0 }.joined(separator: ", "))
+                        .font(.subheadline)
+                        .foregroundStyle(FieldTheme.inkMuted)
+                    } else {
+                        MissingValue("No GPS position captured")
+                    }
+                }
+                ReviewCard(title: "Method", systemImage: "testtube.2", edit: { edit(.testMethod, step: 3) }) {
+                    if let type = draft.testType {
+                        Text(type.title).font(.headline)
+                        if type == .other && !draft.testTypeOther.isEmpty {
+                            Text(verbatim: draft.testTypeOther).font(.subheadline)
+                        }
+                        ReviewDetailRow(label: type.sourceLabel, value: draft.instrument)
+                        ReviewDetailRow(label: type.methodLabel, value: draft.method)
+                    } else {
+                        MissingValue("Measurement method not chosen")
+                    }
+                }
+                ReviewCard(title: "Measurements", systemImage: "gauge.with.dots.needle.33percent", edit: { edit(.measurements, step: 4) }) {
+                    let entered = MeasurementKind.allCases.filter { !draft[valueFor: $0].trimmingCharacters(in: .whitespaces).isEmpty }
+                    if entered.isEmpty {
+                        MissingValue("No measurements entered")
+                    } else {
+                        VStack(spacing: 0) {
+                            ForEach(entered) { kind in
+                                ReviewMeasurementRow(
+                                    kind: kind,
+                                    value: draft[valueFor: kind],
+                                    unit: draft.selectedUnit(for: kind),
+                                    conversion: kind == .temperature ? draft.temperatureConversion : nil,
+                                    isRequired: draft.requiredMeasurements.contains(kind),
+                                    problem: draft.measurementProblem(for: kind)
+                                )
+                                if kind != entered.last { CardDivider() }
                             }
                         }
-                        if draft.includesLab && draft.labResultsPending && !draft.requestedAnalytes.isEmpty {
-                            KeyValueRow(label: "Lab Analyses", value: draft.requestedAnalytes.map { String(localized: $0.title) }.sorted().formatted())
-                            KeyValueRow(label: "Result Status", value: "Pending Lab")
-                        }
                     }
                 }
-                if let type = draft.testType {
-                    ReviewSummarySection(title: "Method", edit: { model.homePath.append(.testMethod) }) {
-                        KeyValueRow(label: "Test Type", value: String(localized: type.title))
-                        if type == .other { KeyValueRow(label: "Other Test Type", value: draft.testTypeOther) }
-                        KeyValueRow(label: "Method", value: draft.method)
-                        if !draft.instrument.isEmpty {
-                            KeyValueRow(label: "Instrument or Lab", value: draft.instrument)
-                        }
+                ReviewCard(title: "Field notes", systemImage: "note.text", edit: { edit(.media, step: 5) }) {
+                    if draft.notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        Text("None").foregroundStyle(FieldTheme.inkMuted)
+                    } else {
+                        Text(verbatim: draft.notes).font(.body)
                     }
                 }
-                if let site = draft.site {
-                    ReviewSummarySection(title: "Visit", edit: { model.homePath.append(.visitDetails) }) {
-                        KeyValueRow(label: "Site", value: site.name)
-                        KeyValueRow(label: "Position", value: fieldPosition)
-                        KeyValueRow(label: "Collected", value: draft.date.fieldTimestamp)
-                        KeyValueRow(label: "Collector", value: draft.collector)
-                    }
-                }
-                ReviewSummarySection(title: "Notes", edit: { model.homePath.append(.media) }) {
-                    KeyValueRow(label: "Notes", value: draft.notes.isEmpty ? "None" : draft.notes)
+                ReviewCard(title: "Collector", systemImage: "person.crop.circle", edit: nil) {
+                    Text(verbatim: draft.collector).font(.headline)
                 }
             }
             .padding(.horizontal, FieldTheme.m)
-            .padding(.vertical, FieldTheme.l)
+            .padding(.vertical, FieldTheme.m)
         }
         .fieldScreen()
         .navigationTitle("Review")
         .navigationBarTitleDisplayMode(.inline)
         .safeAreaInset(edge: .bottom) {
-            FlowFooter(step: 6, total: 6, actionTitle: "Continue to Submit") {
-                // Re-run the check every time so the next remaining problem is found, not a cached one.
-                if let failure = validationFailure {
-                    model.present(failure)
-                    return
+            ActionShelf {
+                HStack {
+                    Label(issues.isEmpty ? "Ready to submit" : "\(issues.count) item(s) to fix", systemImage: issues.isEmpty ? "checkmark.circle" : "exclamationmark.circle")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(issues.isEmpty ? FieldTheme.fern : FieldTheme.alert)
+                    Spacer()
+                    Text("Step 6 of 6").font(.footnote.weight(.semibold)).foregroundStyle(FieldTheme.inkMuted).monospacedDigit()
                 }
-                model.workflowError = nil
-                model.homePath.append(.submit)
+                StepProgressBar(step: 6, total: 6)
+                PrimaryActionButton(title: "Submit Observation", systemImage: "paperplane.fill", isEnabled: issues.isEmpty) {
+                    confirmSubmit = true
+                }
+                .accessibilityIdentifier("review.submit")
             }
         }
-    }
-
-    /// The real canonicalization error, kept instead of discarded, so its message and its section reach the collector.
-    private var validationFailure: CanonicalizationError? {
-        do {
-            _ = try draft.canonicalSnapshot()
-            return nil
-        } catch let error as CanonicalizationError {
-            return error
-        } catch {
-            return .invalid(error.localizedDescription)
+        .alert("Submit this observation?", isPresented: $confirmSubmit) {
+            Button("Submit") { model.submitDraft() }
+            Button("Keep Reviewing", role: .cancel) { }
+        } message: {
+            Text(model.connection == .online
+                 ? "Revision \(draft.revisionNumber) will be locked and sent to the archive for validation and review."
+                 : "Revision \(draft.revisionNumber) will be locked and saved on this phone. It will sync when you are back online.")
         }
     }
 
-    private var fieldPosition: String {
-        guard let latitude = draft.latitude, let longitude = draft.longitude, let accuracy = draft.accuracyMeters else { return "Position unavailable" }
-        return "\(abs(latitude).formatted(.number.precision(.fractionLength(5))))° \(latitude >= 0 ? "N" : "S") · \(abs(longitude).formatted(.number.precision(.fractionLength(5))))° \(longitude >= 0 ? "E" : "W") · ±\(accuracy.formatted(.number.precision(.fractionLength(0)))) m"
+    private func edit(_ route: HomeRoute, step: Int) {
+        model.workflowError = nil
+        draft.currentStep = step
+        model.homePath.append(route)
+    }
+
+    private func fix(_ issue: ReviewIssue) {
+        if let section = issue.section {
+            model.present(.invalid(issue.message, section: section, measurement: issue.measurement))
+        } else if issue.id == "site" {
+            edit(.selectSite, step: 1)
+        }
+    }
+
+    static func coordinates(_ latitude: Double, _ longitude: Double) -> String {
+        "\(abs(latitude).formatted(.number.precision(.fractionLength(5))))° \(latitude >= 0 ? "N" : "S"), \(abs(longitude).formatted(.number.precision(.fractionLength(5))))° \(longitude >= 0 ? "E" : "W")"
     }
 }
 
-struct ReviewSummarySection<Content: View>: View {
+/// Summary of submission readiness. Blocking issues and warnings use different icons and wording as
+/// well as color, so the distinction never depends on color alone.
+private struct ReadinessCard: View {
+    let issues: [ReviewIssue]
+    let warnings: [ReviewIssue]
+    let onFix: (ReviewIssue) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            if issues.isEmpty {
+                Label("Ready to submit", systemImage: "checkmark.seal.fill")
+                    .font(.headline)
+                    .foregroundStyle(FieldTheme.fern)
+                Text("Review your observation before submitting.")
+                    .font(.subheadline)
+                    .foregroundStyle(FieldTheme.inkMuted)
+            } else {
+                Label("Must fix before submitting", systemImage: "xmark.octagon.fill")
+                    .font(.headline)
+                    .foregroundStyle(FieldTheme.alert)
+                ForEach(issues) { issue in IssueRow(issue: issue, onFix: onFix) }
+            }
+            if !warnings.isEmpty {
+                CardDivider()
+                Label("Worth checking (won't block)", systemImage: "exclamationmark.triangle.fill")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(FieldTheme.goldenrod)
+                ForEach(warnings) { issue in IssueRow(issue: issue, onFix: onFix) }
+            }
+        }
+        .fieldCard(fill: (issues.isEmpty ? StatusTone.success : StatusTone.error).background)
+    }
+}
+
+private struct IssueRow: View {
+    let issue: ReviewIssue
+    let onFix: (ReviewIssue) -> Void
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: FieldTheme.s) {
+            Text(verbatim: issue.message)
+                .font(.subheadline)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            if issue.section != nil || issue.id == "site" {
+                Button(issue.severity == .blocking ? "Fix" : "Check") { onFix(issue) }
+                    .font(.subheadline.weight(.semibold))
+                    .frame(minWidth: 44, minHeight: 44)
+                    .accessibilityLabel("\(issue.severity == .blocking ? "Fix" : "Check"): \(issue.message)")
+            }
+        }
+    }
+}
+
+struct ReviewCard<Content: View>: View {
     let title: LocalizedStringResource
-    let edit: () -> Void
+    let systemImage: String
+    let edit: (() -> Void)?
     @ViewBuilder let content: Content
 
-    init(title: LocalizedStringResource, edit: @escaping () -> Void, @ViewBuilder content: () -> Content) {
+    init(title: LocalizedStringResource, systemImage: String, edit: (() -> Void)?, @ViewBuilder content: () -> Content) {
         self.title = title
+        self.systemImage = systemImage
         self.edit = edit
         self.content = content()
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: FieldTheme.m) {
+        VStack(alignment: .leading, spacing: FieldTheme.s) {
             HStack {
-                Text(title)
-                    .font(.title3.bold())
+                Label {
+                    Text(title)
+                        .font(.footnote.weight(.semibold))
+                        .textCase(.uppercase)
+                        .tracking(0.6)
+                        .foregroundStyle(FieldTheme.inkMuted)
+                } icon: {
+                    Image(systemName: systemImage)
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(FieldTheme.water)
+                }
+                .accessibilityAddTraits(.isHeader)
                 Spacer()
-                Button("Edit", action: edit)
-                    .font(.subheadline.bold())
-                    .frame(minWidth: 52, minHeight: 44)
+                if let edit {
+                    Button("Edit", action: edit)
+                        .font(.subheadline.weight(.semibold))
+                        .frame(minWidth: 44, minHeight: 44)
+                        .accessibilityLabel(Text("Edit \(String(localized: title))"))
+                }
             }
-            Divider()
             content
         }
+        .padding(.top, -6)
+        .fieldCard()
     }
 }
 
-struct SubmitView: View {
-    let model: AppModel
+private struct ReviewDetailRow: View {
+    let label: LocalizedStringResource
+    let value: String
 
     var body: some View {
-        if let draft = model.draft {
-            ScrollView {
-                VStack(alignment: .leading, spacing: FieldTheme.xl) {
-                    VStack(alignment: .leading, spacing: FieldTheme.s) {
-                        Text(draft.site?.name ?? "Observation")
-                            .font(.title2.bold())
-                        Text("Revision \(draft.revisionNumber)")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                    }
-                    VStack(alignment: .leading, spacing: FieldTheme.l) {
-                        KeyValueRow(label: "Record State", value: "Draft", emphasized: true)
-                        KeyValueRow(label: "Sync", value: "Not Submitted", emphasized: true)
-                    }
-                    if let error = model.workflowError {
-                        NoticeBanner(title: "Cannot Submit Yet", verbatimMessage: error, systemImage: "exclamationmark.circle.fill", color: .red)
-                    }
-                    SubmissionConnectionPanel(connection: model.connection)
-                    PrimaryActionButton(title: "Submit Observation", systemImage: "paperplane.fill", action: model.submitDraft)
-                    Label("Revision \(draft.revisionNumber) will be locked after local submission", systemImage: "lock.fill")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .center)
-                }
-                .padding(.horizontal, FieldTheme.m)
-                .padding(.vertical, FieldTheme.l)
+        HStack(alignment: .firstTextBaseline) {
+            Text(label).font(.subheadline).foregroundStyle(FieldTheme.inkMuted)
+            Spacer(minLength: FieldTheme.m)
+            if value.trimmingCharacters(in: .whitespaces).isEmpty {
+                Text("Missing").font(.subheadline.weight(.semibold)).foregroundStyle(FieldTheme.alert)
+            } else {
+                Text(verbatim: value).font(.subheadline.weight(.semibold)).multilineTextAlignment(.trailing)
             }
-            .fieldScreen()
-            .navigationTitle("Submit")
-            .navigationBarTitleDisplayMode(.inline)
-        } else {
-            MissingDraftView()
         }
+        .accessibilityElement(children: .combine)
     }
-
 }
 
-struct SubmissionConnectionPanel: View {
-    let connection: ConnectionState
+private struct ReviewMeasurementRow: View {
+    let kind: MeasurementKind
+    let value: String
+    let unit: MeasurementUnit
+    let conversion: String?
+    let isRequired: Bool
+    let problem: String?
 
     var body: some View {
-        switch connection {
-        case .online:
-            StatusPill(title: "Archive Available", systemImage: "network", color: FieldTheme.fern)
-        case .offline:
-            StatusPill(title: "Offline", systemImage: "wifi.slash", color: FieldTheme.goldenrod)
-        case .serverUnavailable:
-            StatusPill(title: "Archive Unavailable", systemImage: "exclamationmark.icloud", color: .red)
+        HStack(alignment: .firstTextBaseline, spacing: FieldTheme.s) {
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: FieldTheme.xs) {
+                    Text(kind.title).font(.subheadline)
+                    if isRequired { RequiredMark() }
+                }
+                if let problem {
+                    Label(problem, systemImage: "xmark.octagon.fill").font(.caption.weight(.semibold)).foregroundStyle(FieldTheme.alert)
+                }
+            }
+            Spacer(minLength: FieldTheme.s)
+            VStack(alignment: .trailing, spacing: 2) {
+                Text(kind == .ph ? value : "\(value) \(unit.inlineSymbol)")
+                    .font(.title3.bold().monospacedDigit())
+                if let conversion {
+                    Text(conversion).font(.caption.monospacedDigit()).foregroundStyle(FieldTheme.inkMuted)
+                }
+            }
         }
+        .padding(.vertical, 10)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(String(localized: kind.title)), \(value) \(kind == .ph ? "" : unit.spokenName)\(problem.map { ", error: \($0)" } ?? "")")
     }
 }
 
+private struct MissingValue: View {
+    let text: LocalizedStringResource
+    init(_ text: LocalizedStringResource) { self.text = text }
+
+    var body: some View {
+        Label { Text(text) } icon: { Image(systemName: "xmark.octagon.fill") }
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(FieldTheme.alert)
+    }
+}
+
+// MARK: - Status
+
+/// Shown after Submit and after a correction is resubmitted. It follows the record itself, so the
+/// words always match what the archive has confirmed.
 struct SubmissionStatusView: View {
     let model: AppModel
     let recordID: UUID?
@@ -187,25 +322,36 @@ struct SubmissionStatusView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: FieldTheme.xl) {
-                SubmissionStatusHero(sync: model.syncState)
+            VStack(alignment: .leading, spacing: FieldTheme.l) {
                 if let record = statusRecord {
-                    SubmissionRecordSummary(record: record)
+                    StatusHero(record: record)
+                    VStack(alignment: .leading, spacing: FieldTheme.xs) {
+                        Text(record.site.name).font(.headline).foregroundStyle(FieldTheme.ink)
+                        Text("Revision \(record.revision), \(record.date.fieldTimestamp)")
+                            .font(.subheadline)
+                            .foregroundStyle(FieldTheme.inkMuted)
+                    }
+                    ObservationLifecycleView(workflow: record.workflow, sync: record.sync)
+                        .fieldCard()
+                    if record.sync == .failed || record.sync == .waiting {
+                        PrimaryActionButton(title: "Retry Sync", systemImage: "arrow.clockwise", isEnabled: model.connection == .online) {
+                            model.retrySync(recordID: record.id)
+                        }
+                    }
+                } else {
+                    ContentUnavailableView("Observation Unavailable", systemImage: "doc.questionmark")
                 }
-                SubmissionTruthPanel(workflow: model.workflowState, sync: model.syncState)
-                SyncProgressTimeline(sync: model.syncState)
-                if model.syncState == .failed || model.syncState == .waiting {
-                    PrimaryActionButton(title: "Retry Sync", systemImage: "arrow.clockwise") { model.retrySync(recordID: recordID) }
-                }
-                SecondaryActionButton(title: fromCorrection ? "Return to Observation" : "Done", systemImage: "checkmark") {
+                SecondaryActionButton(title: fromCorrection ? "Back to Observation" : "Done", systemImage: "checkmark") {
                     finish()
                 }
+                .accessibilityIdentifier("status.done")
             }
             .padding(.horizontal, FieldTheme.m)
             .padding(.vertical, FieldTheme.l)
         }
         .fieldScreen()
         .navigationTitle(fromCorrection ? "Revision Status" : "Submission Status")
+        .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden()
     }
 
@@ -223,116 +369,203 @@ struct SubmissionStatusView: View {
     }
 }
 
-struct SubmissionStatusHero: View {
-    let sync: SyncState
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: FieldTheme.s) {
-            HStack(spacing: FieldTheme.m) {
-                if sync == .syncing {
-                    ProgressView().controlSize(.large).tint(sync.color)
-                } else {
-                    Image(systemName: sync.icon)
-                        .font(.title2)
-                        .foregroundStyle(sync.color)
-                }
-                Text(statusTitle)
-                    .font(.title.bold())
-            }
-            Text(statusDetail)
-                .font(.headline)
-                .foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    private var statusTitle: LocalizedStringResource {
-        switch sync {
-        case .savedLocally, .waiting: "Saved on This Phone"
-        case .syncing: "Syncing"
-        case .synced: "In the Archive"
-        case .failed: "Sync Failed"
-        }
-    }
-
-    private var statusDetail: String {
-        switch sync {
-        case .savedLocally: "Saved · \(Date.now.formatted(date: .omitted, time: .shortened))"
-        case .waiting: "Waiting to Sync"
-        case .syncing: "Sending"
-        case .synced: "Confirmed · \(Date.now.formatted(date: .omitted, time: .shortened))"
-        case .failed: "Retry Available"
-        }
-    }
-}
-
-struct SubmissionRecordSummary: View {
+private struct StatusHero: View {
     let record: ObservationRecord
 
     var body: some View {
-        VStack(alignment: .leading, spacing: FieldTheme.s) {
-            Text(record.site.name)
-                .font(.headline)
-            Text("\(record.date.fieldTimestamp) · \(String(localized: record.testType.title))")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+        HStack(alignment: .top, spacing: FieldTheme.m) {
+            Group {
+                if record.sync == .syncing {
+                    ProgressView()
+                } else {
+                    Image(systemName: icon).font(.title2.weight(.semibold)).foregroundStyle(color)
+                }
+            }
+            .frame(width: 52, height: 52)
+            .background(tileColor, in: RoundedRectangle(cornerRadius: FieldTheme.radiusS, style: .continuous))
+            .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: FieldTheme.xs) {
+                Text(title).font(.title2.bold()).foregroundStyle(FieldTheme.ink)
+                Text(detail).font(.subheadline).foregroundStyle(FieldTheme.inkMuted).fixedSize(horizontal: false, vertical: true)
+            }
         }
+        .accessibilityElement(children: .combine)
+    }
+
+    private var title: LocalizedStringResource {
+        switch record.sync {
+        case .savedLocally, .waiting: return "Saved on this phone"
+        case .syncing: return "Sending to the archive"
+        case .failed: return "Not sent yet"
+        case .synced: return record.workflow == .pendingReview ? "Waiting for review" : record.workflow.title
+        }
+    }
+
+    private var detail: LocalizedStringResource {
+        switch record.sync {
+        case .savedLocally, .waiting: return "It will send automatically when you are back online."
+        case .syncing: return "Waiting for the archive to confirm."
+        case .failed: return "It is safe on this phone. Retry when you are online."
+        case .synced:
+            switch record.workflow {
+            case .submitted, .resubmitted, .validating: return "Received. Automated checks run next."
+            case .pendingReview: return "Your submission is with the research team."
+            case .needsCorrection: return "A reviewer asked for a correction."
+            case .approved: return "Approved by a reviewer. Public release happens separately."
+            case .rejected: return "A reviewer rejected this revision. It will not be published."
+            case .publishing: return "Approved and being published."
+            case .publishFailed: return "Approved. Publication did not finish, and the program team will retry."
+            case .published: return "Published without your name or other collector details."
+            case .draft: return "Not yet submitted."
+            }
+        }
+    }
+
+    private var icon: String { record.sync == .synced ? record.workflow.icon : record.sync.icon }
+    private var color: Color { record.sync == .synced ? record.workflow.color : record.sync.color }
+    private var tileColor: Color {
+        guard record.sync == .synced else { return record.sync == .failed ? StatusTone.error.background : FieldTheme.surfaceRaised }
+        return record.workflow.tone == .neutral ? FieldTheme.surfaceRaised : record.workflow.tone.background
     }
 }
 
-struct SubmissionTruthPanel: View {
+/// The path an observation takes, from this phone to public release. Each stage states its own
+/// outcome in words; approval and publication are separate stages.
+struct ObservationLifecycleView: View {
     let workflow: WorkflowState
     let sync: SyncState
 
     var body: some View {
-        VStack(alignment: .leading, spacing: FieldTheme.l) {
-            KeyValueRow(label: "Record State", value: String(localized: workflow.title), emphasized: true)
-            KeyValueRow(label: "Archive", value: sync == .synced ? "Confirmed" : "Not Confirmed", emphasized: true)
-        }
-    }
-}
-
-struct SyncProgressTimeline: View {
-    let sync: SyncState
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: FieldTheme.m) {
-            FieldSectionHeader(title: "Sync")
-            SyncTimelineRow(title: "Saved on This Phone", detail: "Saved", complete: true, active: false)
-            SyncTimelineRow(title: "Waiting to Sync", detail: sync == .waiting ? "Queued" : nil, complete: sync != .savedLocally, active: sync == .waiting)
-            SyncTimelineRow(title: "Syncing", detail: sync == .syncing ? "Sending" : nil, complete: sync == .synced, active: sync == .syncing)
-            SyncTimelineRow(title: "Synced", detail: sync == .synced ? "Confirmed" : nil, complete: sync == .synced, active: false)
-            if sync == .failed {
-                SyncTimelineRow(title: "Sync Failed", detail: "Retry Available", complete: false, active: true, error: true)
+        let stages = stages
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(Array(stages.enumerated()), id: \.element.title) { index, stage in
+                LifecycleRow(stage: stage, next: index + 1 < stages.count ? stages[index + 1] : nil)
             }
         }
     }
+
+    struct Stage {
+        enum State { case done, active, attention, failed, upcoming, skipped }
+        let title: String
+        let detail: String?
+        let state: State
+    }
+
+    private var stages: [Stage] {
+        let received = sync == .synced
+        let validated: Set<WorkflowState> = [.pendingReview, .needsCorrection, .approved, .rejected, .publishing, .publishFailed, .published]
+        let reviewed: Set<WorkflowState> = [.approved, .rejected, .publishing, .publishFailed, .published]
+
+        let archiveState: Stage.State = received ? .done : (sync == .failed ? .failed : .active)
+        let archiveDetail: String? = sync == .failed ? String(localized: "Sync failed. Retry is available.") : (received ? nil : String(localized: sync.title))
+
+        let validationState: Stage.State = !received ? .upcoming : (validated.contains(workflow) ? .done : .active)
+
+        let reviewDetail: String?
+        let reviewState: Stage.State
+        switch workflow {
+        case .approved, .publishing, .publishFailed, .published: reviewDetail = String(localized: "Approved"); reviewState = .done
+        case .rejected: reviewDetail = String(localized: "Rejected"); reviewState = .failed
+        case .needsCorrection: reviewDetail = String(localized: "Correction requested"); reviewState = .attention
+        case .pendingReview: reviewDetail = String(localized: "Waiting for a reviewer"); reviewState = .active
+        default: reviewDetail = nil; reviewState = .upcoming
+        }
+
+        let releaseDetail: String?
+        let releaseState: Stage.State
+        switch workflow {
+        case .approved: releaseDetail = String(localized: "Approved, not yet published"); releaseState = .active
+        case .publishing: releaseDetail = String(localized: "Publishing"); releaseState = .active
+        case .publishFailed: releaseDetail = String(localized: "Publication failed. The program team will retry."); releaseState = .failed
+        case .published: releaseDetail = String(localized: "Published without collector details"); releaseState = .done
+        case .rejected: releaseDetail = String(localized: "Not published"); releaseState = .skipped
+        default: releaseDetail = nil; releaseState = .upcoming
+        }
+
+        return [
+            Stage(title: String(localized: "Saved on this phone"), detail: nil, state: .done),
+            Stage(title: String(localized: "Received by the archive"), detail: archiveDetail, state: archiveState),
+            Stage(title: String(localized: "Automated validation"), detail: nil, state: validationState),
+            Stage(title: String(localized: "QC review"), detail: reviewDetail, state: received ? reviewState : .upcoming),
+            Stage(title: String(localized: "Public release"), detail: releaseDetail, state: releaseState),
+        ]
+    }
 }
 
-struct SyncTimelineRow: View {
-    let title: LocalizedStringResource
-    let detail: LocalizedStringResource?
-    let complete: Bool
-    let active: Bool
-    var error = false
+private struct LifecycleRow: View {
+    let stage: ObservationLifecycleView.Stage
+    /// The following stage, if any; the connector below this row is drawn solid once that stage has begun.
+    let next: ObservationLifecycleView.Stage?
+    @ScaledMetric(relativeTo: .title3) private var iconSize: CGFloat = 26
 
     var body: some View {
-        HStack(spacing: FieldTheme.m) {
-            Image(systemName: complete ? "checkmark.circle.fill" : (active ? "circle.inset.filled" : "circle"))
-                .foregroundStyle(error ? Color.red : (complete ? FieldTheme.fern : (active ? FieldTheme.water : Color.secondary)))
-            VStack(alignment: .leading, spacing: FieldTheme.xs) {
-                Text(title)
-                    .font(.body.weight(active ? .semibold : .regular))
-                    .foregroundStyle(error ? .red : .primary)
-                if let detail {
-                    Text(detail)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
+        HStack(alignment: .top, spacing: FieldTheme.m) {
+            Image(systemName: icon)
+                .font(.title3)
+                .foregroundStyle(color)
+                .frame(width: 28, height: iconSize)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(stage.title)
+                    .font(.body.weight(stage.state == .upcoming || stage.state == .skipped ? .regular : .semibold))
+                    .foregroundStyle(stage.state == .upcoming || stage.state == .skipped ? FieldTheme.inkMuted : FieldTheme.ink)
+                if let detail = stage.detail {
+                    Text(detail).font(.subheadline).foregroundStyle(FieldTheme.inkMuted)
                 }
             }
-            Spacer()
-            if active && !error { ProgressView().controlSize(.small) }
+            .padding(.bottom, next == nil ? 0 : 18)
+            Spacer(minLength: 0)
+        }
+        .overlay(alignment: .topLeading) {
+            if next != nil {
+                Rectangle()
+                    .fill(connectorColor)
+                    .frame(width: 2)
+                    .padding(.top, iconSize + 2)
+                    // Runs into the next row so the rail reads as one continuous line.
+                    .padding(.bottom, -2)
+                    .padding(.leading, 13)
+                    .accessibilityHidden(true)
+            }
         }
         .accessibilityElement(children: .combine)
+        .accessibilityValue(Text(stateLabel))
+    }
+
+    private var icon: String {
+        switch stage.state {
+        case .done: "checkmark.circle.fill"
+        case .active: "circle.dotted.circle"
+        case .attention: "exclamationmark.bubble.fill"
+        case .failed: "xmark.octagon.fill"
+        case .upcoming: "circle"
+        case .skipped: "minus.circle"
+        }
+    }
+
+    private var color: Color {
+        switch stage.state {
+        case .done: FieldTheme.fern
+        case .active: FieldTheme.water
+        case .attention: FieldTheme.goldenrod
+        case .failed: FieldTheme.alert
+        case .upcoming, .skipped: FieldTheme.lineInput
+        }
+    }
+
+    private var connectorColor: Color {
+        guard let next, stage.state == .done else { return FieldTheme.line }
+        return next.state == .upcoming || next.state == .skipped ? FieldTheme.line : FieldTheme.fern
+    }
+
+    private var stateLabel: LocalizedStringResource {
+        switch stage.state {
+        case .done: "Complete"
+        case .active: "In progress"
+        case .attention: "Needs your attention"
+        case .failed: "Did not complete"
+        case .upcoming: "Not started"
+        case .skipped: "Not applicable"
+        }
     }
 }

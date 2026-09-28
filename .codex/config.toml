@@ -1,0 +1,5 @@
+# Project-only connection; uses the existing Firebase CLI login, no stored tokens.
+[mcp_servers.watershed_firebase]
+command = "bash"
+args = ["scripts/dev.sh", "firebase-mcp"]
+startup_timeout_sec = 60

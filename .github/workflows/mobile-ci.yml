@@ -25,6 +25,8 @@ concurrency:
   group: pa-watershed-ci-${{ github.ref }}
   cancel-in-progress: true
 
+# Android native CI is deferred for the iOS 1.0 release cycle and runs only on demand from
+# .github/workflows/android-deferred.yml. See docs/ROADMAP.md.
 jobs:
   backend-contracts:
     name: Backend contracts and security rules
@@ -72,28 +74,6 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm run build
-
-  android:
-    name: Android native
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: Phone App/Android App
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '17'
-      - uses: gradle/actions/setup-gradle@v4
-      - name: Unit, lint, debug, minified release, and instrumentation APKs
-        run: ./gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:assembleRelease :app:assembleDebugAndroidTest
-      - name: Room and repository instrumentation
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 34
-          arch: x86_64
-          script: cd 'Phone App/Android App' && ./gradlew :app:connectedDebugAndroidTest
 
   ios:
     name: iOS native

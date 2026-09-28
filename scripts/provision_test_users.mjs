@@ -1,63 +1,54 @@
 #!/usr/bin/env node
-// Provisions the fixed set of human-readable dev/test identities (2 collectors, 1 QC
-// reviewer, 1 admin) used across iOS/Android manual testing and CI smoke tests.
+// Provisions role-separated test identities in the Firebase Emulator Suite only.
 //
-// Sets the Firebase Auth displayName (the source both native apps already read for
-// "friendly name" display) and the `role` custom claim (the source Firestore/Storage
-// security rules already read), and mirrors a matching `users/{uid}` Firestore doc.
-//
-// Safe by default: requires --apply to write anything; otherwise prints a dry-run plan.
-// Refuses to run against any project other than the configured dev project, so it can
-// never accidentally touch real production accounts.
+// This script is intentionally incapable of creating persistent live-dev users.
+// Automated/manual test identities belong in the local Auth + Firestore emulators;
+// the live development project keeps only the single persistent human admin account.
 //
 // Usage:
-//   node scripts/provision_test_users.mjs                # dry run
-//   QC_DEV_TEST_PASSWORD='temporary secret' node scripts/provision_test_users.mjs --apply
+//   node scripts/provision_test_users.mjs
+//   FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099 \
+//   FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 \
+//   node scripts/provision_test_users.mjs --apply
 //
-// Requires Application Default Credentials for the central-pa-watershed-dev project
-// (e.g. `gcloud auth application-default login` or GOOGLE_APPLICATION_CREDENTIALS),
-// or FIREBASE_AUTH_EMULATOR_HOST / FIRESTORE_EMULATOR_HOST set to target the emulator.
+// No password is created or printed. These identities exist only inside the emulator
+// session and are used to preserve COLLECTOR / QC_REVIEWER / ADMIN role separation.
 
 import { initializeApp } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 
-const DEV_PROJECT_ID = 'central-pa-watershed-dev';
+const PROJECT_ID = 'central-pa-watershed-dev';
 
 const TEST_USERS = [
-  { email: 'test.collector.01@central-pa-watershed-dev.local', displayName: 'Test Collector 01', role: 'COLLECTOR' },
-  { email: 'test.collector.02@central-pa-watershed-dev.local', displayName: 'Test Collector 02', role: 'COLLECTOR' },
-  { email: 'test.qc.reviewer@central-pa-watershed-dev.local', displayName: 'Test QC Reviewer', role: 'QC_REVIEWER' },
-  { email: 'test.admin@central-pa-watershed-dev.local', displayName: 'Test Admin', role: 'ADMIN' },
+  { email: 'test.collector.01@emulator.invalid', displayName: 'Test Collector 01', role: 'COLLECTOR' },
+  { email: 'test.collector.02@emulator.invalid', displayName: 'Test Collector 02', role: 'COLLECTOR' },
+  { email: 'test.qc.reviewer@emulator.invalid', displayName: 'Test QC Reviewer', role: 'QC_REVIEWER' },
+  { email: 'test.admin@emulator.invalid', displayName: 'Test Admin', role: 'ADMIN' },
 ];
 
 const apply = process.argv.includes('--apply');
-const temporaryPassword = process.env.QC_DEV_TEST_PASSWORD;
+const authHost = process.env.FIREBASE_AUTH_EMULATOR_HOST;
+const firestoreHost = process.env.FIRESTORE_EMULATOR_HOST;
 
-console.log(`Target project: ${DEV_PROJECT_ID}${apply ? ' (APPLY)' : ' (dry run)'}`);
+console.log(`Target: Firebase Emulator Suite for ${PROJECT_ID}${apply ? ' (APPLY)' : ' (dry run)'}`);
 
 if (!apply) {
   for (const { email, displayName, role } of TEST_USERS) {
-    console.log(`[dry-run] ensure ${email} -> displayName="${displayName}" role=${role}`);
+    console.log(`[dry-run] ensure emulator identity ${email} -> displayName="${displayName}" role=${role}`);
   }
-  console.log('\nDry run only — no credentials were loaded and no changes were made.');
-  console.log('Set QC_DEV_TEST_PASSWORD (minimum 6 characters) and re-run with --apply.');
+  console.log('\nDry run only. --apply is accepted only when both Auth and Firestore emulator hosts are set.');
   process.exit(0);
 }
 
-if (!temporaryPassword || temporaryPassword.length < 6) {
-  console.error('QC_DEV_TEST_PASSWORD must be set to at least 6 characters for --apply. It is never stored in source.');
+if (!authHost || !firestoreHost) {
+  console.error(
+    'Refusing to run outside the Firebase Emulator Suite. Set both FIREBASE_AUTH_EMULATOR_HOST and FIRESTORE_EMULATOR_HOST.',
+  );
   process.exit(1);
 }
 
-const app = initializeApp({ projectId: DEV_PROJECT_ID });
-const usingEmulator = Boolean(process.env.FIREBASE_AUTH_EMULATOR_HOST || process.env.FIRESTORE_EMULATOR_HOST);
-
-if (!usingEmulator && app.options.projectId !== DEV_PROJECT_ID) {
-  console.error(`Refusing to run: resolved project '${app.options.projectId}' is not the dev project '${DEV_PROJECT_ID}'.`);
-  process.exit(1);
-}
-
+const app = initializeApp({ projectId: PROJECT_ID });
 const auth = getAuth(app);
 const db = getFirestore(app);
 
@@ -67,22 +58,16 @@ async function upsertUser({ email, displayName, role }) {
     userRecord = await auth.getUserByEmail(email);
   } catch (error) {
     if (error.code !== 'auth/user-not-found') throw error;
-    userRecord = null;
-  }
-
-  const plan = { email, displayName, role, action: userRecord ? 'update' : 'create', uid: userRecord?.uid ?? '(new)' };
-  console.log(`[${apply ? 'apply' : 'dry-run'}] ${plan.action} ${email} -> displayName="${displayName}" role=${role} uid=${plan.uid}`);
-
-  if (!userRecord) {
     userRecord = await auth.createUser({
       email,
-      password: temporaryPassword,
       emailVerified: true,
       displayName,
       disabled: false,
     });
-  } else if (userRecord.displayName !== displayName) {
-    await auth.updateUser(userRecord.uid, { displayName });
+  }
+
+  if (userRecord.displayName !== displayName || userRecord.disabled) {
+    userRecord = await auth.updateUser(userRecord.uid, { displayName, disabled: false });
   }
 
   await auth.setCustomUserClaims(userRecord.uid, { role });
@@ -97,12 +82,12 @@ async function upsertUser({ email, displayName, role }) {
     updated_at: FieldValue.serverTimestamp(),
   }, { merge: true });
 
-  return { ...plan, uid: userRecord.uid };
+  console.log(`[emulator] ready ${email} role=${role} uid=${userRecord.uid}`);
+  return userRecord.uid;
 }
 
-const results = [];
 for (const user of TEST_USERS) {
-  results.push(await upsertUser(user));
+  await upsertUser(user);
 }
 
-console.log(`Provisioned ${results.length} dev accounts. Existing account passwords were not changed.`);
+console.log(`Provisioned ${TEST_USERS.length} emulator-only test identities. No live Firebase Auth users were created.`);

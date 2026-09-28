@@ -1,6 +1,5 @@
 package org.watershed.pawatershedwatch
 
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -39,10 +38,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -51,16 +49,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 @Composable
-fun BrandMark(modifier: Modifier = Modifier, color: Color = MaterialTheme.colorScheme.primary) {
-    Canvas(modifier = modifier.size(52.dp).semantics { contentDescription = "PA Watershed Watch" }) {
-        val stroke = 4.dp.toPx()
-        drawCircle(color, radius = size.minDimension * .12f, center = Offset(size.width * .25f, size.height * .27f))
-        drawCircle(color, radius = size.minDimension * .08f, center = Offset(size.width * .55f, size.height * .18f))
-        drawCircle(color, radius = size.minDimension * .15f, center = Offset(size.width * .69f, size.height * .39f))
-        drawCircle(color, radius = size.minDimension * .18f, center = Offset(size.width * .39f, size.height * .52f))
-        drawLine(color, Offset(size.width * .1f, size.height * .78f), Offset(size.width * .9f, size.height * .78f), stroke, StrokeCap.Round)
-        drawLine(color, Offset(size.width * .2f, size.height * .9f), Offset(size.width * .8f, size.height * .9f), stroke, StrokeCap.Round)
-    }
+fun BrandMark(modifier: Modifier = Modifier) {
+    androidx.compose.foundation.Image(
+        painter = painterResource(R.drawable.brand_icon),
+        contentDescription = "PA Watershed Watch",
+        modifier = modifier.size(52.dp).clip(RoundedCornerShape(12.dp)),
+    )
 }
 
 @Composable

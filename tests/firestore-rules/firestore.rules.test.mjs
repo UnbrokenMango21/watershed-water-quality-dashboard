@@ -180,6 +180,18 @@ test('collector cannot create a submission owned by another uid', async () => {
   await assertFails(setDoc(doc(db, `submissions/${submissionId}`), draftSubmission()));
 });
 
+test('ADMIN can create and manage a submission it owns', async () => {
+  const db = env.authenticatedContext('admin-1', { role: 'ADMIN' }).firestore();
+  await assertSucceeds(setDoc(
+    doc(db, `submissions/${submissionId}`),
+    draftSubmission({ collector_user_id: 'admin-1' }),
+  ));
+  await assertSucceeds(updateDoc(doc(db, `submissions/${submissionId}`), {
+    mobile_app_version: '0.1.1-admin-test',
+    updated_at: nowString(),
+  }));
+});
+
 test('collector cannot inject server-owned fields into submission creation', async () => {
   const db = env.authenticatedContext('collector-a').firestore();
   await assertFails(setDoc(doc(db, `submissions/${submissionId}`), draftSubmission({ overall_quality_score: 99 })));
@@ -199,8 +211,36 @@ test('collector cannot read another collector submission', async () => {
 
 test('QC reviewer can read collector submission', async () => {
   await seed(`submissions/${submissionId}`, draftSubmission());
+  await seed('users/reviewer-1', { display_name: 'Reviewer One', role: 'QC_REVIEWER', active: true });
   const db = env.authenticatedContext('reviewer-1', { role: 'QC_REVIEWER' }).firestore();
   await assertSucceeds(getDoc(doc(db, `submissions/${submissionId}`)));
+});
+
+test('reviewer reads need an active reviewer profile, matching the review API', async () => {
+  await seed(`submissions/${submissionId}`, draftSubmission({ status: 'PENDING_REVIEW' }));
+  await seed('users/collector-b', { display_name: 'Collector B', role: 'COLLECTOR', active: true });
+  const read = (uid, claims) => getDoc(doc(env.authenticatedContext(uid, claims).firestore(), `submissions/${submissionId}`));
+
+  // Claim without a profile, an inactive profile, or a non-reviewer profile: refused.
+  await assertFails(read('reviewer-noprofile', { role: 'QC_REVIEWER' }));
+  await seed('users/reviewer-inactive', { display_name: 'Inactive', role: 'QC_REVIEWER', active: false });
+  await assertFails(read('reviewer-inactive', { role: 'QC_REVIEWER' }));
+  await seed('users/reviewer-wrongrole', { display_name: 'Wrong role', role: 'COLLECTOR', active: true });
+  await assertFails(read('reviewer-wrongrole', { role: 'QC_REVIEWER' }));
+  await assertFails(read('admin-noprofile', { role: 'ADMIN' }));
+  // Profile without the claim: refused.
+  await seed('users/profile-only', { display_name: 'Profile only', role: 'QC_REVIEWER', active: true });
+  await assertFails(read('profile-only', {}));
+
+  // Active reviewer and admin profiles: allowed, and deactivation takes effect at once.
+  await seed('users/reviewer-1', { display_name: 'Reviewer One', role: 'QC_REVIEWER', active: true });
+  await assertSucceeds(read('reviewer-1', { role: 'QC_REVIEWER' }));
+  await seed('users/admin-1', { display_name: 'Admin One', role: 'ADMIN', active: true });
+  await assertSucceeds(read('admin-1', { role: 'ADMIN' }));
+  const adminDb = env.authenticatedContext('admin-1', { role: 'ADMIN' }).firestore();
+  await assertSucceeds(getDoc(doc(adminDb, 'users/collector-b')));
+  await seed('users/reviewer-1', { display_name: 'Reviewer One', role: 'QC_REVIEWER', active: false });
+  await assertFails(read('reviewer-1', { role: 'QC_REVIEWER' }));
 });
 
 test('collector can transition own submission DRAFT to SUBMITTED', async () => {
@@ -538,6 +578,19 @@ test('QC reviewer browser cannot edit science, create audit, or escalate role', 
   await assertFails(updateDoc(doc(db, `submissions/${submissionId}/revisions/${revisionId}/measurements/m-1`), { value: 9.9 }));
   await assertFails(setDoc(doc(db, `submissions/${submissionId}/audit/forged`), { event_type: 'REVIEW_APPROVED' }));
   await assertFails(updateDoc(doc(db, 'users/reviewer-1'), { role: 'ADMIN' }));
+});
+
+test('collector reads only their own profile and cannot write it directly, even the display name', async () => {
+  await seed('users/collector-a', { display_name: 'Collector A', role: 'COLLECTOR', active: true });
+  await seed('users/collector-b', { display_name: 'Collector B', role: 'COLLECTOR', active: true });
+  const db = env.authenticatedContext('collector-a').firestore();
+
+  await assertSucceeds(getDoc(doc(db, 'users/collector-a')));
+  await assertFails(getDoc(doc(db, 'users/collector-b')));
+  // The only self-service profile write is the server callable `updateMyDisplayName`.
+  await assertFails(updateDoc(doc(db, 'users/collector-a'), { display_name: 'Renamed Directly' }));
+  await assertFails(updateDoc(doc(db, 'users/collector-a'), { role: 'ADMIN' }));
+  await assertFails(setDoc(doc(db, 'users/collector-new'), { display_name: 'Self Provisioned' }));
 });
 
 test('ADMIN browser also uses the server review path and cannot write workflow directly', async () => {

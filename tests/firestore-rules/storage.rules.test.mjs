@@ -84,6 +84,11 @@ test('reviewer can read but cannot upload collector media', async () => {
   const owner = env.authenticatedContext('collector-a');
   await assertSucceeds(upload(owner, attachmentId));
   const reviewer = env.authenticatedContext('reviewer-1', { role: 'QC_REVIEWER' });
+  // The claim alone is not enough; the reviewer needs an active reviewer profile.
+  await assertFails(getBytes(ref(reviewer.storage(), attachmentPath(attachmentId))));
+  await env.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), 'users/reviewer-1'), { display_name: 'Reviewer One', role: 'QC_REVIEWER', active: true });
+  });
   await assertSucceeds(getBytes(ref(reviewer.storage(), attachmentPath(attachmentId))));
   const forgedId = '55555555-5555-4555-8555-555555555533';
   await assertFails(upload(reviewer, forgedId, { contentType: 'image/png', extension: 'png' }));

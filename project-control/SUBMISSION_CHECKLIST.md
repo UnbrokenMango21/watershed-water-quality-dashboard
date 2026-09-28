@@ -1,0 +1,21 @@
+# Submission Checklist
+
+- [x] Architecture/privacy/status/test matrix documented.
+- [x] Independent Antigravity audit retained.
+- [x] Fresh local software verification and integration CI evidence recorded in [the verification report](../docs/VERIFICATION_REPORT.md) and [draft release PR #34](https://github.com/UnbrokenMango21/watershed-water-quality-dashboard/pull/34). Recheck the exact final `main` SHA before release.
+- [x] Apply the supplied watershed mark to the iOS and Android app icons and in-app identity; preserve editable artwork and store exports in [the brand package](../submission/brand/README.md). Local iOS simulator tests and Android unit tests, lint, and release bundle pass at `3a0547a`.
+- [x] Update the existing App Store Connect **draft** description, promotional text, and keywords from the supplied standalone brand package. Name and subtitle already match. No public submission was made.
+- [x] Prepare Build 14 TestFlight testing instructions without reusing the supplied Build 13 wording.
+- [ ] Confirm Build 14 is uploaded, processed, and available to the internal TestFlight group; then install it on a physical iPhone. Build 13 is the prior beta and does not contain the new brand and Google Sign-In path.
+- [ ] Capture real, redacted iOS and Android app screenshots for both store listings. The supplied screenshot templates are placeholders and must not be uploaded.
+- [ ] Replace the GitHub-issues support URL with a dedicated public support page and monitored owner-provided email.
+- [ ] Confirm legal entity, privacy-policy owner and public URL, and the final [privacy worksheet](../submission/brand/privacy-review-worksheet.csv) using [native SDK evidence](../submission/brand/SDK_EVIDENCE.md).
+- [ ] Verify which Google account owns the Play Console record. The currently signed-in Chrome account opens the developer-account signup page; do not create a duplicate record or account.
+- [ ] Physical Build 13 evidence captured.
+- [ ] Real reviewer login/readback captured.
+- [ ] First non-test publication proof captured.
+- [ ] Final red-team review complete.
+- [ ] Submission package stale-link review complete.
+- [ ] Supervisor email drafted from actual thread.
+- [ ] Workday entries prepared from evidence only.
+- [ ] Human performs final Workday certification if required.

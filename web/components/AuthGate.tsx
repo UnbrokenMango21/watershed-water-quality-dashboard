@@ -11,13 +11,14 @@
  * Admin-SDK token verification. Hiding the UI proves nothing on its own.
  */
 import { createContext, useCallback, useContext, useEffect, useState, type FormEvent, type ReactNode } from 'react';
-import { onAuthStateChanged, signInWithEmailAndPassword, signOut, type User } from 'firebase/auth';
+import { onAuthStateChanged, sendPasswordResetEmail, signInWithEmailAndPassword, signOut, type User } from 'firebase/auth';
 
 import { Icon } from '@/components/icons';
 import { Notice } from '@/components/ui';
-import { clientAuth, isFirebaseConfigured } from '@/lib/firebase-client';
+import { doc, getDoc } from 'firebase/firestore';
+import { clientAuth, clientDb, isFirebaseConfigured } from '@/lib/firebase-client';
+import { createAuthSequence, resolveReviewerGate } from '@/lib/reviewerGate.mjs';
 
-const REVIEWER_ROLES = new Set(['QC_REVIEWER', 'ADMIN']);
 
 type GateState =
   | { kind: 'loading' }
@@ -74,12 +75,14 @@ function AppBar({ session }: { session: ReviewerSession | null }) {
   return (
     <header className="appbar">
       <a className="brand" href="/review">
-        <span className="brand-mark" aria-hidden="true">
-          <Icon name="waves" size={17} strokeWidth={2} />
-        </span>
+        <picture className="brand-mark">
+          <source srcSet="/brand/pww-mark-on-dark.svg" media="(prefers-color-scheme: dark)" />
+          {/* eslint-disable-next-line @next/next/no-img-element -- static SVG mark, no optimisation needed */}
+          <img src="/brand/pww-mark-master.svg" alt="" width={22} height={26} />
+        </picture>
         <span className="brand-text">
-          <strong>Watershed Watch QC Console</strong>
-          <span>Central Pennsylvania · Scientific submission review</span>
+          <strong>PA Watershed Watch</strong>
+          <span>Quality review</span>
         </span>
       </a>
 
@@ -87,14 +90,7 @@ function AppBar({ session }: { session: ReviewerSession | null }) {
 
       {session ? (
         <div className="appbar-actions">
-          <a
-            className="icon-btn"
-            href="https://docs.firebase.google.com"
-            target="_blank"
-            rel="noreferrer"
-            aria-label="Help and documentation"
-            title="Help and documentation"
-          >
+          <a className="icon-btn" href="/help" aria-label="Reviewer help" data-tooltip="Reviewer help">
             <Icon name="help" size={17} />
           </a>
           <div className="user-chip">
@@ -105,13 +101,13 @@ function AppBar({ session }: { session: ReviewerSession | null }) {
               <strong>{session.user.email ?? session.user.uid}</strong>
               <span>
                 <span className="sr-only">Role: </span>
-                {session.role.replace(/_/g, ' ')}
+                {session.role === 'ADMIN' ? 'Administrator' : session.role === 'QC_REVIEWER' ? 'QC reviewer' : session.role}
               </span>
             </span>
           </div>
-          <button type="button" className="signout" onClick={() => void signOut(clientAuth())}>
+          <button type="button" className="signout" onClick={() => void signOut(clientAuth())} title="Sign out">
             <Icon name="logOut" size={14} />
-            Sign out
+            <span className="signout-label">Sign out</span>
           </button>
         </div>
       ) : null}
@@ -125,6 +121,20 @@ export default function AuthGate({ children }: { children: ReactNode }) {
   const [password, setPassword] = useState('');
   const [signingIn, setSigningIn] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [resetMessage, setResetMessage] = useState<string | null>(null);
+  const [sendingReset, setSendingReset] = useState(false);
+
+  async function handlePasswordReset() {
+    setFormError(null); setResetMessage(null); setSendingReset(true);
+    try {
+      await sendPasswordResetEmail(clientAuth(), email.trim());
+      setResetMessage('If this email has an account, Firebase will send a link to set your password.');
+    } catch (error) {
+      if ((error as { code?: string }).code === 'auth/user-not-found') {
+        setResetMessage('If this email has an account, Firebase will send a link to set your password.');
+      } else { setFormError(friendlyAuthError(error)); }
+    } finally { setSendingReset(false); }
+  }
 
   useEffect(() => {
     if (!isFirebaseConfigured()) {
@@ -136,20 +146,32 @@ export default function AuthGate({ children }: { children: ReactNode }) {
       return;
     }
 
-    return onAuthStateChanged(clientAuth(), (user) => {
+    // Each auth event starts a new generation; a lookup for an earlier user or a signed-out session
+    // never applies after a later event has been handled.
+    const sequence = createAuthSequence();
+    const unsubscribe = onAuthStateChanged(clientAuth(), (user) => {
+      const isCurrent = sequence.begin();
       if (!user) {
         setState({ kind: 'signed-out' });
         return;
       }
-      // The role lives on the ID token's custom claims, not in the app.
-      user
-        .getIdTokenResult()
-        .then((token) => {
-          const role = typeof token.claims.role === 'string' ? token.claims.role : 'COLLECTOR';
-          setState(REVIEWER_ROLES.has(role) ? { kind: 'ready', user, role } : { kind: 'unauthorized', user, role });
-        })
-        .catch(() => setState({ kind: 'unauthorized', user, role: 'UNKNOWN' }));
+      // The role lives on the ID token's custom claims, and the administrator-managed profile must
+      // be active. This only shapes the screen; the review API and the rules enforce access.
+      void resolveReviewerGate({
+        user,
+        readRole: async () => (await user.getIdTokenResult()).claims.role,
+        readProfile: async () => {
+          const profile = await getDoc(doc(clientDb(), 'users', user.uid));
+          return profile.exists() ? { active: profile.get('active'), role: profile.get('role') } : null;
+        },
+        isCurrent,
+        apply: (next) => setState({ kind: next.kind, user, role: next.role }),
+      });
     });
+    return () => {
+      sequence.invalidate();
+      unsubscribe();
+    };
   }, []);
 
   const handleSignIn = useCallback(
@@ -244,9 +266,16 @@ export default function AuthGate({ children }: { children: ReactNode }) {
               </button>
             </form>
 
+            <button type="button" className="btn" disabled={sendingReset || signingIn || !email.trim()} onClick={() => void handlePasswordReset()}>
+              {sendingReset ? 'Sending reset link…' : 'Set or reset password'}
+            </button>
+            {resetMessage && <p role="status">{resetMessage}</p>}
+
             <p className="auth-foot">
               <Icon name="info" size={14} />
-              <span>No public sign-up. Credentials are managed by the watershed program.</span>
+              <span>
+                Accounts are created by the program administrator. <a href="/help">How reviewing works</a>
+              </span>
             </p>
           </div>
         </div>

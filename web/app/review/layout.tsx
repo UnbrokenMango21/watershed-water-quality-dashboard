@@ -27,7 +27,7 @@ export default function ReviewLayout({ children }: { children: ReactNode }) {
             and the record take turns rather than squeezing side by side. */}
         <div className="workspace" data-mode={selectedId ? 'record' : 'list'}>
           <QueueRail selectedId={selectedId} />
-          <div className="record">{children}</div>
+          <main className="record">{children}</main>
         </div>
       </QueueProvider>
     </AuthGate>
