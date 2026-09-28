@@ -12,7 +12,7 @@ This runbook guides a human operator through the complete end-to-end lifecycle o
 4. **Active reviewer profile gate**: Reviewer reads and review decisions require an active, administrator-provisioned reviewer profile in Firestore (`users/{uid}` with `role: "QC_REVIEWER"` or `"ADMIN"` and `active: true`).
 5. **Approved-only publication**: Only the current human-approved revision (`reviewed_revision_id == current_revision_id == revision.revision_id`) is eligible to publish. Approval is distinct from publication success. Real observation approval is an **independent human scientific decision only if warranted**, never an automated or required pass step.
 6. **Privacy fail-closed**: Collector identities, reviewer identities, field notes, GPS accuracy, and internal workflow IDs are never published to public views or public dashboards.
-7. **Live publisher state & provenance prerequisite**: The live ArcGIS publisher Cloud Function (`publishApprovedObservation`) is currently **not deployed or enabled yet** (`ENABLE_ARCGIS_PUBLICATION_FUNCTION=false` by default). The public publication proof path (Phases 6 and 7) starts **only after** reviewed configuration and explicit authorization. If no provenance-cleared real observation is available, operators must stop at private workflow evidence; **never substitute `TEST-*` records (such as `TEST-014`) or unprovenanced legacy data for public proof**.
+7. **Live publisher state & provenance prerequisite**: The live ArcGIS publisher Cloud Function (`publishApprovedObservation`) is currently **not deployed or enabled yet** (`ENABLE_ARCGIS_PUBLICATION_FUNCTION=false` by default). The public publication proof path (Phases 6 and 7) starts **only after** reviewed configuration and explicit authorization. If no provenance-cleared real observation is available, operators must stop at private workflow evidence; **never substitute controlled TEST fixtures or legacy data without verified provenance for public proof**.
 
 ---
 
@@ -159,17 +159,18 @@ To maintain scientific integrity without compromising participant privacy or ope
   * **Restricted release records (outside Git)**: Reviewer email and Auth UID.
 
 ### Action 5.2 (Conditional): Request correction & submit Revision N+1
-* **Operator action (only if correction is required)**:
-  1. In QC Console, select the submission, enter a reviewer comment explaining the needed correction, and click **Request Correction**.
+* **Conditional trigger**: This action executes **only if an authentic reviewer request is issued for an actual, identified error** (such as an authentic transcription mistake, misread scale, or calibration ambiguity identified during scientific review). **Never alter a scientifically valid reading or fabricate an error to force a test.** If no authentic error exists and no correction is requested, skip directly to Action 5.3.
+* **Operator action (if authentic correction requested)**:
+  1. In QC Console, the reviewer enters specific feedback explaining the genuine error and clicks **Request Correction**.
   2. Submission status transitions to `NEEDS_CORRECTION`.
   3. On the physical iPhone: open the app; navigate to the **Observations** tab; select the flagged submission.
   4. Tap **Create Correction Revision**.
-  5. Inspect Revision 1 (read-only); make the required measurement correction; enter the mandatory explanation ("What did you check?").
+  5. Inspect Revision 1 (remains immutable, read-only); correct the genuine error; enter the mandatory explanation ("What did you check?").
   6. Tap **Resubmit as Revision N+1** (Revision 2).
 * **Stop gate**: Revision 1 remains completely unchanged in Firestore. Revision 2 is created with `revision_no: 2` and `parent_revision_id: <rev-1-id>`. Automated validation executes on Revision 2.
 * **Evidence to record**:
-  * **Public repository log**: Confirm Revision 1 remained immutable; confirm Revision 2 created with parent linkage and resubmitted.
-  * **Restricted release records (outside Git)**: Reviewer correction comment, Revision 1 hash, Revision 2 ID, and resubmission timestamp.
+  * **Public repository log**: Confirm Revision 1 remained immutable; if correction was authentically requested, confirm Revision 2 created with parent linkage and resubmitted; if uncorrected, confirm observation proceeded directly to review.
+  * **Restricted release records (outside Git)**: Authentic reviewer correction comment, Revision 1 hash, Revision 2 ID, and resubmission timestamp.
 
 ### Action 5.3: Independent human review decision (approval only if warranted)
 * **Operator action**:
@@ -201,7 +202,7 @@ To maintain scientific integrity without compromising participant privacy or ope
 > 1. Reviewed configuration and explicit authorization (setting `ENABLE_ARCGIS_PUBLICATION_FUNCTION=true`, valid item-scoped OAuth secrets, verified FeatureServer URL).
 > 2. An authorized human reviewer has approved an observation with **verified, provenance-cleared real scientific origin**.
 > 
-> **If no provenance-cleared observation is available, STOP AT PHASE 5.** Record the successful private workflow evidence. **Under no circumstances should `TEST-*` fixtures (such as `TEST-014`) or legacy inventory be substituted to force public proof.**
+> **If no provenance-cleared observation is available, STOP AT PHASE 5.** Record the successful private workflow evidence. **Under no circumstances should controlled TEST fixtures or legacy data without verified provenance be substituted to force public proof.**
 
 ### Action 6.1: Verify publication trigger & authoritative write
 * **Operator action** *(conditional on publisher deployment & authorized provenance)*:
@@ -233,7 +234,7 @@ To maintain scientific integrity without compromising participant privacy or ope
      * **Map Surface**: Verify the site marker appears at the exact cataloged coordinates in brand Deep Water with Limestone halo; verify selecting the site highlights the intersecting USGS HUC-12 watershed boundary in brand Hemlock.
      * **Site Details & Readings**: Verify approved Water Temperature and all entered parameters render with canonical units; verify "Reviewed" completeness badge.
      * **Time Series Graph**: Verify the newly published point appears on the trend line at the exact collection instant; click **CSV** export and verify the downloaded file contains public allowlist fields only.
-  3. **If Phase 6 was held at the gate (no publisher or test data only)**:
+  3. **If Phase 6 was held at the gate (no publisher enabled or controlled test fixtures only)**:
      * Verify the hosted dashboard remains in its verified, connected zero-data state (`Monitoring sites: 0`, `Latest sample: None yet`, `Watersheds: 0`, zero markers, search disabled, and no synthetic demo fallback).
 * **Stop gate**: Fails closed if any private field (collector name, reviewer UID, submission ID, internal notes) is visible in the UI, network payloads, or exported CSV. Fails if demo mode or synthetic records appear.
 * **Evidence to record**:
