@@ -16,7 +16,6 @@ import { Icon } from '@/components/icons';
 import { useQueue } from '@/components/QueueProvider';
 import { FlagSummary, QualityInline, StatusBadge, splitCounts } from '@/components/ui';
 import {
-  EMPTY,
   formatEasternDate,
   formatEasternTime,
   formatElapsed,
@@ -282,7 +281,7 @@ export default function QueueRail({ selectedId }: { selectedId: string | null })
                     {formatEasternTime(row.currentRevision?.collected_at)}
                   </span>
                   <span className="queue-row-end">
-                    {now === null ? EMPTY : `${formatElapsed(row.submission.updated_at, now)} waiting`}
+                    {now === null ? '' : `${formatElapsed(row.submission.updated_at, now)} waiting`}
                   </span>
                 </span>
                 <span className="queue-row">
@@ -293,7 +292,7 @@ export default function QueueRail({ selectedId }: { selectedId: string | null })
                   <Icon name="flask" size={13} />
                   <span>{formatText(row.currentRevision?.test_type)}</span>
                   <span className="queue-row-end">
-                    Rev {row.submission.current_revision_no ?? EMPTY}
+                    {row.submission.current_revision_no == null ? '' : `Rev ${row.submission.current_revision_no}`}
                   </span>
                 </span>
               </span>

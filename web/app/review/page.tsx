@@ -12,7 +12,7 @@ import { useEffect, useState } from 'react';
 import { Icon } from '@/components/icons';
 import { useQueue } from '@/components/QueueProvider';
 import { Notice, splitCounts } from '@/components/ui';
-import { EMPTY, formatElapsed, humanizeCode } from '@/lib/format';
+import { formatElapsed, humanizeCode } from '@/lib/format';
 import type { QueueRow } from '@/lib/types';
 
 function counts(row: QueueRow) {
@@ -43,7 +43,7 @@ export default function ReviewIndexPage() {
       const c = counts(row);
       return c.errors > 0 || c.warnings > 0;
     }).length ?? 0;
-  const oldest = rows && rows.length > 0 && now !== null ? formatElapsed(rows[0].submission.updated_at, now) : EMPTY;
+  const oldest = rows && rows.length > 0 && now !== null ? formatElapsed(rows[0].submission.updated_at, now) : 'None';
 
   return (
     <div className="record-inner">

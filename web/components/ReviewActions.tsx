@@ -23,7 +23,7 @@ import type { User } from 'firebase/auth';
 import { Icon, type IconName } from '@/components/icons';
 import { useQueue } from '@/components/QueueProvider';
 import { Badge, Notice } from '@/components/ui';
-import { EMPTY, humanizeCode } from '@/lib/format';
+import { humanizeCode } from '@/lib/format';
 import type { ReviewDecision, ReviewResult } from '@/lib/types';
 
 const DECISIONS: {
@@ -171,7 +171,7 @@ export default function ReviewActions({
           <Icon name="layers" size={14} />
           <span>
             <strong style={{ fontWeight: 600, color: 'var(--text-secondary)' }} title={expectedRevisionId ? `Revision ID ${expectedRevisionId}` : undefined}>
-              Deciding on revision {revisionNo ?? EMPTY}
+              {revisionNo == null ? 'Deciding on the current revision' : `Deciding on revision ${revisionNo}`}
             </strong>
             <br />
             If a newer revision arrives first, this decision will not be applied.

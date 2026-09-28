@@ -196,7 +196,7 @@ export function QualityBlock({ value }: { value: Nullable<number> }) {
     return (
       <div>
         <span className="figure-label">Overall quality</span>
-        <span className="quality-number faint">{EMPTY}</span>
+        <span className="figure-missing">Not available</span>
       </div>
     );
   }

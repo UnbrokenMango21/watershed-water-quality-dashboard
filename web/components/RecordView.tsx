@@ -36,6 +36,8 @@ import {
 } from '@/components/ui';
 import {
   EMPTY,
+  NOT_AVAILABLE,
+  NOT_RECORDED,
   formatBoolean,
   formatBytes,
   formatEastern,
@@ -93,7 +95,7 @@ function Fact({
       <span className="fact-body">
         <span className="fact-label">{label}</span>
         <span className="fact-value">{value}</span>
-        {sub != null && sub !== EMPTY ? <span className="fact-sub">{sub}</span> : null}
+        {sub != null && sub !== '' && sub !== EMPTY ? <span className="fact-sub">{sub}</span> : null}
       </span>
     </div>
   );
@@ -142,16 +144,28 @@ function Temperature({ revision }: { revision: RevisionDoc | null }) {
         <div>
           <span className="figure-label">Entered</span>
           <span className="figure">
-            {formatNumber(revision.temp_entered_value)}
-            <span className="figure-unit">°{revision.temp_entered_unit}</span>
+            {revision.temp_entered_value == null ? (
+              <span className="figure-missing">{NOT_RECORDED}</span>
+            ) : (
+              <>
+                {formatNumber(revision.temp_entered_value)}
+                <span className="figure-unit">°{revision.temp_entered_unit}</span>
+              </>
+            )}
           </span>
         </div>
         <Icon name="chevronRight" size={18} className="temp-arrow" />
         <div className="figure-canonical">
           <span className="figure-label">Canonical</span>
           <span className="figure">
-            {formatNumber(derivedValue)}
-            <span className="figure-unit">°{derivedUnit}</span>
+            {derivedValue == null ? (
+              <span className="figure-missing">{NOT_AVAILABLE}</span>
+            ) : (
+              <>
+                {formatNumber(derivedValue)}
+                <span className="figure-unit">°{derivedUnit}</span>
+              </>
+            )}
           </span>
         </div>
       </div>
@@ -213,7 +227,7 @@ function MeasurementsTable({ measurements }: { measurements: MeasurementDoc[] })
                   </th>
                   <td data-label="Entered">
                     <span className="mvalue">
-                      {formatNumber(measurement.entered_value)}
+                      {formatNumber(measurement.entered_value, undefined, NOT_RECORDED)}
                       <span className="mvalue-unit">{enteredUnit}</span>
                     </span>
                   </td>
@@ -229,9 +243,9 @@ function MeasurementsTable({ measurements }: { measurements: MeasurementDoc[] })
                   </td>
                   <td data-label="Method">
                     <span className="cell-sub" style={{ color: 'var(--text-secondary)' }}>
-                      {formatText(measurement.method_name)}
+                      {formatText(measurement.method_name, NOT_RECORDED)}
                     </span>
-                    <span className="cell-sub">{formatText(measurement.instrument_name)}</span>
+                    <span className="cell-sub">{formatText(measurement.instrument_name, NOT_RECORDED)}</span>
                   </td>
                   <td data-label="Entered at" className="nowrap">
                     <span className="cell-sub" style={{ color: 'var(--text-secondary)' }}>
@@ -474,36 +488,36 @@ export default function RecordView({ detail, user }: { detail: SubmissionDetail;
         <Fact
           icon="calendar"
           label="Collected"
-          value={formatEasternDate(currentRevision?.collected_at)}
-          sub={formatEasternTime(currentRevision?.collected_at)}
+          value={formatEasternDate(currentRevision?.collected_at, NOT_RECORDED)}
+          sub={formatEasternTime(currentRevision?.collected_at, '')}
         />
         <Fact
           icon="user"
           label="Collector"
-          value={formatText(currentRevision?.data_collected_by)}
+          value={formatText(currentRevision?.data_collected_by, NOT_RECORDED)}
         />
         <Fact
           icon="layers"
           label="Revision"
-          value={submission.current_revision_no ?? EMPTY}
+          value={submission.current_revision_no ?? NOT_AVAILABLE}
           sub={revisions.length > 0 ? `of ${revisions.length} on record` : undefined}
         />
         <Fact
           icon="upload"
           label="Submitted"
           value={formatEasternDate(submission.submitted_at)}
-          sub={formatEasternTime(submission.submitted_at)}
+          sub={formatEasternTime(submission.submitted_at, '')}
         />
         <Fact
           icon="flask"
           label="Test type"
-          value={formatText(currentRevision?.test_type)}
+          value={formatText(currentRevision?.test_type, NOT_RECORDED)}
           sub={currentRevision?.test_type_other ?? undefined}
         />
         <Fact
           icon="tool"
           label="Instrument"
-          value={formatText(currentRevision?.instrument_name)}
+          value={formatText(currentRevision?.instrument_name, NOT_RECORDED)}
           sub={currentRevision?.method_name ?? undefined}
         />
       </div>
@@ -560,7 +574,11 @@ export default function RecordView({ detail, user }: { detail: SubmissionDetail;
             <div className="metric">
               <span className="metric-label">Anomaly</span>
               <span className="metric-value">
-                {formatNumber(validation?.anomaly_score ?? submission.anomaly_score)}
+                {(validation?.anomaly_score ?? submission.anomaly_score) == null ? (
+                  <span className="figure-missing">{NOT_AVAILABLE}</span>
+                ) : (
+                  formatNumber(validation?.anomaly_score ?? submission.anomaly_score)
+                )}
               </span>
             </div>
           </div>
@@ -572,9 +590,9 @@ export default function RecordView({ detail, user }: { detail: SubmissionDetail;
             <KV label="Site code">{formatText(site?.site_code)}</KV>
             <KV label="County">{formatText(site?.county)}</KV>
             <KV label="Watershed">{formatText(site?.watershed_name)}</KV>
-            <KV label="Collected by">{formatText(currentRevision?.data_collected_by)}</KV>
-            <KV label="Collected at">{formatEastern(currentRevision?.collected_at)}</KV>
-            <KV label="Weather">{formatText(currentRevision?.weather_condition)}</KV>
+            <KV label="Collected by">{formatText(currentRevision?.data_collected_by, NOT_RECORDED)}</KV>
+            <KV label="Collected at">{formatEastern(currentRevision?.collected_at, NOT_RECORDED)}</KV>
+            <KV label="Weather">{formatText(currentRevision?.weather_condition, NOT_RECORDED)}</KV>
             <KV label="Time recorded">
               {currentRevision?.time_known === false || currentRevision?.time_imputed ? (
                 <Badge tone="warning" icon="alert">
@@ -591,10 +609,10 @@ export default function RecordView({ detail, user }: { detail: SubmissionDetail;
 
         <Panel title="Method" icon="tool">
           <dl className="kv">
-            <KV label="Test type">{formatText(currentRevision?.test_type)}</KV>
-            <KV label="Method">{formatText(currentRevision?.method_name)}</KV>
+            <KV label="Test type">{formatText(currentRevision?.test_type, NOT_RECORDED)}</KV>
+            <KV label="Method">{formatText(currentRevision?.method_name, NOT_RECORDED)}</KV>
             <KV label="Instrument">
-              {formatText(currentRevision?.instrument_name)}
+              {formatText(currentRevision?.instrument_name, NOT_RECORDED)}
               {currentRevision?.instrument_other ? `, ${currentRevision.instrument_other}` : ''}
             </KV>
             <KV label="Revision state">{humanizeCode(currentRevision?.revision_status)}</KV>
@@ -680,7 +698,7 @@ export default function RecordView({ detail, user }: { detail: SubmissionDetail;
                   {revisions.map((revision) => (
                     <tr key={revision.revision_id}>
                       <th scope="row">
-                        <span className="cell-strong">Rev {revision.revision_no ?? EMPTY}</span>
+                        <span className="cell-strong">{revision.revision_no == null ? 'Revision' : `Rev ${revision.revision_no}`}</span>
                         {revision.revision_id === submission.current_revision_id ? (
                           <span style={{ display: 'inline-block', margin: '3px 0' }}>
                             <Badge tone="brand">Current</Badge>
@@ -702,14 +720,14 @@ export default function RecordView({ detail, user }: { detail: SubmissionDetail;
                       </td>
                       <td data-label="Temperature" className="nowrap">
                         {revision.temp_entered_value == null
-                          ? EMPTY
+                          ? NOT_RECORDED
                           : `${formatNumber(revision.temp_entered_value)}°${revision.temp_entered_unit ?? ''}`}
                       </td>
                       <td data-label="Method">
                         <span className="cell-sub" style={{ color: 'var(--text-secondary)' }}>
-                          {formatText(revision.method_name)}
+                          {formatText(revision.method_name, NOT_RECORDED)}
                         </span>
-                        <span className="cell-sub">{formatText(revision.instrument_name)}</span>
+                        <span className="cell-sub">{formatText(revision.instrument_name, NOT_RECORDED)}</span>
                       </td>
                     </tr>
                   ))}
@@ -775,13 +793,17 @@ export default function RecordView({ detail, user }: { detail: SubmissionDetail;
             />
             <dl className="kv kv-wide" style={{ marginTop: 12 }}>
               <KV label="Coordinates">
-                <span className="mono">
-                  {formatNumber(currentRevision?.latitude, 6)}, {formatNumber(currentRevision?.longitude, 6)}
-                </span>
+                {currentRevision?.latitude == null || currentRevision?.longitude == null ? (
+                  NOT_RECORDED
+                ) : (
+                  <span className="tabular">
+                    {formatNumber(currentRevision.latitude, 6)}, {formatNumber(currentRevision.longitude, 6)}
+                  </span>
+                )}
               </KV>
               <KV label="GPS accuracy">
                 {currentRevision?.gps_accuracy_m == null
-                  ? EMPTY
+                  ? NOT_RECORDED
                   : `${formatNumber(currentRevision.gps_accuracy_m, 1)} m`}
               </KV>
               <KV label="Distance from site">
@@ -796,7 +818,7 @@ export default function RecordView({ detail, user }: { detail: SubmissionDetail;
                 {site?.latitude == null || site?.longitude == null ? (
                   EMPTY
                 ) : (
-                  <span className="mono">
+                  <span className="tabular">
                     {formatNumber(site.latitude, 6)}, {formatNumber(site.longitude, 6)}
                   </span>
                 )}
@@ -835,7 +857,7 @@ export default function RecordView({ detail, user }: { detail: SubmissionDetail;
                 <Uuid value={submission.reviewed_revision_id} label="Reviewed revision ID" chars={16} />
               </KV>
               <KV label="Comment">
-                {submission.review_comment ? submission.review_comment : <span className="faint">{EMPTY}</span>}
+                {submission.review_comment ? submission.review_comment : <span className="faint">No comment</span>}
               </KV>
             </dl>
           ) : (

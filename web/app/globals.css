@@ -2720,3 +2720,10 @@ textarea:disabled {
     transition: none;
   }
 }
+
+/* A missing figure is said in words at reading size, not as a large placeholder. */
+.figure-missing {
+  font-size: var(--fs-md);
+  font-weight: 500;
+  color: var(--text-muted);
+}
