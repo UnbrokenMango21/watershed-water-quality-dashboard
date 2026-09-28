@@ -70,12 +70,12 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
 .brand-mark { width: 24px; height: 28px; flex: 0 0 auto; display: block; }
 .brand-mark img { display: block; width: 100%; height: 100%; }
 .brand-block h1 { margin: 0; font-size: 19px; line-height: 1.15; font-weight: 600; letter-spacing: -.01em; color: var(--accent); white-space: nowrap; }
-.brand-block p { margin: 3px 0 0; color: var(--muted); font-family: var(--font-mono); font-size: 11px; font-weight: 500; line-height: 1.25; letter-spacing: .04em; text-transform: uppercase; white-space: nowrap; }
+.brand-block p { margin: 2px 0 0; color: var(--muted); font-size: 12.5px; font-weight: 500; line-height: 1.25; white-space: nowrap; }
 
 .kpi-strip { display: grid; grid-template-columns: repeat(3, minmax(112px, 1fr)); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; background: var(--surface); }
 .kpi { min-width: 112px; padding: 7px 12px; display: grid; gap: 2px; border-right: 1px solid var(--line-soft); }
 .kpi:last-child { border-right: 0; }
-.kpi span { color: var(--muted); font-family: var(--font-mono); font-size: 10.5px; font-weight: 500; line-height: 1.2; text-transform: uppercase; letter-spacing: .04em; }
+.kpi span { color: var(--muted); font-size: 12px; font-weight: 500; line-height: 1.2; }
 .kpi strong { font-size: 16px; line-height: 1.2; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--ink); }
 .source-status { min-height: var(--control); padding: 0 12px; display: inline-flex; align-items: center; gap: 8px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); color: var(--muted); font-size: 12px; font-weight: 600; }
 .source-status-dot { width: 9px; height: 9px; border-radius: 50%; border: 1.5px dashed var(--muted); background: transparent; }
@@ -83,7 +83,7 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
 /* Demo mode is explicit and visibly labeled: a goldenrod band, never subtle. */
 .demo-banner { flex: 0 0 auto; min-height: 32px; padding: 6px var(--s4); display: flex; align-items: center; justify-content: center; gap: 8px; background: var(--pww-status-review-bg); border-bottom: 2px solid var(--pww-gold-graphic); color: var(--ink); font-size: 12px; font-weight: 600; line-height: 1.3; white-space: nowrap; }
 .demo-banner calcite-icon { color: var(--pww-gold-text); }
-.demo-banner strong { font-family: var(--font-mono); font-size: 11.5px; font-weight: 500; letter-spacing: .05em; color: var(--pww-gold-text); }
+.demo-banner strong { font-size: 12px; font-weight: 700; color: var(--pww-gold-text); }
 
 .mobile-view-tabs, .data-subview-tabs { display: none; }
 .mobile-view-tabs { flex: 0 0 auto; }
@@ -94,7 +94,7 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
 .site-detail { border-left: 1px solid var(--line); }
 .trend-panel, .map-frame { border: 1px solid var(--line); border-radius: var(--radius-lg); }
 
-.eyebrow { display: block; color: var(--muted); font-family: var(--font-mono); text-transform: uppercase; letter-spacing: .04em; font-size: 11px; line-height: 1.2; font-weight: 500; }
+.eyebrow { display: block; color: var(--muted); font-size: 12.5px; line-height: 1.2; font-weight: 500; }
 .empty-panel { display: grid; place-items: center; align-content: center; gap: 6px; min-height: 140px; padding: var(--s4); color: var(--muted); text-align: center; }
 .empty-panel calcite-icon { color: var(--muted); }
 .empty-panel strong { color: var(--ink); font-size: 14px; font-weight: 600; }

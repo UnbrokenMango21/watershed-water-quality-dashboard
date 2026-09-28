@@ -22,7 +22,7 @@ export const parameterDefinitions: Array<{
   { key: "discharge", label: "Discharge / Flow", shortLabel: "Discharge", glyph: "Q", decimals: 3 },
 ];
 
-export const ranges = ["7D", "30D", "90D", "1Y", "Full record"] as const;
+export const ranges = ["7D", "30D", "90D", "1Y", "All"] as const;
 export type RangeName = (typeof ranges)[number];
 export type MapTool = "layers" | "legend" | "basemap" | "measure" | null;
 export type MobileView = "sites" | "map" | "data";
@@ -52,7 +52,7 @@ export function formatShortDate(iso: string) {
 }
 
 export function rangeStart(range: RangeName, timestamps: string[]) {
-  if (range === "Full record" || timestamps.length === 0) return Number.NEGATIVE_INFINITY;
+  if (range === "All" || timestamps.length === 0) return Number.NEGATIVE_INFINITY;
   const latest = Math.max(...timestamps.map((iso) => Date.parse(iso)));
   const days = range === "7D" ? 7 : range === "30D" ? 30 : range === "90D" ? 90 : 365;
   return latest - days * 24 * 60 * 60 * 1000;

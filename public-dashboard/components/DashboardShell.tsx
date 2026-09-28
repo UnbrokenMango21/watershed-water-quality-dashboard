@@ -64,6 +64,8 @@ export function DashboardShell() {
     }).catch((error: unknown) => {
       if (cancelled) return;
       setSites([]); setConditions({}); setSelectedSiteId(null);
+      // Visitors see a plain message; the precise fail-closed reason stays available for support.
+      console.warn("Public monitoring data failed closed:", error);
       setDataError(error instanceof Error ? error.message : "Monitoring data could not be loaded.");
     }).finally(() => { if (!cancelled) setLoadingSites(false); });
     return () => { cancelled = true; };
@@ -133,8 +135,8 @@ export function DashboardShell() {
         </div>
         {sourceConnected ? (
           <div className="kpi-strip" aria-label="Network summary">
-            <div className="kpi"><span>Monitoring Sites</span><strong>{sites.length}</strong></div>
-            <div className="kpi"><span>Latest Sample</span><strong>{latestSample ? formatShortDate(latestSample) : "—"}</strong></div>
+            <div className="kpi"><span>Monitoring sites</span><strong>{sites.length}</strong></div>
+            <div className="kpi"><span>Latest sample</span><strong>{latestSample ? formatShortDate(latestSample) : "None yet"}</strong></div>
             <div className="kpi"><span>Watersheds</span><strong>{watershedCount}</strong></div>
           </div>
         ) : (
@@ -142,12 +144,12 @@ export function DashboardShell() {
         )}
       </header>
 
-      {dataError && <div className="source-error" role="alert"><span>{dataError}</span><button type="button" onClick={() => setRetry((value) => value + 1)}>Retry monitoring data</button></div>}
+      {dataError && <div className="source-error" role="alert"><span>Monitoring data could not be loaded. Nothing partial is shown.</span><button type="button" onClick={() => setRetry((value) => value + 1)}>Try again</button></div>}
       {demoMode && (
         <div className="demo-banner" role="status">
           <CalciteIcon icon="exclamation-mark-triangle" />
-          <strong>DEMO MODE</strong>
-          <span>· Synthetic test sites and measurements — not production observations</span>
+          <strong>Demo mode</strong>
+          <span>Sample sites and readings for testing, not real observations.</span>
         </div>
       )}
 
@@ -187,7 +189,6 @@ export function DashboardShell() {
             hoveredSite={hoveredSite}
             onSelectSite={handleSelectFromMap}
             onHoverSite={handleHover}
-            demoMode={demoMode}
             hasOperationalLayers={true}
           />
           <ChartPanel

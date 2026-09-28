@@ -143,7 +143,7 @@ export function TrendChart({ points, label, decimals }: { points: DashboardObser
           </g>
         )}
       </svg>
-      <div className="chart-caption">Lines connect consecutive sampled observations only; sampling gaps remain unconnected.</div>
+      <div className="chart-caption">Gaps in sampling are left unconnected.</div>
     </div>
   );
 }

@@ -19,7 +19,6 @@ export function MapSurface({
   hoveredSite,
   onSelectSite,
   onHoverSite,
-  demoMode,
   hasOperationalLayers,
 }: {
   sites: DashboardSite[];
@@ -28,11 +27,10 @@ export function MapSurface({
   hoveredSite: DashboardSite | null;
   onSelectSite: (siteId: string) => void;
   onHoverSite: (siteId: string | null) => void;
-  demoMode: boolean;
   hasOperationalLayers: boolean;
 }) {
   const [activeMapTool, setActiveMapTool] = useState<MapTool>(null);
-  const mapHost = useDashboardMap({ sites, conditions, selectedSite, hoveredSite, onSelectSite, onHoverSite, demoMode });
+  const mapHost = useDashboardMap({ sites, conditions, selectedSite, hoveredSite, onSelectSite, onHoverSite });
   const availableTools = useMemo<Exclude<MapTool, null>[]>(() => hasOperationalLayers ? ["layers", "legend", "basemap", "measure"] : ["basemap", "measure"], [hasOperationalLayers]);
 
   useEffect(() => {

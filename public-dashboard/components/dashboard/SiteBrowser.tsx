@@ -24,7 +24,7 @@ export function SiteBrowser(props: {
     <aside className="site-browser" aria-label="Monitoring sites">
       <div className="panel-heading">
         <div>
-          <h2>Monitoring Sites</h2>
+          <h2>Monitoring sites</h2>
           <span className="site-count">{loading ? "Loading…" : sourceUnavailable ? "Data source not connected" : sites.length ? `${filteredSites.length} of ${sites.length} sites` : "No sites available"}</span>
         </div>
       </div>
