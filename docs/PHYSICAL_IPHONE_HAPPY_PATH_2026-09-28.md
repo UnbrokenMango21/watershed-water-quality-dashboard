@@ -10,8 +10,9 @@ This runbook guides a human operator through the complete end-to-end lifecycle o
 2. **Client trust boundary**: Collector clients author only raw submissions and revisions. Validation flags, review decisions, confidence scores, publication leases, and publication status are strictly server-authored.
 3. **Mandatory measurement**: Water Temperature is the only confirmed mandatory measurement. All entered values and units are preserved alongside canonical values (`config/production_measurement_catalog.json`).
 4. **Active reviewer profile gate**: Reviewer reads and review decisions require an active, administrator-provisioned reviewer profile in Firestore (`users/{uid}` with `role: "QC_REVIEWER"` or `"ADMIN"` and `active: true`).
-5. **Approved-only publication**: Only the current human-approved revision (`reviewed_revision_id == current_revision_id == revision.revision_id`) is eligible to publish. Approval is distinct from publication success.
+5. **Approved-only publication**: Only the current human-approved revision (`reviewed_revision_id == current_revision_id == revision.revision_id`) is eligible to publish. Approval is distinct from publication success. Real observation approval is an **independent human scientific decision only if warranted**, never an automated or required pass step.
 6. **Privacy fail-closed**: Collector identities, reviewer identities, field notes, GPS accuracy, and internal workflow IDs are never published to public views or public dashboards.
+7. **Live publisher state & provenance prerequisite**: The live ArcGIS publisher Cloud Function (`publishApprovedObservation`) is currently **not deployed or enabled yet** (`ENABLE_ARCGIS_PUBLICATION_FUNCTION=false` by default). The public publication proof path (Phases 6 and 7) starts **only after** reviewed configuration and explicit authorization. If no provenance-cleared real observation is available, operators must stop at private workflow evidence; **never substitute `TEST-*` records (such as `TEST-014`) or unprovenanced legacy data for public proof**.
 
 ---
 
@@ -170,26 +171,40 @@ To maintain scientific integrity without compromising participant privacy or ope
   * **Public repository log**: Confirm Revision 1 remained immutable; confirm Revision 2 created with parent linkage and resubmitted.
   * **Restricted release records (outside Git)**: Reviewer correction comment, Revision 1 hash, Revision 2 ID, and resubmission timestamp.
 
-### Action 5.3: Authorized human approval
+### Action 5.3: Independent human review decision (approval only if warranted)
 * **Operator action**:
   1. In the QC Console, open the current review-ready revision (`PENDING_REVIEW`).
   2. Review all scientific values, field methods, photos/notes, and validation confidence score.
-  3. Click **Approve**.
-  4. The backend API (`POST /api/submissions/{submissionId}/review`) verifies the reviewer's active profile and writes an approval transaction.
-* **Stop gate**: Submission transitions to `APPROVED`. Verify Firestore invariants:
-  * `current_revision_id == reviewed_revision_id`
-  * `review_decision == "APPROVE"`
-  * Revision document content is unchanged.
+  3. **Exercise independent scientific judgment**: Approval is an independent human evaluation based on scientific protocol compliance and data plausibility; it is **never a mandatory pass step** for the verification runbook.
+     * If measurements, sampling conditions, or instrument calibrations are questionable, click **Request Correction** (with specific feedback) or **Reject** (with reason). This successfully validates the private review gate.
+     * Click **Approve** **only if warranted** by sound scientific evidence and protocol compliance.
+  4. If approved, the backend API (`POST /api/submissions/{submissionId}/review`) verifies the reviewer's active profile and writes an approval transaction.
+* **Stop gate**: 
+  * If approval is not warranted, the workflow terminates at `NEEDS_CORRECTION` or `REJECTED`, providing complete proof of private review gate enforcement.
+  * If approved, submission transitions to `APPROVED`. Verify Firestore invariants:
+    * `current_revision_id == reviewed_revision_id`
+    * `review_decision == "APPROVE"`
+    * Revision document content is unchanged.
 * **Evidence to record**:
-  * **Public repository log**: Confirm approval submitted via QC Console; status transitioned to `APPROVED`; reviewed revision matches current revision.
-  * **Restricted release records (outside Git)**: Reviewer UID, approval timestamp, and review audit document ID (`review-{revision_id}`).
+  * **Public repository log**: Confirm review decision executed via QC Console; record outcome (`APPROVED`, `NEEDS_CORRECTION`, or `REJECTED`); if approved, confirm reviewed revision matches current revision.
+  * **Restricted release records (outside Git)**: Reviewer UID, decision timestamp, review comments, and review audit document ID (`review-{revision_id}`).
 
 ---
 
-## Phase 6: Approved-only ArcGIS publication
+## Phase 6: Approved-only ArcGIS publication (staged gate)
+
+> [!IMPORTANT]
+> **Release gate notice: Live publisher prerequisite**
+> The live Firebase publisher Cloud Function (`publishApprovedObservation`) is currently **not deployed or enabled** in the live environment (`ENABLE_ARCGIS_PUBLICATION_FUNCTION=false`).
+> 
+> The public publication and dashboard proof path below (Phases 6 and 7) executes **only after**:
+> 1. Reviewed configuration and explicit authorization (setting `ENABLE_ARCGIS_PUBLICATION_FUNCTION=true`, valid item-scoped OAuth secrets, verified FeatureServer URL).
+> 2. An authorized human reviewer has approved an observation with **verified, provenance-cleared real scientific origin**.
+> 
+> **If no provenance-cleared observation is available, STOP AT PHASE 5.** Record the successful private workflow evidence. **Under no circumstances should `TEST-*` fixtures (such as `TEST-014`) or legacy inventory be substituted to force public proof.**
 
 ### Action 6.1: Verify publication trigger & authoritative write
-* **Operator action**:
+* **Operator action** *(conditional on publisher deployment & authorized provenance)*:
   1. Verify the publisher trigger `publishApprovedObservation` claims the approval.
   2. Inspect Firestore publication lease document `submissions/{submissionId}/publication/{revisionId}`:
      * `status: "PUBLISHING"` with active lease token
@@ -212,23 +227,15 @@ To maintain scientific integrity without compromising participant privacy or ope
 * **Operator action**:
   1. In a clean browser session (no credentials, incognito), navigate to the hosted public dashboard:  
      `https://public-dashboard-dev--central-pa-watershed-dev.us-central1.hosted.app/`
-  2. **Header KPI Strip**:
-     * Verify `Monitoring sites` count reflects the active site.
-     * Verify `Latest sample` displays the date of the approved observation.
-  3. **Site Browser**:
-     * Verify the site appears in the list with status badge `"Reviewed"`.
-     * Click the site row to select it.
-  4. **Map Surface**:
-     * Verify the site marker appears at the exact cataloged coordinates in brand Deep Water with Limestone halo.
-     * Verify selecting the site highlights the intersecting USGS HUC-12 watershed boundary in brand Hemlock.
-  5. **Site Details & Readings**:
-     * Verify approved Water Temperature and all entered parameters render with canonical units.
-     * Verify "Reviewed" completeness badge.
-  6. **Time Series Graph**:
-     * Switch to Time Series view.
-     * Verify the newly published point appears on the trend line at the exact collection instant.
-     * Click **CSV** export and verify the downloaded file contains public allowlist fields only.
+  2. **If Phase 6 was executed (provenance-cleared real observation published)**:
+     * **Header KPI Strip**: Verify `Monitoring sites` count reflects the active site; verify `Latest sample` displays the date of the approved observation.
+     * **Site Browser**: Verify the site appears in the list with status badge `"Reviewed"`.
+     * **Map Surface**: Verify the site marker appears at the exact cataloged coordinates in brand Deep Water with Limestone halo; verify selecting the site highlights the intersecting USGS HUC-12 watershed boundary in brand Hemlock.
+     * **Site Details & Readings**: Verify approved Water Temperature and all entered parameters render with canonical units; verify "Reviewed" completeness badge.
+     * **Time Series Graph**: Verify the newly published point appears on the trend line at the exact collection instant; click **CSV** export and verify the downloaded file contains public allowlist fields only.
+  3. **If Phase 6 was held at the gate (no publisher or test data only)**:
+     * Verify the hosted dashboard remains in its verified, connected zero-data state (`Monitoring sites: 0`, `Latest sample: None yet`, `Watersheds: 0`, zero markers, search disabled, and no synthetic demo fallback).
 * **Stop gate**: Fails closed if any private field (collector name, reviewer UID, submission ID, internal notes) is visible in the UI, network payloads, or exported CSV. Fails if demo mode or synthetic records appear.
 * **Evidence to record**:
-  * **Public repository log**: Confirm hosted dashboard displays approved observation with canonical units; confirm 4 public ArcGIS views report 1 approved feature with zero private fields; confirm exported CSV contains only allowlisted fields.
+  * **Public repository log**: Confirm hosted dashboard displays approved observation with canonical units (if published) or maintains verified zero-data state (if held at gate); confirm 4 public ArcGIS views report 0 unexpected or private fields; confirm exported CSV contains only allowlisted fields.
   * **Restricted release records (outside Git)**: Verification screenshots and downloaded CSV file.
