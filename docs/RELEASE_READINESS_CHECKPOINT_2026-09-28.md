@@ -2,6 +2,12 @@
 
 This is a dated release evidence record. Parth authorized routine engineering and the exact-source internal TestFlight upload. PR #34/main, live scientific decisions, siteCatalog mutation, real-data publication, physical-iPhone use, and personal submission remain gated. Recheck moving external state before acting.
 
+## Coordinator update — 2026-09-28, 14:45 EDT
+
+- Parth merged [PR #49](https://github.com/UnbrokenMango21/watershed-water-quality-dashboard/pull/49) at 18:11 UTC from head `261196c81ddb3e70320e258b05f2f5c3e66050cd`; integration and draft PR #34 now point to **`68a9c5a4cd8870e6edff89dee1736635631b3d95`**. The diff from the previously pinned release SHA `5efd926` consists of QC Console, public-dashboard, and dashboard visual-QA workflow files; no iOS, Firebase rules/functions, or scientific configuration files changed. PR #34 is OPEN/DRAFT/MERGEABLE. Fourteen reported product/CodeQL checks passed at `68a9c5a`; the QC development App Hosting rollout was still in progress at this readback, while the public-dashboard development rollout succeeded.
+- Signed TestFlight `1.0.0 (17)` remains VALID/IN_BETA_TESTING, but its verified source tag points to `5efd926`, **not** current integration `68a9c5a`. A new unused build number from the final stable integration SHA is required before claiming an exact-source release candidate. Do not relabel build 17 as a `68a9c5a` build. Claude's active isolated checkout is `docs/final-publication-pass` at `68a9c5a` with uncommitted README/portfolio/gallery work; leave it in place and reconcile its eventual PR before selecting that final SHA.
+- Codex's isolated publication checkout still holds its preserved release-checklist edit, and Antigravity's isolated public-system checkout is clean. Firebase role/Auth preflight remains FAIL, so live iPhone readiness is NO. SiteCatalog and scientific decisions remain untouched. UltraReview finding texts/IDs are still unavailable, 0/5 accounted. Draft PR #48 remains unmerged.
+
 ## Coordinator update — 2026-09-28, 13:43 EDT
 
 - Draft PR #34 remains OPEN/MERGEABLE at exact integration SHA `5efd92699bb71199e7bbcdd887bc89497ecb4034`; its 14 reported non-Android checks are green. Signed TestFlight `1.0.0 (17)` remains pinned to that SHA. Firebase live readiness is still NO, with no new credential grant, rules/functions deployment, siteCatalog mutation, scientific decision, or physical-iPhone test.
