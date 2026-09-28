@@ -18,7 +18,7 @@ struct RecentObservationsView: View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: FieldTheme.m) {
                 if model.connection == .offline {
-                    StatusPill(title: "Cached Records", systemImage: "internaldrive.fill", color: FieldTheme.water)
+                    StatusPill(title: "Cached Records", systemImage: "internaldrive.fill", tone: .info)
                 }
                 ObservationFilterControl(filter: $filter)
                 if visibleRecords.isEmpty {
@@ -68,8 +68,11 @@ struct ObservationFilterControl: View {
     }
 }
 
+/// One record: workflow pill top-right (where it stands in review), sync line at the foot (where the
+/// data is). At accessibility text sizes the pill moves down beside the sync line.
 struct ObservationRecordRow: View {
     let record: ObservationRecord
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -78,24 +81,39 @@ struct ObservationRecordRow: View {
                     .font(.title3)
                     .foregroundStyle(FieldTheme.hemlock)
                     .frame(width: 44, height: 44)
-                    .background(FieldTheme.hemlock.opacity(0.1), in: RoundedRectangle(cornerRadius: FieldTheme.radiusS, style: .continuous))
+                    .background(FieldTheme.primarySoft, in: RoundedRectangle(cornerRadius: FieldTheme.radiusS, style: .continuous))
+                    .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 4) {
                     Text(record.site.name)
                         .font(.headline)
-                        .foregroundStyle(.primary)
+                        .foregroundStyle(FieldTheme.ink)
                         .multilineTextAlignment(.leading)
                         .fixedSize(horizontal: false, vertical: true)
-                    Text(record.date.fieldTimestamp)
+                    Text("Revision \(record.revision) · \(record.date.fieldTimestamp)")
                         .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(FieldTheme.inkMuted)
+                        .monospacedDigit()
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                if !dynamicTypeSize.isAccessibilitySize {
+                    WorkflowPill(state: record.workflow)
+                }
+            }
+            CardDivider()
+            HStack(spacing: 12) {
+                if dynamicTypeSize.isAccessibilitySize {
+                    WorkflowSyncLine(workflow: record.workflow, sync: record.sync)
+                } else {
+                    SyncStatusLabel(state: record.sync)
                 }
                 Spacer(minLength: FieldTheme.xs)
-                Image(systemName: "chevron.right").foregroundStyle(.tertiary).padding(.top, 12)
+                Image(systemName: "chevron.right")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(FieldTheme.lineStrong)
+                    .accessibilityHidden(true)
             }
-            WorkflowSyncLine(workflow: record.workflow, sync: record.sync)
         }
-        .padding(FieldTheme.m)
-        .background(Color(uiColor: .systemBackground), in: RoundedRectangle(cornerRadius: FieldTheme.radiusM, style: .continuous))
+        .fieldCard()
         .contentShape(Rectangle())
     }
 }
@@ -125,14 +143,13 @@ struct ObservationDetailContent: View {
                     CorrectionRequestPanel(reason: reason)
                 }
                 if let reason = record.correctionReason, record.workflow == .rejected {
-                    NoticeBanner(title: "Rejected by reviewer", verbatimMessage: reason, systemImage: "xmark.octagon.fill", color: .red)
+                    NoticeBanner(title: "Rejected by reviewer", verbatimMessage: reason, systemImage: "xmark.octagon.fill", tone: .error)
                 }
                 if record.sync == .failed {
                     SyncFailurePanel(connection: model.connection) { model.retrySync(recordID: record.id) }
                 }
                 ObservationLifecycleView(workflow: record.workflow, sync: record.sync)
-                    .padding(FieldTheme.m)
-                    .background(Color(uiColor: .systemBackground), in: RoundedRectangle(cornerRadius: FieldTheme.radiusM, style: .continuous))
+                    .fieldCard()
                 if let validation = record.validation {
                     ValidationReadbackSection(summary: validation, flags: record.validationFlags)
                 }
@@ -151,21 +168,17 @@ struct ObservationDetailContent: View {
         .navigationBarTitleDisplayMode(.inline)
         .safeAreaInset(edge: .bottom) {
             if record.workflow == .needsCorrection && record.sync == .synced {
-                VStack(spacing: 8) {
+                ActionShelf {
                     PrimaryActionButton(title: "Create Correction Revision", systemImage: "doc.badge.plus") {
                         if model.startCorrection(for: record) {
                             model.recentPath.append(.correction(record.id))
                         }
                     }
                     .accessibilityIdentifier("detail.correct")
-                    Text("Revision \(record.revision) Retained")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    Label("Revision \(record.revision) Retained", systemImage: "lock.fill")
+                        .font(.footnote)
+                        .foregroundStyle(FieldTheme.inkMuted)
                 }
-                .padding(.horizontal, FieldTheme.m)
-                .padding(.vertical, 8)
-                .background(.bar)
-                .overlay(alignment: .top) { Divider() }
             }
         }
     }
@@ -178,42 +191,50 @@ struct ValidationReadbackSection: View {
     var body: some View {
         VStack(alignment: .leading, spacing: FieldTheme.m) {
             FieldSectionHeader(title: "Server Validation")
-            HStack(spacing: FieldTheme.l) {
-                ValidationCount(label: "Errors", value: summary.errorCount, color: summary.errorCount > 0 ? .red : FieldTheme.fern)
-                ValidationCount(label: "Warnings", value: summary.warningCount, color: FieldTheme.goldenrod)
-                ValidationCount(label: "Info", value: summary.infoCount, color: FieldTheme.water)
+            HStack(spacing: FieldTheme.s) {
+                ValidationCount(label: "Errors", value: summary.errorCount, tone: .error)
+                ValidationCount(label: "Warnings", value: summary.warningCount, tone: .warning)
+                ValidationCount(label: "Info", value: summary.infoCount, tone: .info)
             }
             if let score = summary.overallQualityScore {
                 KeyValueRow(label: "Quality Score", value: score.formatted(.number.precision(.fractionLength(0...1))))
             }
             ForEach(flags) { flag in
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(flag.severity.replacingOccurrences(of: "_", with: " ").localizedCapitalized)
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(flag.severity == "ERROR" ? Color.red : FieldTheme.goldenrod)
-                    Text(flag.message).font(.subheadline)
-                    Text(flag.ruleCode).font(.caption.monospaced()).foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 6) {
+                    StatusPill(
+                        verbatimTitle: flag.severity.replacingOccurrences(of: "_", with: " ").localizedCapitalized,
+                        tone: flag.severity == "ERROR" ? .error : (flag.severity == "WARNING" ? .warning : .info)
+                    )
+                    Text(flag.message).font(.subheadline).foregroundStyle(FieldTheme.ink)
+                    Text(flag.ruleCode).font(.caption.monospaced()).foregroundStyle(FieldTheme.inkMuted)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                if flag.id != flags.last?.id { Divider() }
+                if flag.id != flags.last?.id { CardDivider() }
             }
         }
-        .padding(FieldTheme.m)
-        .background(Color(uiColor: .systemBackground), in: RoundedRectangle(cornerRadius: FieldTheme.radiusM, style: .continuous))
+        .fieldCard()
     }
 }
 
+/// A count tile. Zero stays neutral; a nonzero count takes its severity tone.
 struct ValidationCount: View {
     let label: LocalizedStringResource
     let value: Int
-    let color: Color
+    let tone: StatusTone
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text(value, format: .number).font(.title3.bold()).foregroundStyle(color)
-            Text(label).font(.caption).foregroundStyle(.secondary)
+            Text(value, format: .number)
+                .font(.title3.bold())
+                .monospacedDigit()
+                .foregroundStyle(value > 0 ? tone.foreground : FieldTheme.inkMuted)
+            Text(label).font(.caption).foregroundStyle(FieldTheme.inkMuted)
         }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
         .frame(maxWidth: .infinity, alignment: .leading)
+        .background(value > 0 ? tone.background : FieldTheme.surfaceRaised, in: RoundedRectangle(cornerRadius: FieldTheme.radiusS, style: .continuous))
+        .accessibilityElement(children: .combine)
     }
 }
 
@@ -226,7 +247,7 @@ struct ObservationDetailHeader: View {
                 .font(.title2.bold())
             Text("Revision \(record.revision) · \(record.date.fieldTimestamp)")
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(FieldTheme.inkMuted)
             WorkflowSyncLine(workflow: record.workflow, sync: record.sync)
         }
     }
@@ -239,12 +260,22 @@ struct CorrectionRequestPanel: View {
         VStack(alignment: .leading, spacing: 8) {
             Label("Correction Requested", systemImage: "exclamationmark.bubble.fill")
                 .font(.headline)
-                .foregroundStyle(FieldTheme.goldenrod)
+                .foregroundStyle(FieldTheme.alert)
             Text(reason)
                 .font(.body)
+                .foregroundStyle(FieldTheme.ink)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .padding(FieldTheme.m)
-        .background(FieldTheme.goldenrod.opacity(0.1), in: RoundedRectangle(cornerRadius: FieldTheme.radiusM, style: .continuous))
+        .padding(.leading, 4)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(StatusTone.error.background, in: RoundedRectangle(cornerRadius: FieldTheme.radiusM, style: .continuous))
+        .overlay(alignment: .leading) {
+            UnevenRoundedRectangle(topLeadingRadius: FieldTheme.radiusM, bottomLeadingRadius: FieldTheme.radiusM, style: .continuous)
+                .fill(FieldTheme.alert)
+                .frame(width: 4)
+        }
+        .accessibilityElement(children: .combine)
     }
 }
 
@@ -254,16 +285,12 @@ struct SyncFailurePanel: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            NoticeBanner(title: "Archive Unavailable", message: "Sync failed. Retry available.", systemImage: "exclamationmark.icloud.fill", color: .red)
-            Button("Retry Sync", action: retry)
-                .font(.headline)
-                .buttonStyle(.borderedProminent)
-                .frame(minHeight: 48)
-                .disabled(connection != .online)
+            NoticeBanner(title: "Archive Unavailable", message: "Sync failed. Retry available.", systemImage: "exclamationmark.icloud.fill", tone: .error)
+            InlineActionButton(title: "Retry Sync", systemImage: "arrow.clockwise", isEnabled: connection == .online, action: retry)
             if connection != .online {
                 Text("Offline")
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(FieldTheme.inkMuted)
             }
         }
     }
@@ -279,6 +306,7 @@ struct DetailVisitSection: View {
             KeyValueRow(label: "Collected", value: record.date.fieldTimestamp)
             KeyValueRow(label: "Collector", value: record.collector)
         }
+        .fieldCard()
     }
 
     private var position: String {
@@ -299,6 +327,7 @@ struct DetailMethodSection: View {
             }
             KeyValueRow(label: record.testType.methodLabel, value: record.method)
         }
+        .fieldCard()
     }
 }
 
@@ -309,13 +338,17 @@ struct DetailMeasurementsSection: View {
         VStack(alignment: .leading, spacing: FieldTheme.m) {
             FieldSectionHeader(title: "Measurements")
             if measurements.isEmpty {
-                Text("No Values Recorded").foregroundStyle(.secondary)
+                Text("No Values Recorded").foregroundStyle(FieldTheme.inkMuted)
             } else {
-                ForEach(measurements) { measurement in
-                    KeyValueRow(label: measurement.kind.title, value: measurement.displayValue, emphasized: true)
+                VStack(spacing: 0) {
+                    ForEach(measurements) { measurement in
+                        KeyValueRow(label: measurement.kind.title, value: measurement.displayValue, emphasized: true)
+                        if measurement.id != measurements.last?.id { CardDivider() }
+                    }
                 }
             }
         }
+        .fieldCard()
     }
 }
 
@@ -330,6 +363,7 @@ struct DetailNotesMediaSection: View {
             KeyValueRow(label: "Photos", value: attachments.count(where: \.isPhoto).formatted())
             KeyValueRow(label: "Audio Note", value: attachments.contains(where: \.isAudio) ? "Attached" : "None")
         }
+        .fieldCard()
     }
 }
 
@@ -342,9 +376,11 @@ struct RevisionHistorySection: View {
             ForEach(revisions.reversed()) { revision in
                 HStack(alignment: .top, spacing: 12) {
                     Image(systemName: revision.state.icon)
-                        .foregroundStyle(revision.state.color)
-                        .frame(width: 30, height: 30)
-                        .background(revision.state.color.opacity(0.1), in: Circle())
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(revision.state.tone.foreground)
+                        .frame(width: 32, height: 32)
+                        .background(revision.state.tone == .neutral ? FieldTheme.surfaceRaised : revision.state.tone.background, in: RoundedRectangle(cornerRadius: FieldTheme.radiusS, style: .continuous))
+                        .accessibilityHidden(true)
                     VStack(alignment: .leading, spacing: 4) {
                         HStack {
                             Text("Revision \(revision.number)\(revision.number == revisions.map(\.number).max() ? " · Current" : "")")
@@ -352,12 +388,15 @@ struct RevisionHistorySection: View {
                         }
                         Text("\(revision.date.fieldTimestamp) · \(String(localized: revision.state.title))")
                             .font(.subheadline)
-                            .foregroundStyle(.tertiary)
-                        Text(revision.note).font(.subheadline).foregroundStyle(.secondary)
+                            .foregroundStyle(FieldTheme.inkMuted)
+                            .monospacedDigit()
+                        Text(revision.note).font(.subheadline).foregroundStyle(FieldTheme.ink)
                     }
                 }
+                .accessibilityElement(children: .combine)
             }
         }
+        .fieldCard()
     }
 }
 
@@ -380,7 +419,7 @@ struct CorrectionRevisionView: View {
                         ValidationReadbackSection(summary: record.validation ?? ValidationSummary.derived(from: record.validationFlags), flags: record.validationFlags)
                     }
                     if let message = validationMessage ?? model.workflowError {
-                        NoticeBanner(title: "Correction Required", verbatimMessage: message, systemImage: "exclamationmark.circle.fill", color: .red)
+                        NoticeBanner(title: "Correction Required", verbatimMessage: message, systemImage: "exclamationmark.circle.fill", tone: .error)
                     }
                     OriginalValuePanel(record: record)
                     ForEach(editableKinds(draft: draft, record: record)) { kind in
@@ -393,11 +432,10 @@ struct CorrectionRevisionView: View {
                             .lineLimit(5...8)
                             .focused($revisionNoteFocused)
                             .accessibilityIdentifier("correction.note")
-                            .padding(8)
-                            .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: FieldTheme.radiusS, style: .continuous))
+                            .padding(12)
+                            .fieldInput(focused: revisionNoteFocused, minHeight: 120)
                     }
-                    .padding(FieldTheme.m)
-                    .background(Color(uiColor: .systemBackground), in: RoundedRectangle(cornerRadius: FieldTheme.radiusM, style: .continuous))
+                    .fieldCard()
                 }
                 .padding(.horizontal, FieldTheme.m)
                 .padding(.bottom, FieldTheme.xl)
@@ -407,7 +445,7 @@ struct CorrectionRevisionView: View {
             .navigationTitle("Correction Revision")
             .navigationBarTitleDisplayMode(.inline)
             .safeAreaInset(edge: .bottom) {
-                VStack(spacing: 8) {
+                ActionShelf {
                     if keyboardVisible {
                         KeyboardControlsRow(
                             onNextField: nextFocus(in: editableKinds(draft: draft, record: record), draft: draft).map { next in { focus = next } },
@@ -416,7 +454,7 @@ struct CorrectionRevisionView: View {
                     } else {
                         Label("Revision \(record.revision) stays in the record unchanged", systemImage: "lock.fill")
                             .font(.caption.weight(.medium))
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(FieldTheme.inkMuted)
                     }
                     PrimaryActionButton(title: "Resubmit as Revision \(record.revision + 1)", systemImage: "paperplane.fill") {
                         guard !draft.revisionNote.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
@@ -438,11 +476,6 @@ struct CorrectionRevisionView: View {
                     .accessibilityIdentifier("correction.resubmit")
                 }
                 .trackingKeyboard($keyboardVisible)
-                .padding(.horizontal, FieldTheme.m)
-                .padding(.top, 12)
-                .padding(.bottom, 8)
-                .background(.bar)
-                .overlay(alignment: .top) { Divider() }
             }
             .task { await claimPendingFocus() }
             .onChange(of: model.pendingMeasurementFocus) { _, _ in
@@ -485,14 +518,13 @@ struct RevisionIdentityHeader: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Correction")
-                .font(.headline)
-                .foregroundStyle(FieldTheme.water)
+            Eyebrow("Correction")
             Text("Creating Revision \(previousRevision + 1)")
                 .font(.title.bold())
+                .foregroundStyle(FieldTheme.ink)
             Text("Starts from Revision \(previousRevision), which stays in the history exactly as submitted. Edit only what your source check confirms.")
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(FieldTheme.inkMuted)
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
@@ -508,7 +540,6 @@ struct OriginalValuePanel: View {
                 KeyValueRow(label: measurement.kind.title, value: measurement.displayValue, emphasized: true)
             }
         }
-        .padding(FieldTheme.m)
-        .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: FieldTheme.radiusM, style: .continuous))
+        .fieldCard(fill: FieldTheme.surfaceRaised)
     }
 }

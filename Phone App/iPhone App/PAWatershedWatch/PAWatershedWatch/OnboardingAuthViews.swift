@@ -17,11 +17,11 @@ struct WelcomeView: View {
                     WatershedMark(size: 76)
                     Text("PA Watershed Watch")
                         .font(.largeTitle.bold())
-                        .foregroundStyle(FieldTheme.ink)
+                        .foregroundStyle(FieldTheme.hemlock)
                         .accessibilityAddTraits(.isHeader)
                     Text("Collect watershed observations, preserve field provenance, and move samples through validation and scientific review.")
                         .font(.title3)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(FieldTheme.inkMuted)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 VStack(alignment: .leading, spacing: FieldTheme.l) {
@@ -41,8 +41,7 @@ struct WelcomeView: View {
                         detail: "Your full name identifies your observations to authorized research and QC staff. Collector names are never shown on the public dashboard."
                     )
                 }
-                .padding(FieldTheme.m)
-                .background(Color(uiColor: .systemBackground), in: RoundedRectangle(cornerRadius: FieldTheme.radiusL, style: .continuous))
+                .fieldCard()
             }
             .padding(.horizontal, FieldTheme.l)
             .padding(.top, FieldTheme.xl)
@@ -74,13 +73,13 @@ private struct WelcomeStep: View {
                 .font(.title3.weight(.semibold))
                 .foregroundStyle(FieldTheme.hemlock)
                 .frame(width: 44, height: 44)
-                .background(FieldTheme.hemlock.opacity(0.12), in: RoundedRectangle(cornerRadius: FieldTheme.radiusS, style: .continuous))
+                .background(FieldTheme.primarySoft, in: RoundedRectangle(cornerRadius: FieldTheme.radiusS, style: .continuous))
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: FieldTheme.xs) {
                 Text(title).font(.headline).foregroundStyle(FieldTheme.ink)
                 Text(detail)
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(FieldTheme.inkMuted)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
@@ -120,10 +119,10 @@ struct AuthenticationView: View {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("PA Watershed Watch")
                             .font(.title2.bold())
-                            .foregroundStyle(FieldTheme.ink)
+                            .foregroundStyle(FieldTheme.hemlock)
                         Text(mode == .signIn ? "Sign in to collect observations" : "Create your collector account")
                             .font(.subheadline)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(FieldTheme.inkMuted)
                     }
                 }
                 .accessibilityElement(children: .combine)
@@ -159,7 +158,7 @@ struct AuthenticationView: View {
                                 .authFieldStyle()
                             Text("Shown to authorized research and QC staff to attribute your observations. This is your real name, not a username.")
                                 .font(.footnote)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(FieldTheme.inkMuted)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
                     }
@@ -182,7 +181,7 @@ struct AuthenticationView: View {
                         if mode == .createAccount {
                             Text("At least 8 characters.")
                                 .font(.footnote)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(FieldTheme.inkMuted)
                         }
                     }
                 }
@@ -206,9 +205,9 @@ struct AuthenticationView: View {
                         .frame(minHeight: 44)
                     }
                     HStack(spacing: FieldTheme.s) {
-                        VStack { Divider() }
-                        Text("or").font(.caption).foregroundStyle(.secondary)
-                        VStack { Divider() }
+                        CardDivider()
+                        Text("or").font(.caption).foregroundStyle(FieldTheme.inkMuted)
+                        CardDivider()
                     }
                     .accessibilityHidden(true)
                     GoogleSignInButton(scheme: colorScheme == .dark ? .dark : .light, style: .wide, state: model.isAuthenticating ? .disabled : .normal) {
@@ -219,7 +218,7 @@ struct AuthenticationView: View {
                     .accessibilityLabel("Continue with Google")
                     Text("Use the same sign-in method each time so all of your observations stay under one account.")
                         .font(.footnote)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(FieldTheme.inkMuted)
                         .multilineTextAlignment(.center)
                         .frame(maxWidth: .infinity)
                     if model.isAuthenticating {
@@ -267,12 +266,12 @@ private struct AuthMessages: View {
                 Image(systemName: "exclamationmark.circle.fill")
             }
             .font(.subheadline)
-            .foregroundStyle(.red)
+            .foregroundStyle(FieldTheme.alert)
             .frame(maxWidth: .infinity, alignment: .leading)
             .accessibilityLabel("Error: \(error)")
         }
         if let notice = model.authNotice {
-            NoticeBanner(title: "Check Your Email", verbatimMessage: notice, systemImage: "envelope.badge", color: FieldTheme.fern)
+            NoticeBanner(title: "Check Your Email", verbatimMessage: notice, systemImage: "envelope.badge", tone: .success)
         }
     }
 }
@@ -352,7 +351,7 @@ struct IdentityConfirmationView: View {
                         .accessibilityAddTraits(.isHeader)
                     Text("Confirm the name that will identify you on new observations.")
                         .font(.title3)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(FieldTheme.inkMuted)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 VStack(alignment: .leading, spacing: FieldTheme.s) {
@@ -367,7 +366,7 @@ struct IdentityConfirmationView: View {
                         .authFieldStyle()
                     Text("Visible to authorized research and QC staff. You can change it later in Account. Observations you already submitted keep the name they were recorded with.")
                         .font(.footnote)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(FieldTheme.inkMuted)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 if !model.userEmail.isEmpty {
@@ -376,7 +375,7 @@ struct IdentityConfirmationView: View {
                 if let error = model.authError {
                     Label(error, systemImage: "exclamationmark.circle.fill")
                         .font(.subheadline)
-                        .foregroundStyle(.red)
+                        .foregroundStyle(FieldTheme.alert)
                 }
             }
             .padding(.horizontal, FieldTheme.l)
@@ -416,12 +415,7 @@ struct IdentityConfirmationView: View {
 /// Debug-only marker that the app is talking to the local Firebase emulators, not the real project.
 struct EmulatorBadge: View {
     var body: some View {
-        Label("Local Firebase emulators", systemImage: "hammer.fill")
-            .font(.caption.weight(.semibold))
-            .foregroundStyle(FieldTheme.goldenrod)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(FieldTheme.goldenrod.opacity(0.12), in: Capsule())
+        StatusPill(title: "Local Firebase emulators", systemImage: "hammer.fill", tone: .warning)
             .accessibilityIdentifier("debug.emulators")
     }
 }
@@ -429,13 +423,9 @@ struct EmulatorBadge: View {
 extension View {
     func authFieldStyle() -> some View {
         font(.body)
+            .foregroundStyle(FieldTheme.ink)
             .padding(.horizontal, FieldTheme.m)
-            .frame(minHeight: 52)
+            .fieldInput()
             .contentShape([.interaction, .accessibility], Rectangle())
-            .background(Color(uiColor: .systemBackground), in: RoundedRectangle(cornerRadius: FieldTheme.radiusM, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: FieldTheme.radiusM, style: .continuous)
-                    .stroke(Color(uiColor: .separator), lineWidth: 0.5)
-            }
     }
 }

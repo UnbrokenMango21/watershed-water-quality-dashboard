@@ -98,7 +98,7 @@ struct VisitDetailsContent: View {
         ScrollView {
             VStack(alignment: .leading, spacing: FieldTheme.l) {
                 if let error = model.workflowError {
-                    NoticeBanner(title: "Fix This to Continue", verbatimMessage: error, systemImage: "exclamationmark.circle.fill", color: .red)
+                    NoticeBanner(title: "Fix This to Continue", verbatimMessage: error, systemImage: "exclamationmark.circle.fill", tone: .error)
                 }
                 if let site = draft.site {
                     SelectedSiteHeader(site: site)
@@ -107,16 +107,15 @@ struct VisitDetailsContent: View {
                     FieldSectionHeader(title: "Collected", detail: "Pennsylvania time")
                     DatePicker("Date", selection: $draft.date, displayedComponents: .date)
                         .frame(minHeight: 48)
-                    Divider()
+                    CardDivider()
                     DatePicker("Time", selection: $draft.date, displayedComponents: .hourAndMinute)
                         .frame(minHeight: 48)
                 }
-                .padding(FieldTheme.m)
-                .background(Color(uiColor: .systemBackground), in: RoundedRectangle(cornerRadius: FieldTheme.radiusM, style: .continuous))
+                .fieldCard()
                 GPSQualityPanel(draft: draft)
                 SiteDistanceNote(draft: draft)
                 if showLocationValidation && (draft.latitude == nil || draft.longitude == nil || draft.accuracyMeters == nil) {
-                    NoticeBanner(title: "Field Position Required", message: "Capture a current device GPS reading before continuing.", systemImage: "location.slash.fill", color: .red)
+                    NoticeBanner(title: "Field Position Required", message: "Capture a current device GPS reading before continuing.", systemImage: "location.slash.fill", tone: .error)
                 }
                 CollectorPanel(name: draft.collector)
             }
@@ -158,13 +157,13 @@ struct SiteDistanceNote: View {
                     if beyond, let tolerance = draft.site?.toleranceMeters {
                         Text("Beyond this site's expected ±\(Int(tolerance)) m. Confirm you are at the selected site, then reacquire GPS if needed.")
                             .font(.footnote)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(FieldTheme.inkMuted)
                     }
                 }
             }
             .padding(FieldTheme.m)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background((beyond ? FieldTheme.goldenrod : FieldTheme.water).opacity(0.1), in: RoundedRectangle(cornerRadius: FieldTheme.radiusM, style: .continuous))
+            .background((beyond ? StatusTone.warning : StatusTone.info).background, in: RoundedRectangle(cornerRadius: FieldTheme.radiusM, style: .continuous))
             .accessibilityElement(children: .combine)
         }
     }
@@ -176,14 +175,15 @@ struct SelectedSiteHeader: View {
     var body: some View {
         VStack(alignment: .leading, spacing: FieldTheme.s) {
             Label("Selected Site", systemImage: "checkmark.circle.fill")
-                .font(.subheadline.bold())
+                .font(.footnote.weight(.semibold))
                 .foregroundStyle(FieldTheme.fern)
             Text(site.name)
                 .font(.title3.bold())
+                .foregroundStyle(FieldTheme.ink)
             if !site.subtitle.isEmpty {
                 Text(site.subtitle)
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(FieldTheme.inkMuted)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -200,29 +200,23 @@ struct GPSQualityPanel: View {
         VStack(alignment: .leading, spacing: 16) {
             HStack {
                 FieldSectionHeader(title: "Position", isRequired: true)
-                StatusPill(verbatimTitle: gpsTitle, systemImage: draft.gpsState.icon, color: draft.gpsState.color)
+                StatusPill(verbatimTitle: gpsTitle, systemImage: draft.gpsState.icon, tone: draft.gpsState.tone)
                     .accessibilityLabel("Location quality: \(gpsTitle)")
             }
             if draft.gpsState == .denied {
-                NoticeBanner(title: "Location Access Required", message: "Open Settings to capture the field position. Site coordinates cannot replace the observed GPS reading.", systemImage: "location.slash.fill", color: .red)
-                Button("Open Settings") { openSettings() }
-                    .buttonStyle(.borderedProminent)
-                    .frame(minHeight: 48)
+                NoticeBanner(title: "Location Access Required", message: "Open Settings to capture the field position. Site coordinates cannot replace the observed GPS reading.", systemImage: "location.slash.fill", tone: .error)
+                InlineActionButton(title: "Open Settings", systemImage: "gear") { openSettings() }
             } else {
                 KeyValueRow(
                     label: "Coordinates",
                     value: coordinateText,
                     emphasized: true
                 )
-                Button {
-                    requestLocation()
-                } label: {
-                    Label(draft.gpsState == .locating ? "Reacquiring" : "Reacquire GPS", systemImage: "location.viewfinder")
-                        .font(.headline)
-                        .frame(maxWidth: .infinity, minHeight: 48)
-                }
-                .buttonStyle(.bordered)
-                .disabled(draft.gpsState == .locating)
+                InlineActionButton(
+                    title: draft.gpsState == .locating ? "Reacquiring" : "Reacquire GPS",
+                    systemImage: "location.viewfinder",
+                    isEnabled: draft.gpsState != .locating
+                ) { requestLocation() }
             }
             if draft.gpsState == .poor {
                 Text(locationPermission.isApproximate ? "Approximate Location is enabled · target ±20 m" : "Target Accuracy · ±20 m")
@@ -230,8 +224,7 @@ struct GPSQualityPanel: View {
                     .foregroundStyle(FieldTheme.goldenrod)
             }
         }
-        .padding(FieldTheme.m)
-        .background(Color(uiColor: .systemBackground), in: RoundedRectangle(cornerRadius: FieldTheme.radiusM, style: .continuous))
+        .fieldCard()
         .onChange(of: locationPermission.status) { _, status in
             switch status {
             case .authorizedAlways, .authorizedWhenInUse: break
@@ -299,8 +292,7 @@ struct CollectorPanel: View {
                 .foregroundStyle(FieldTheme.ink)
                 .frame(minHeight: 44)
         }
-        .padding(FieldTheme.m)
-        .background(Color(uiColor: .systemBackground), in: RoundedRectangle(cornerRadius: FieldTheme.radiusM, style: .continuous))
+        .fieldCard()
     }
 }
 
@@ -335,12 +327,12 @@ struct TestMethodContent: View {
                         .accessibilityAddTraits(.isHeader)
                     Text("Choose the approach, then record what you used. Enter only what you know.")
                         .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(FieldTheme.inkMuted)
                 }
                 if showValidation, let issue = methodIssues.first {
-                    NoticeBanner(title: "Complete the Method", verbatimMessage: issue, systemImage: "exclamationmark.circle.fill", color: .red)
+                    NoticeBanner(title: "Complete the Method", verbatimMessage: issue, systemImage: "exclamationmark.circle.fill", tone: .error)
                 } else if let error = model.workflowError {
-                    NoticeBanner(title: "Fix This to Continue", verbatimMessage: error, systemImage: "exclamationmark.circle.fill", color: .red)
+                    NoticeBanner(title: "Fix This to Continue", verbatimMessage: error, systemImage: "exclamationmark.circle.fill", tone: .error)
                 }
                 TestTypeList(options: typeOptions, selected: draft.testType) { type in
                     draft.testType = type
@@ -419,16 +411,16 @@ struct TestTypeList: View {
                         VStack(alignment: .leading, spacing: 2) {
                             Text(type.title)
                                 .font(.body.weight(.semibold))
-                                .foregroundStyle(.primary)
+                                .foregroundStyle(FieldTheme.ink)
                             Text(type.detail)
                                 .font(.subheadline)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(FieldTheme.inkMuted)
                         }
                         .multilineTextAlignment(.leading)
                         Spacer(minLength: FieldTheme.s)
                         Image(systemName: selected == type ? "checkmark.circle.fill" : "circle")
                             .font(.title3)
-                            .foregroundStyle(selected == type ? FieldTheme.hemlock : Color(uiColor: .tertiaryLabel))
+                            .foregroundStyle(selected == type ? FieldTheme.hemlock : FieldTheme.lineInput)
                             .accessibilityHidden(true)
                     }
                     .padding(.vertical, 14)
@@ -438,11 +430,11 @@ struct TestTypeList: View {
                 .frame(minHeight: 60)
                 .accessibilityAddTraits(selected == type ? [.isButton, .isSelected] : .isButton)
                 .accessibilityIdentifier("method.type.\(type.rawValue)")
-                if type != options.last { Divider() }
+                if type != options.last { CardDivider() }
             }
         }
         .padding(.horizontal, FieldTheme.m)
-        .background(Color(uiColor: .systemBackground), in: RoundedRectangle(cornerRadius: FieldTheme.radiusM, style: .continuous))
+        .fieldCard(padding: 0)
     }
 }
 
@@ -478,8 +470,7 @@ struct MethodDetailsCard: View {
                 focus: focusedField, field: .method
             )
         }
-        .padding(FieldTheme.m)
-        .background(Color(uiColor: .systemBackground), in: RoundedRectangle(cornerRadius: FieldTheme.radiusM, style: .continuous))
+        .fieldCard()
     }
 }
 
@@ -503,25 +494,28 @@ private struct MethodField: View {
                 .lineLimit(1...4)
                 .focused(focus, equals: field)
                 .padding(14)
-                .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: FieldTheme.radiusS, style: .continuous))
-                .overlay {
-                    RoundedRectangle(cornerRadius: FieldTheme.radiusS, style: .continuous)
-                        .stroke(missing && isEmpty ? Color.red : (focus.wrappedValue == field ? FieldTheme.hemlock : .clear), lineWidth: 1.5)
-                }
+                .fieldInput(focused: focus.wrappedValue == field, invalid: missing && isEmpty)
                 .accessibilityLabel(Text(title))
                 .accessibilityIdentifier("method.\(field)")
             if missing && isEmpty {
-                Text("Required").font(.caption.weight(.semibold)).foregroundStyle(.red)
+                Text("Required").font(.caption.weight(.semibold)).foregroundStyle(FieldTheme.alert)
             }
             if isEmpty && !suggestions.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: FieldTheme.s) {
-                        Text("Used before:").font(.caption).foregroundStyle(.secondary)
+                        Text("Used before:").font(.caption).foregroundStyle(FieldTheme.inkMuted)
                         ForEach(suggestions, id: \.self) { value in
-                            Button(value) { text = value }
-                                .font(.caption.weight(.semibold))
-                                .buttonStyle(.bordered)
-                                .buttonBorderShape(.capsule)
+                            Button { text = value } label: {
+                                Text(verbatim: value)
+                                    .font(.footnote.weight(.semibold))
+                                    .foregroundStyle(FieldTheme.hemlock)
+                                    .padding(.horizontal, 12)
+                                    .frame(minHeight: 36)
+                                    .background(FieldTheme.primarySoft, in: RoundedRectangle(cornerRadius: FieldTheme.radiusXS, style: .continuous))
+                                    .padding(.vertical, 4)
+                                    .contentShape(Rectangle())
+                            }
+                            .buttonStyle(PressableStyle())
                                 .accessibilityHint("Fills \(String(localized: title)) with your earlier entry")
                         }
                     }
@@ -627,11 +621,11 @@ struct MeasurementValidationBanner: View {
 
     var body: some View {
         if draft.values.contains(where: { !$0.value.isEmpty && $0.key.productionSpec.support == .featureGated }) {
-            NoticeBanner(title: "Clear Unsupported Value", message: "This draft holds a value for a measurement that is not collected in this release. Clear it before continuing.", systemImage: "exclamationmark.circle.fill", color: .red)
+            NoticeBanner(title: "Clear Unsupported Value", message: "This draft holds a value for a measurement that is not collected in this release. Clear it before continuing.", systemImage: "exclamationmark.circle.fill", tone: .error)
         } else if let problem = draft.measurementProblems.first {
-            NoticeBanner(title: "Check This Entry", verbatimMessage: problem.message, systemImage: "exclamationmark.circle.fill", color: .red)
+            NoticeBanner(title: "Check This Entry", verbatimMessage: problem.message, systemImage: "exclamationmark.circle.fill", tone: .error)
         } else {
-            NoticeBanner(title: "Measurements Required", message: "Complete all required measurements.", systemImage: "exclamationmark.circle.fill", color: .red)
+            NoticeBanner(title: "Measurements Required", message: "Complete all required measurements.", systemImage: "exclamationmark.circle.fill", tone: .error)
         }
     }
 }
@@ -652,7 +646,7 @@ struct MeasurementGroup: View {
                     // one, so this reaches "1/1" the moment it is entered, with no further condition.
                     Text(draft.measurementProgressText)
                         .font(.subheadline.weight(.bold))
-                        .foregroundStyle(draft.completedRequiredCount == draft.requiredMeasurements.count ? FieldTheme.fern : Color.secondary)
+                        .foregroundStyle(draft.completedRequiredCount == draft.requiredMeasurements.count ? FieldTheme.fern : FieldTheme.inkMuted)
                 }
             }
             ForEach(kinds) { kind in
@@ -711,12 +705,7 @@ struct MeasurementEntryRow: View {
                 }
             }
             .padding(.horizontal, 16)
-            .frame(minHeight: 64)
-            .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: FieldTheme.radiusS, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: FieldTheme.radiusS, style: .continuous)
-                    .stroke(focused.wrappedValue == kind ? FieldTheme.hemlock : Color.clear, lineWidth: 2)
-            }
+            .fieldInput(focused: focused.wrappedValue == kind, invalid: draft.measurementProblem(for: kind) != nil, minHeight: 64)
             if kind == .temperature, let conversion = draft.temperatureConversion {
                 Text(conversion)
                     .font(.title3.bold().monospacedDigit())
@@ -727,7 +716,7 @@ struct MeasurementEntryRow: View {
                 HStack {
                     Text("Not collected in this release. Clear this value to continue.")
                         .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(FieldTheme.inkMuted)
                     Button("Clear Value") { draft[valueFor: kind] = "" }
                         .font(.caption.weight(.bold))
                         .frame(minHeight: 44)
@@ -737,15 +726,14 @@ struct MeasurementEntryRow: View {
                 // The same message the submit gate would produce, shown while the collector is still here.
                 Text(verbatim: problem)
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(.red)
+                    .foregroundStyle(FieldTheme.alert)
             } else if isRequired && !valueIsValid {
                 Text("Required")
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(FieldTheme.inkMuted)
             }
         }
-        .padding(FieldTheme.m)
-        .background(Color(uiColor: .systemBackground), in: RoundedRectangle(cornerRadius: FieldTheme.radiusM, style: .continuous))
+        .fieldCard()
         .alert("Change Unit and Clear Value?", isPresented: unitChangeNeedsConfirmation) {
             Button("Clear Value and Change Unit", role: .destructive) {
                 if let pendingUnit {
@@ -803,7 +791,7 @@ struct MeasurementUnitMenu: View {
             .accessibilityHint("Double tap to change unit")
         } else {
             ScientificUnitLabel(unit: selected)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(FieldTheme.inkMuted)
                 .frame(minWidth: 48, minHeight: 48)
                 .accessibilityLabel(selected.spokenName)
         }
@@ -858,11 +846,11 @@ struct NotesMediaContent: View {
                         .accessibilityAddTraits(.isHeader)
                     Text("Optional")
                         .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(FieldTheme.inkMuted)
                 }
                 Text("Conditions, sample context, or anything a reviewer should know.")
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(FieldTheme.inkMuted)
             }
             ZStack(alignment: .topLeading) {
                 TextEditor(text: $draft.notes)
@@ -883,17 +871,17 @@ struct NotesMediaContent: View {
                 }
             }
             .frame(maxWidth: .infinity, minHeight: 180, maxHeight: .infinity)
-            .background(Color(uiColor: .systemBackground), in: RoundedRectangle(cornerRadius: FieldTheme.radiusM, style: .continuous))
+            .background(FieldTheme.surfaceField, in: RoundedRectangle(cornerRadius: FieldTheme.radiusM, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: FieldTheme.radiusM, style: .continuous)
-                    .stroke(editorFocused ? FieldTheme.hemlock : Color(uiColor: .separator), lineWidth: editorFocused ? 1.5 : 0.5)
+                    .strokeBorder(editorFocused ? FieldTheme.hemlock : FieldTheme.lineInput, lineWidth: editorFocused ? 2 : FieldTheme.hairline)
             }
             .contentShape(Rectangle())
             .onTapGesture { editorFocused = true }
             if !draft.notes.isEmpty {
                 Text("\(draft.notes.count) characters · saved on this phone")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(FieldTheme.inkMuted)
             }
         }
         .padding(.horizontal, FieldTheme.m)

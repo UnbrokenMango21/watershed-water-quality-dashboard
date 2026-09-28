@@ -89,11 +89,10 @@ enum SyncState: String, Hashable, Equatable {
     }
     var color: Color {
         switch self {
-        case .savedLocally: FieldTheme.water
-        case .waiting: FieldTheme.goldenrod
-        case .syncing: FieldTheme.water
-        case .synced: FieldTheme.fern
-        case .failed: .red
+        case .savedLocally: FieldTheme.inkMuted
+        case .waiting, .syncing: FieldTheme.water
+        case .synced: FieldTheme.hemlock
+        case .failed: FieldTheme.alert
         }
     }
 }
@@ -131,15 +130,8 @@ enum WorkflowState: String, CaseIterable, Hashable, Equatable, Codable {
         case .published: "globe.americas.fill"
         }
     }
-    var color: Color {
-        switch self {
-        case .draft: FieldTheme.water
-        case .submitted, .resubmitted, .pendingReview, .approved, .published: FieldTheme.fern
-        case .validating, .publishing: FieldTheme.water
-        case .needsCorrection: FieldTheme.goldenrod
-        case .rejected, .publishFailed: .red
-        }
-    }
+    /// Tone color from `config/brand_tokens.json`; the title and icon carry the meaning.
+    var color: Color { tone.foreground }
 }
 
 enum GPSState: String, CaseIterable, Identifiable, Equatable, Codable {
@@ -162,14 +154,15 @@ enum GPSState: String, CaseIterable, Identifiable, Equatable, Codable {
         case .denied, .unavailable: "location.slash.fill"
         }
     }
-    var color: Color {
+    var tone: StatusTone {
         switch self {
-        case .locating: FieldTheme.water
-        case .good: FieldTheme.fern
-        case .poor: FieldTheme.goldenrod
-        case .denied, .unavailable: .red
+        case .locating: .info
+        case .good: .success
+        case .poor: .warning
+        case .denied, .unavailable: .error
         }
     }
+    var color: Color { tone.foreground }
 }
 
 /// An authoritative catalog site. Coordinates come only from `siteCatalog`; collectors select a site,

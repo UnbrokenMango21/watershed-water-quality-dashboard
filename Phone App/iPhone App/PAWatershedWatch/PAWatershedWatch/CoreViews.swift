@@ -44,20 +44,21 @@ struct HomeView: View {
     }
 }
 
+
 struct HomeFieldHeader: View {
     let name: String
     let cachedSiteCount: Int
 
     var body: some View {
-        HStack(alignment: .center, spacing: 12) {
-            VStack(alignment: .leading, spacing: FieldTheme.xs) {
-                Text(name.isEmpty ? "Field Researcher" : name)
-                    .font(.title2.bold())
-                Text(cachedSiteCount == 0 ? "No sites available yet" : "\(cachedSiteCount) site\(cachedSiteCount == 1 ? "" : "s") available")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-            }
+        VStack(alignment: .leading, spacing: FieldTheme.xs) {
+            Text(name.isEmpty ? "Field Researcher" : name)
+                .font(.title2.bold())
+                .foregroundStyle(FieldTheme.ink)
+            Text(cachedSiteCount == 0 ? "No sites available yet" : "\(cachedSiteCount) site\(cachedSiteCount == 1 ? "" : "s") available")
+                .font(.subheadline)
+                .foregroundStyle(FieldTheme.inkMuted)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .combine)
     }
 }
@@ -68,13 +69,9 @@ struct ConnectionBanner: View {
     var body: some View {
         switch connection {
         case .offline:
-            Label("Offline", systemImage: "wifi.slash")
-                .font(.subheadline.bold())
-                .foregroundStyle(FieldTheme.goldenrod)
+            StatusPill(title: "Offline", systemImage: "wifi.slash", tone: .warning)
         case .serverUnavailable:
-            Label("Archive Unavailable", systemImage: "exclamationmark.icloud")
-                .font(.subheadline.bold())
-                .foregroundStyle(.red)
+            StatusPill(title: "Archive Unavailable", systemImage: "exclamationmark.icloud", tone: .error)
         case .online:
             EmptyView()
         }
@@ -102,27 +99,32 @@ struct StartObservationPanel: View {
                     HStack(spacing: FieldTheme.m) {
                         actionIcon
                         Text("Start New Observation")
-                            .font(.title2.bold())
+                            .font(.title3.bold())
                         Spacer()
                         arrow
                     }
                 }
             }
-            .foregroundStyle(.white)
+            .foregroundStyle(FieldTheme.onPrimary)
             .padding(FieldTheme.m)
             .frame(minHeight: 88)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(FieldTheme.hemlock, in: RoundedRectangle(cornerRadius: FieldTheme.radiusL, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: FieldTheme.radiusL, style: .continuous))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PressableStyle())
         .accessibilityLabel("Start New Observation")
     }
 
+    /// The plus sits on a tile with the goldenrod monitoring point from the mark in its corner.
     private var actionIcon: some View {
         Image(systemName: "plus")
             .font(.title2.bold())
-            .frame(width: 48, height: 48)
-            .background(Color.white.opacity(0.14), in: RoundedRectangle(cornerRadius: FieldTheme.radiusS))
+            .frame(width: 52, height: 52)
+            .background(FieldTheme.onPrimary.opacity(0.14), in: RoundedRectangle(cornerRadius: FieldTheme.radiusS, style: .continuous))
+            .overlay(alignment: .topTrailing) {
+                Circle().fill(FieldTheme.goldGraphic).frame(width: 8, height: 8).offset(x: -6, y: 6)
+            }
     }
 
     private var arrow: some View {
@@ -136,38 +138,35 @@ struct ResumeDraftPanel: View {
     let action: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack {
-                FieldSectionHeader(title: "In progress")
-                StatusPill(title: "Draft", systemImage: "pencil", color: FieldTheme.water)
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .firstTextBaseline) {
+                Eyebrow("In progress")
+                Spacer()
+                WorkflowPill(state: .draft)
             }
-            if let site = draft.site {
-                Text(site.name)
-                    .font(.body.weight(.semibold))
-                    .fixedSize(horizontal: false, vertical: true)
-            } else {
-                Text("Site Not Selected")
-                    .font(.body.weight(.semibold))
-            }
+            Text(draft.site?.name ?? String(localized: "Site Not Selected"))
+                .font(.headline)
+                .foregroundStyle(FieldTheme.ink)
+                .fixedSize(horizontal: false, vertical: true)
+            StepProgressBar(step: draft.currentStep, total: 6)
             HStack {
                 Text("Step \(draft.currentStep) of 6")
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(FieldTheme.inkMuted)
+                    .monospacedDigit()
                 Spacer()
-                Button("Resume", action: action)
-                    .font(.headline)
-                    .frame(minWidth: 88, minHeight: 48)
-                    .buttonStyle(.borderedProminent)
+                Button(action: action) {
+                    Text("Resume")
+                        .font(.headline)
+                        .foregroundStyle(FieldTheme.onPrimary)
+                        .padding(.horizontal, 20)
+                        .frame(minWidth: 96, minHeight: 44)
+                        .background(FieldTheme.hemlock, in: RoundedRectangle(cornerRadius: FieldTheme.radiusS, style: .continuous))
+                }
+                .buttonStyle(PressableStyle())
             }
-            ProgressView(value: Double(draft.currentStep), total: 6)
-                .tint(FieldTheme.water)
         }
-        .padding(FieldTheme.m)
-        .background(Color(uiColor: .systemBackground), in: RoundedRectangle(cornerRadius: FieldTheme.radiusM, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: FieldTheme.radiusM, style: .continuous)
-                .stroke(Color(uiColor: .separator), lineWidth: 0.5)
-        }
+        .fieldCard()
     }
 }
 
@@ -181,43 +180,54 @@ struct AttentionPanel: View {
     }
 
     var body: some View {
-        let items = model.records.filter(Self.needsAttention)
+        let items = Array(model.records.filter(Self.needsAttention)
             .sorted { ($0.workflow == .needsCorrection ? 0 : 1) < ($1.workflow == .needsCorrection ? 0 : 1) }
+            .prefix(3))
         VStack(alignment: .leading, spacing: 12) {
             FieldSectionHeader(title: "Needs Your Attention")
-            ForEach(items.prefix(3)) { record in
-                let correction = record.workflow == .needsCorrection
-                Button {
-                    model.selectedTab = .recent
-                    model.recentPath = [.detail(record.id)]
-                } label: {
-                    HStack(spacing: 12) {
-                        Image(systemName: correction ? record.workflow.icon : record.sync.icon)
-                            .foregroundStyle(correction ? record.workflow.color : record.sync.color)
+            VStack(spacing: 0) {
+                ForEach(items) { record in
+                    let correction = record.workflow == .needsCorrection
+                    Button {
+                        model.selectedTab = .recent
+                        model.recentPath = [.detail(record.id)]
+                    } label: {
+                        HStack(spacing: 12) {
+                            Group {
+                                if correction {
+                                    Image(systemName: record.workflow.icon)
+                                        .font(.subheadline.weight(.semibold))
+                                        .foregroundStyle(record.workflow.tone.foreground)
+                                } else {
+                                    SyncGlyph(state: record.sync)
+                                }
+                            }
                             .frame(width: 32, height: 32)
-                            .background((correction ? record.workflow.color : record.sync.color).opacity(0.1), in: Circle())
+                            .background(correction ? record.workflow.tone.background : FieldTheme.surfaceRaised, in: RoundedRectangle(cornerRadius: FieldTheme.radiusS, style: .continuous))
                             .accessibilityHidden(true)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(record.site.name)
-                                .font(.subheadline.weight(.semibold))
-                                .foregroundStyle(.primary)
-                                .fixedSize(horizontal: false, vertical: true)
-                            Text(correction ? "Correction requested · Revision \(record.revision)" : String(localized: record.sync.title))
-                                .font(.caption)
-                                .foregroundStyle(correction ? record.workflow.color : record.sync.color)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(record.site.name)
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundStyle(FieldTheme.ink)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                Text(correction ? "Correction requested · Revision \(record.revision)" : String(localized: record.sync.title))
+                                    .font(.footnote)
+                                    .foregroundStyle(correction ? FieldTheme.alert : FieldTheme.inkMuted)
+                            }
+                            Spacer()
+                            Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(FieldTheme.lineStrong).accessibilityHidden(true)
                         }
-                        Spacer()
-                        Image(systemName: "chevron.right").foregroundStyle(.tertiary).accessibilityHidden(true)
+                        .padding(.vertical, 10)
+                        .contentShape(Rectangle())
                     }
-                    .contentShape(Rectangle())
+                    .buttonStyle(.plain)
+                    .frame(minHeight: 52)
+                    .accessibilityElement(children: .combine)
+                    if record.id != items.last?.id { CardDivider() }
                 }
-                .buttonStyle(.plain)
-                .frame(minHeight: 52)
-                .accessibilityElement(children: .combine)
             }
         }
-        .padding(FieldTheme.m)
-        .background(Color(uiColor: .systemBackground), in: RoundedRectangle(cornerRadius: FieldTheme.radiusM, style: .continuous))
+        .fieldCard()
     }
 }
 
@@ -225,8 +235,9 @@ struct RecentPreview: View {
     let model: AppModel
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
+        let records = Array(model.records.prefix(2))
+        VStack(alignment: .leading, spacing: FieldTheme.s) {
+            HStack(alignment: .firstTextBaseline) {
                 FieldSectionHeader(title: "Recent Observations")
                 if !model.records.isEmpty {
                     Button("See All") { model.selectedTab = .recent }
@@ -235,19 +246,32 @@ struct RecentPreview: View {
                 }
             }
             if model.records.isEmpty {
-                Label("Observations you submit appear here with their review status.", systemImage: "tray")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .padding(.vertical, FieldTheme.s)
-            }
-            ForEach(model.records.prefix(2)) { record in
-                Button {
-                    model.selectedTab = .recent
-                    model.recentPath = [.detail(record.id)]
-                } label: {
-                    ObservationCompactRow(record: record)
+                HStack(alignment: .top, spacing: 12) {
+                    Image(systemName: "tray")
+                        .font(.title3)
+                        .foregroundStyle(FieldTheme.inkMuted)
+                        .frame(width: 32)
+                        .accessibilityHidden(true)
+                    Text("Observations you submit appear here with their review status.")
+                        .font(.subheadline)
+                        .foregroundStyle(FieldTheme.inkMuted)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
-                .buttonStyle(.plain)
+                .fieldCard()
+            } else {
+                VStack(spacing: 0) {
+                    ForEach(records) { record in
+                        Button {
+                            model.selectedTab = .recent
+                            model.recentPath = [.detail(record.id)]
+                        } label: {
+                            ObservationCompactRow(record: record)
+                        }
+                        .buttonStyle(.plain)
+                        if record.id != records.last?.id { CardDivider() }
+                    }
+                }
+                .fieldCard(padding: 0)
             }
         }
     }
@@ -258,28 +282,33 @@ struct ObservationCompactRow: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
-            VStack(spacing: 4) {
+            VStack(spacing: 2) {
                 Text(record.date, format: .dateTime.day())
                     .font(.title3.bold())
+                    .monospacedDigit()
                 Text(record.date, format: .dateTime.month(.abbreviated))
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
+                    .textCase(.uppercase)
+                    .foregroundStyle(FieldTheme.inkMuted)
             }
-            .frame(width: 46, height: 50)
-            .background(FieldTheme.water.opacity(0.1), in: RoundedRectangle(cornerRadius: FieldTheme.radiusS, style: .continuous))
-            VStack(alignment: .leading, spacing: 4) {
+            .foregroundStyle(FieldTheme.ink)
+            .frame(width: 48, height: 52)
+            .background(FieldTheme.surfaceRaised, in: RoundedRectangle(cornerRadius: FieldTheme.radiusS, style: .continuous))
+            VStack(alignment: .leading, spacing: 6) {
                 Text(record.site.name)
                     .font(.body.weight(.semibold))
-                    .foregroundStyle(.primary)
+                    .foregroundStyle(FieldTheme.ink)
                     .fixedSize(horizontal: false, vertical: true)
                 WorkflowSyncLine(workflow: record.workflow, sync: record.sync)
             }
             Spacer(minLength: FieldTheme.xs)
             Image(systemName: "chevron.right")
-                .foregroundStyle(.tertiary)
-                .padding(.top, 15)
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(FieldTheme.lineStrong)
+                .padding(.top, 17)
+                .accessibilityHidden(true)
         }
-        .padding(.vertical, 12)
+        .padding(FieldTheme.m)
         .contentShape(Rectangle())
     }
 }
