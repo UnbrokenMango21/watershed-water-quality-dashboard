@@ -1,6 +1,6 @@
 # Portfolio summary
 
-Use these descriptions with the [metric ledger](PROJECT_METRICS.md). They describe an implemented and gated research engineering system as of tested PR #42 source `b9580c9` and merged integration `1da94e0` on 2026-09-28. The iOS release and first non-test scientific publication remain pending. No university endorsement, public monitoring result, or completed semester-hour total is implied.
+Use these descriptions with the [metric ledger](PROJECT_METRICS.md). They describe the system at tested PR #42 source `b9580c9` and merged integration `1da94e0` on 2026-09-28. Draft PR #44 is pending on that base; claims remain provisional until its resulting integration SHA is checked. The iOS release and first non-test scientific publication remain pending. No institutional endorsement, public monitoring result, or completed semester-hour total is implied.
 
 ## 50 words
 
@@ -28,7 +28,7 @@ The architecture, contracts, and interface have automated verification, but the 
 
 ## LinkedIn draft
 
-I’m developing PA Watershed Watch, a watershed field-data system that links a native iPhone app to private validation and human QC, then to controlled ArcGIS publication and a public dashboard. The design preserves submitted revisions and original units, and it keeps reviewer identities and workflow records out of public views. The iOS source passed exact-head automated checks in PR #42, which merged into integration. Combined PR #34 checks passed on the merge SHA, while PR #34 remains draft and post-merge review comments need assessment. Physical-device review, live reviewer access, and the first provenance-cleared non-test publication remain open, so the dashboard’s empty state is intentional. Android release work follows the iOS submission and publication milestone. Project architecture and evidence: [repository README](../README.md).
+I’m developing PA Watershed Watch, a watershed field-data system that links a native iPhone app to private validation and human QC, then to controlled ArcGIS publication and a public dashboard. The design preserves submitted revisions and original units, and keeps reviewer identities and workflow details out of public views. PR #42 source `b9580c9` merged into integration as `1da94e0`; PR #34 checks passed there. Draft PR #44 is pending, so those checks are not final release evidence. Physical-device review, live reviewer access, and the first provenance-cleared non-test publication remain open. Android release work follows the iOS submission and publication milestone. Project architecture and evidence: [repository README](../README.md).
 
 ## Technical explanation
 
