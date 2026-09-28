@@ -1,11 +1,11 @@
 # iOS 1.0 human release checklist
 
-**Status at 2026-09-28 12:05 UTC:** PR #42 source `b9580c9` is merged into integration as `1da94e0`; PR #34 reported 16/16 checks passing at that SHA. Draft PR #44 (`8d1c4f5`) is based on `1da94e0`; four checks had passed and iOS native was still running at the 12:05 UTC recheck. This checklist is not a release authorization. Refresh the head and evidence after PR #44 and any later integration changes.
+**Status at 2026-09-28 12:13 UTC:** PR #42 tested source `b9580c9` merged into integration as `1da94e0`; PR #34 reported 16/16 checks there. PR #44 merged from reviewed head `8d1c4f5` as integration `8ef5684`, with five PR checks passing. Post-merge integration checks at `8ef5684` were incomplete: 11 of 15 passed, two were running, CodeQL was neutral, and the GitHub Advanced Security AI scan failed because its requested model was unsupported. This is not release authorization. Refresh evidence after integration CI settles and at any later release SHA.
 
 ## Before TestFlight upload
 
 - [ ] Obtain the full UltraReview report. Record each of the five finding IDs, exact text, source location, disposition, and verifying evidence. The release checkpoint had **0/5 accounted**.
-- [ ] Review PR #44's final diff, checks, comments, and reviewer decisions. Merge only through the normal human release process; choose the final release SHA afterward.
+- [ ] Review PR #44's merged diff, checks, comments, and reviewer decisions. The merge commit `8ef5684` is not automatically the final release SHA; choose the final reviewed source after all release gates.
 - [ ] Run required release checks on that exact source. Android product/release work remains deferred after the iOS submission/publication milestone; normal PR CI does not include Android native checks.
 - [ ] Confirm both Xcode configurations at the chosen SHA declare bundle `org.centralpawatershed.mobile`, version `1.0.0`, build `17`. Record the full SHA and release ref.
 - [ ] Complete the existing physical-iPhone verification runbook and attach its actual device evidence. Simulator success is not physical-device proof. Check sign-in, durable draft after relaunch, controlled test submission, and private readback.
