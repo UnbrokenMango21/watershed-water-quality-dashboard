@@ -1,19 +1,29 @@
 # iOS 1.0 human release checklist
 
-**Status at 2026-09-28 15:00 UTC:** PR #42 tested source `b9580c9` merged as `1da94e0`; PR #44 merged as `8ef5684`; PR #45 added documentation only at current integration `1ac4347`. Normal PR #34 release CI and CodeQL at exactly `1ac4347` are green: 14/14 checks passed, including iOS native and Swift CodeQL (read 2026-09-28 15:00 UTC). GitHub's managed AI Scan failed before analysis on an unsupported requested model ([issue #47](https://github.com/UnbrokenMango21/watershed-water-quality-dashboard/issues/47)); it returned no findings and is not a pass or a clean security review. **Live Firebase readiness for the iPhone test: NO.** Reviewed Firestore rules and the two validation/profile functions were deployed to the development project, and the QC Console was rolled out, from `1ac4347` on 2026-09-28; live role-separation, reviewer and physical-device evidence is not yet recorded. This is not release authorization. Refresh evidence at any later release SHA.
+**Status at 2026-09-28 16:41 UTC:** PR #46 merged as exact integration and draft PR #34 head `5efd92699bb71199e7bbcdd887bc89497ecb4034`. Its 14 reported non-Android PR #34 checks succeeded. [TestFlight release run 36444283202](https://github.com/UnbrokenMango21/watershed-water-quality-dashboard/actions/runs/36444283202) checked out that exact SHA, passed iOS unit tests, verified the signed archive identity, and uploaded `1.0.0 (17)` for `org.centralpawatershed.mobile`. The [16:07 UTC App Store Connect readback](https://github.com/UnbrokenMango21/watershed-water-quality-dashboard/actions/runs/36448724894) reports `VALID` processing and `IN_BETA_TESTING` internally. **Live Firebase readiness for the iPhone test: NO.** PR #34/main promotion and public submission remain blocked. The five UltraReview findings remain unavailable, and GitHub's managed AI scan previously failed before analysis with an unsupported model; do not claim a clean review.
 
-## Before TestFlight upload
+## Signed internal TestFlight candidate — completed
 
-- [ ] Obtain the full UltraReview report. Record each of the five finding IDs, exact text, source location, disposition, and verifying evidence. The release checkpoint had **0/5 accounted**.
-- [ ] Review PR #44's merged diff, checks, comments, and reviewer decisions. The merge commit `8ef5684` is not automatically the final release SHA; choose the final reviewed source after all release gates.
-- [ ] Run required release checks on that exact source. Android product/release work remains deferred after the iOS submission/publication milestone; normal PR CI does not include Android native checks.
-- [ ] Confirm both Xcode configurations at the chosen SHA declare bundle `org.centralpawatershed.mobile`, version `1.0.0`, build `17`. Record the full SHA and release ref.
-- [ ] Complete the existing physical-iPhone verification runbook and attach its actual device evidence. Simulator success is not physical-device proof. Check sign-in, durable draft after relaunch, controlled test submission, and private readback.
-- [ ] Complete real reviewer sign-in and revision-aware readback. Keep reviewer identities and evidence private. Do not treat a controlled test record as environmental proof.
-- [ ] Resolve the live Firebase readiness gate: prove the required live custom claims and reviewer Auth linkage, then verify deployed rules and QC source against the selected release SHA. Readiness remains **NO** until this evidence is recorded.
-- [ ] Verify exact ArcGIS authoritative item scope and all public-view schemas/capabilities. Complete the first publication only with an authorized, provenance-cleared non-test observation; read it back through the private service, public views, and dashboard, including retry/idempotency and privacy checks.
-- [ ] Recheck App Store Connect availability for `1.0.0 (17)`, then upload only after the release SHA and review gates are settled. The last query at 2026-09-28 11:42 UTC found no upload or processed build.
-- [ ] For the existing release workflow, explicitly supply `release_ref`, matching full `expected_sha`, `marketing_version=1.0.0`, and `build_number=17`. Checked-in defaults still target `0.1.0 (13)` and an older release ref. Confirm processing, internal-group availability, and installation after upload.
+Physical-device, live Firebase/reviewer, and real scientific publication checks follow the candidate upload. Scientific publication is not a prerequisite for internal TestFlight.
+
+- [x] Select integration `5efd92699bb71199e7bbcdd887bc89497ecb4034`; PR #34 remains draft. PR #44's tested backend/QC changes and PR #45/#46 documentation are included in this source.
+- [x] Verify all 14 reported non-Android PR #34 checks at that SHA succeeded. The release workflow independently passed iOS unit tests, signed archive, and upload. Android remains deferred from this iOS cycle.
+- [x] Confirm the signed archive matches bundle `org.centralpawatershed.mobile`, version `1.0.0`, build `17`, and the expected team. The workflow used pinned release ref `ios-1.0.0-b17` and rejected a source SHA mismatch.
+- [x] Recheck App Store Connect before upload: build 17 was unused. The exact-source workflow uploaded it successfully; Apple now reports `VALID` and internal `IN_BETA_TESTING`.
+
+## After upload: internal device and live-service verification
+
+- [x] Confirm the uploaded build processed `VALID` and reports `IN_BETA_TESTING` internally in App Store Connect.
+- [ ] Install that signed build on the physical iPhone and complete the existing [physical-iPhone runbook](PHYSICAL_IPHONE_HAPPY_PATH_2026-09-28.md). Attach actual device evidence; simulator success is not physical-device proof. Check sign-in, durable draft after relaunch, controlled test submission, and private readback after Firebase is ready.
+- [ ] Resolve the live Firebase readiness gate before claiming a successful live iPhone workflow: verify required custom claims and reviewer Auth linkage, then verify deployed rules and QC source. Readiness remains **NO** until evidence is recorded. Keep reviewer identities and evidence private.
+- [ ] Complete real reviewer sign-in and revision-aware readback. A controlled test record may verify workflow behavior but must not be represented as environmental science.
+
+## Separate final scientific-publication gate
+
+- [ ] Obtain the full UltraReview report. Record each of its five finding IDs, exact text, source location, disposition, and verification evidence. **0/5 are accounted for** until the report is available. Resolve or explicitly disposition the GitHub-managed AI scan failure before claiming a clean security review.
+- [ ] Verify exact ArcGIS authoritative item scope and every public-view schema/capability before publishing. Publish only an authorized, provenance-cleared non-test observation after independent human scientific review; approval is not publication success.
+- [ ] Read the approved revision back through the private service, anonymous public views, and dashboard; verify retry/idempotency and privacy. If no eligible observation or authorization exists, leave public views empty. Do not use controlled tests or unresolved-provenance history as public evidence.
+- [ ] Keep PR #34/main promotion and public App Store submission **blocked** until combined CI is final, live/device and reviewer gates pass, the scientific publication gate is resolved, and final independent release review is recorded.
 
 ## Before public App Store submission
 
