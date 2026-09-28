@@ -10,7 +10,7 @@ The end-to-end architecture is implemented: native collection → private Fireba
 
 Remaining pre-release gates:
 
-1. Keep the integration line and all CI workflows green.
+1. Keep the integration line and all pull-request CI workflows green (Android native CI is deferred; see below).
 2. Confirm TestFlight Build 13 on the physical project iPhone.
 3. Complete the provisioned real reviewer account's password setup/login and preserve private review evidence.
 4. Perform the final controlled human review/readback without treating TEST-014 as publishable monitoring science.
@@ -19,6 +19,21 @@ Remaining pre-release gates:
 7. Use a provenance-cleared, non-test observation for the first live publication; verify authoritative ArcGIS write/readback and idempotent retry behavior.
 8. Verify the resulting record through all four anonymous public-safe views and the production dashboard.
 9. Consolidate the verified release/integration lineage into `main` and tag the tested release.
+
+## Deferred, not abandoned: Android
+
+Android product and release work is deferred until after the iOS 1.0 submission and publication
+milestone. The Jetpack Compose app, its tests, Gradle configuration and history stay in
+`Phone App/Android App` unchanged. For this release cycle Android native CI no longer runs on pull
+requests; it lives in `.github/workflows/android-deferred.yml` and runs only on demand
+(`gh workflow run android-deferred.yml --ref <branch>`, or Actions → "Android native (deferred)").
+Locally, `bash scripts/dev.sh android` still runs the unit, lint and build checks.
+
+When the iOS milestone is complete, Android resumes with a full review and unification pass against
+the shared design system (`docs/DESIGN_SYSTEM.md`), the current product contract, and the reviewer
+access and copy changes made for iOS 1.0. Move the job back into `mobile-ci.yml` at that point. The
+last known CI problem is infrastructure, not product: the emulator runner sometimes starts
+instrumentation before Android's package service is up ("Can't find service: package", 0 tests run).
 
 ## Implemented and gated: approved-only ArcGIS publication
 
