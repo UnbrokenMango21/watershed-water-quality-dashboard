@@ -82,7 +82,7 @@ export function useDashboardMap({
   const hoverUpdaterRef = useRef<((site: DashboardSite | null) => void) | null>(null);
   const watershedSelectionUpdaterRef = useRef<((site: DashboardSite | null) => void) | null>(null);
   const waitForStableRef = useRef<(() => Promise<void>) | null>(null);
-  const layersRef = useRef<{ background: Record<MapBackground, Layer>; streams: Layer; places: Layer; watersheds: Layer[]; sites: Layer | null } | null>(null);
+  const layersRef = useRef<{ showBackground: (key: MapBackground) => void; streams: Layer; places: Layer; watersheds: Layer[]; sites: Layer | null } | null>(null);
   const layerStateRef = useRef(layerState);
   const selectedSiteRef = useRef<DashboardSite | null>(selectedSite);
   const [hoverPoint, setHoverPoint] = useState<HoverPoint>(null);
@@ -126,20 +126,28 @@ export function useDashboardMap({
 
       const map = document.createElement("arcgis-map") as unknown as ArcgisMapElement;
       map.id = "watershed-map";
-      const background = {
-        terrain: new TileLayer({ url: BACKGROUND_URLS.terrain, visible: state.background === "terrain" }),
-        topographic: new TileLayer({ url: BACKGROUND_URLS.topographic, visible: state.background === "topographic" }),
-        imagery: new TileLayer({ url: BACKGROUND_URLS.imagery, visible: state.background === "imagery" }),
+      // Only the chosen background is created; the others load when a visitor picks them, so the default
+      // view makes no requests for backgrounds it does not show.
+      const backgrounds: Partial<Record<MapBackground, InstanceType<typeof TileLayer>>> = {
+        [state.background]: new TileLayer({ url: BACKGROUND_URLS[state.background] }),
       };
       const streams = new TileLayer({ url: STREAMS_URL, opacity: state.streamsOpacity, visible: state.streams });
       // Topographic already carries its own labels, so the place-name overlay only draws on the other backgrounds.
       const places = new TileLayer({ url: PLACES_URL, opacity: 0.5, visible: state.places && state.background !== "topographic" });
-      (map as unknown as { basemap: unknown }).basemap = new basemapModule.default({
+      const basemap = new basemapModule.default({
         id: "pww-context",
         title: "Background",
-        baseLayers: [background.terrain, background.topographic, background.imagery],
+        baseLayers: [backgrounds[state.background]!],
         referenceLayers: [streams, places],
       });
+      (map as unknown as { basemap: unknown }).basemap = basemap;
+      const showBackground = (key: MapBackground) => {
+        if (!backgrounds[key]) {
+          backgrounds[key] = new TileLayer({ url: BACKGROUND_URLS[key] });
+          basemap.baseLayers.add(backgrounds[key]!);
+        }
+        (Object.keys(backgrounds) as MapBackground[]).forEach((name) => { backgrounds[name]!.visible = name === key; });
+      };
       map.setAttribute("center", "-77.85,40.9");
       map.setAttribute("zoom", "7");
       map.setAttribute("popup-disabled", "");
@@ -245,7 +253,7 @@ export function useDashboardMap({
         map.map.add(regionalWatersheds);
         map.map.add(watershedLayer);
         map.map.add(watershedSelectionLayer);
-        layersRef.current = { background, streams, places, watersheds: [regionalWatersheds, watershedLayer], sites: null };
+        layersRef.current = { showBackground, streams, places, watersheds: [regionalWatersheds, watershedLayer], sites: null };
 
         watershedSelectionUpdaterRef.current = (site) => {
           watershedSelectionLayer.removeAll();
@@ -415,7 +423,7 @@ export function useDashboardMap({
     layerStateRef.current = layerState;
     const layers = layersRef.current;
     if (!layers) return;
-    (Object.keys(layers.background) as MapBackground[]).forEach((key) => { layers.background[key].visible = key === layerState.background; });
+    layers.showBackground(layerState.background);
     layers.streams.visible = layerState.streams;
     layers.streams.opacity = layerState.streamsOpacity;
     layers.places.visible = layerState.places && layerState.background !== "topographic";
