@@ -24,7 +24,7 @@ export const parameterDefinitions: Array<{
 
 export const ranges = ["7D", "30D", "90D", "1Y", "All"] as const;
 export type RangeName = (typeof ranges)[number];
-export type MapTool = "layers" | "legend" | "basemap" | "measure" | null;
+export type MapTool = "layers" | "legend" | "basemap" | null;
 export type MobileView = "sites" | "map" | "data";
 
 export function CalciteIcon({ icon, label, scale = "s" }: { icon: string; label?: string; scale?: "s" | "m" | "l" }) {
