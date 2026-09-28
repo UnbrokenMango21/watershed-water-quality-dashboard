@@ -1,100 +1,54 @@
 # PA Watershed Watch
 
-Native watershed field collection, Firebase validation and trusted QC, approved ArcGIS publication, and public water-quality visualization.
+![PA Watershed Watch wordmark](submission/brand/assets/logo/pww-wordmark-horizontal-light-2400w.png)
 
-![CI](https://github.com/UnbrokenMango21/watershed-water-quality-dashboard/actions/workflows/mobile-ci.yml/badge.svg?branch=main)
-![Release](https://img.shields.io/badge/release-closure%20in%20progress-blue)
-![TestFlight](https://img.shields.io/badge/TestFlight-0.1.0%20%2813%29%20in%20beta-green)
+Native field collection and a controlled path from private scientific records to public water-quality views. PA Watershed Watch combines a SwiftUI iPhone app, Firebase validation, a private reviewer console, server-side ArcGIS publication, and a read-only public dashboard. The Android app is retained in the repository; its product and release work is deferred until after the iOS submission and publication milestone.
 
-For a plain-language map of the folders and actions, start with [PROJECT_MAP.md](PROJECT_MAP.md).
+**Release status, 2026-09-28:** [PR #42](https://github.com/UnbrokenMango21/watershed-water-quality-dashboard/pull/42) passed its checks at tested source [`b9580c9`](https://github.com/UnbrokenMango21/watershed-water-quality-dashboard/commit/b9580c91fb1e8da7f529e5e14ab5eb2cd7ab7ee7) and merged into integration as [`1da94e0`](https://github.com/UnbrokenMango21/watershed-water-quality-dashboard/commit/1da94e04b8a15a99aacd41210f78c8c6bd2288b3). Draft [PR #34](https://github.com/UnbrokenMango21/watershed-water-quality-dashboard/pull/34) targets `main` from that integration SHA; its combined checks were still running at this documentation cutoff. Physical-device, reviewer, ArcGIS credential, and non-test publication proof remain open. The last verified public-view readback was empty. See [metric evidence and limits](docs/PROJECT_METRICS.md).
 
-## Current product flow
+## How a reading becomes public
 
 ```mermaid
 flowchart LR
-  A[Native iOS / Android collection] --> B[Durable local data]
-  B --> C[Firebase Authentication]
-  C --> D[Private Firestore staging]
-  D --> E[Trusted automated validation]
-  E --> F[PENDING_REVIEW]
-  F --> G[Trusted QC Console]
-  G -->|Approve| H[Approved-only ArcGIS publisher]
-  G -->|Request correction| I[Immutable revision N+1]
-  I --> D
-  G -->|Reject| J[Rejected]
-  H --> K[ArcGIS authoritative / public-safe views]
-  K --> L[Public & research dashboard]
+  A[SwiftUI field app<br/>Android deferred] --> B[Firebase Auth + private Firestore<br/>immutable revisions]
+  B --> C[Trusted server validation]
+  C --> D[Private QC Console<br/>human decision]
+  D -->|approve current revision| E[Server-side publisher]
+  D -->|request correction| B
+  E --> F[Private ArcGIS authoritative service]
+  F --> G[Restricted, query-only public views]
+  G --> H[Public dashboard]
 ```
 
-Firebase/Firestore is the private pre-publication scientific workflow system. The QC Console is the authoritative human review surface. ArcGIS Workflow Manager is not a release dependency. The retired Expo/React Native client is preserved in Git history, not in the active tree.
+Collection and review stay private. Collector clients cannot write validation, review, audit, or publication state. An approved revision is eligible for publication; approval alone does not mean ArcGIS accepted it. The dashboard reads only anonymous, public-safe ArcGIS views, never private Firestore records. The [architecture](docs/ARCHITECTURE.md) and [publication contract](docs/PHASE12_ARCGIS_PUBLICATION.md) describe the trust boundaries in detail.
 
-## Current state
+## Scientific integrity
 
-Status vocabulary: **LIVE** means operating in a connected environment; **VERIFIED** means implemented and covered by current automated verification; **NEXT** is the active release sequence; **DEFERRED** is intentionally excluded.
+- Submitted revisions remain immutable. A correction creates a new revision and preserves the earlier one.
+- Entered values and units are retained alongside canonical values. [The production measurement catalog](config/production_measurement_catalog.json) defines current supported measurements and units; Water Temperature is the only confirmed mandatory science measurement.
+- Unusual values can prompt review without being silently changed or automatically declared invalid science.
+- Public views exclude identities, workflow IDs, private site labels, reviewer notes, credentials, and internal diagnostics. The schema verifier fails closed on unexpected fields or edit capabilities.
+- Controlled test observations and historical data with unresolved provenance are excluded from public scientific proof. Demo data is explicitly labeled and is never a production fallback.
 
-| Component | Status | Current reality |
-| --- | --- | --- |
-| Native iOS / SwiftUI | VERIFIED | Shipping architecture; Firebase Auth/Firestore, durable local records, GPS, revisions, App Attest in Release |
-| Native Android / Jetpack Compose | DEFERRED | Source and tests kept intact; product and release work resumes after the iOS 1.0 milestone. CI runs on demand via `android-deferred.yml` (see `docs/ROADMAP.md`) |
-| Firebase Authentication | VERIFIED | Native and QC authentication integration present |
-| Firestore private staging | VERIFIED | Security Rules and persistence contracts are emulator-tested |
-| Automated validation | VERIFIED / LIVE | Engine, persistence and trigger integration are tested; the development validation trigger is active |
-| Trusted QC Console | VERIFIED / GATED | Authenticated reviewer UI and review lifecycle tests are green; the real reviewer identity is provisioned and final live sign-in/review readback remains a human gate |
-| ArcGIS private staging | VERIFIED | Existing ArcGIS schema/staging foundation remains; it is not the human QC system |
-| Approved-only ArcGIS publisher | VERIFIED / GATED | Private authoritative service and four public-safe read-only views are provisioned and independently verified; live OAuth app credentials and a provenance-cleared non-test record remain external gates |
-| Public/research dashboard | VERIFIED / EMPTY | Production adapter reads only the four anonymous public-safe views; the views are intentionally empty until a provenance-cleared approved observation exists |
-| iOS TestFlight | VERIFIED / IN BETA | Build 13 (`0.1.0 (13)`) is `VALID` and `IN_BETA_TESTING`; physical-device installation remains to be confirmed |
-| Photo/audio/media capture | DEFERRED | Zero scientific attachments in the current production candidate |
+## Screen evidence
 
-## Repository map
+These are [PR #42 dashboard visual QA](https://github.com/UnbrokenMango21/watershed-water-quality-dashboard/actions/runs/36384062900) captures at tested source `b9580c9`, now merged into integration as `1da94e0`; they are not evidence of a live scientific publication. Demo screens contain labeled sample sites and readings. Empty screens use mocked empty public-view responses to verify the interface. The earlier [Build 13 sign-in capture](docs/images/mobile/build-13-sign-in.png) is archival and is not presented as the current iOS release candidate.
 
-- `Phone App/iPhone App/PAWatershedWatch` — native SwiftUI iPhone application.
-- `Phone App/Android App` — native Jetpack Compose Android application.
-- `web` — authenticated trusted QC Console.
-- `functions` — Firebase Cloud Function entry points.
-- `firebase` — Firestore/Storage rules and indexes.
-- `validation` — trusted validation engine, orchestration and persistence.
-- `config` — scientific/workflow contracts and catalogs.
-- `tests` — contract, rules, validation and review lifecycle tests.
-- `scripts` — controlled environment/bootstrap utilities.
-- `docs` — current authoritative technical documentation.
+| Labeled demo | Empty public-view state |
+| --- | --- |
+| ![Desktop dashboard in labeled demo mode, with sample site, map, readings and chart](docs/images/portfolio/dashboard-demo-desktop.png) | ![Desktop dashboard with no monitoring sites or readings](docs/images/portfolio/dashboard-empty-desktop.png) |
+| [Phone time series, demo data](docs/images/portfolio/dashboard-demo-phone-data.png) | [Phone empty site list](docs/images/portfolio/dashboard-empty-phone-sites.png) |
 
-## Scientific principles
+## Explore the repository
 
-- Submitted scientific revisions are immutable.
-- Entered value and entered unit provenance are preserved alongside canonical values.
-- Validation, workflow, review and publication state are server-owned.
-- An unusual measurement is not automatically invalid science.
-- Human approval is required before publication.
-- Corrections create a new immutable revision rather than mutating old submitted science.
-- Private collector/reviewer fields must never enter public ArcGIS views.
-- Water Temperature is the only currently confirmed mandatory science measurement for the first release.
-- Media capture/upload is deliberately deferred.
+| Area | Purpose |
+| --- | --- |
+| [`Phone App/iPhone App/PAWatershedWatch`](Phone%20App/iPhone%20App/PAWatershedWatch) | Native SwiftUI field app |
+| [`Phone App/Android App`](Phone%20App/Android%20App) | Native Jetpack Compose app, deferred for this release cycle |
+| [`firebase`](firebase), [`validation`](validation), [`functions`](functions) | Private rules, validation and trusted triggers |
+| [`web`](web) | Authenticated QC Console |
+| [`publication`](publication) | Approved-only ArcGIS publisher |
+| [`public-dashboard`](public-dashboard) | Anonymous public-view reader and responsive dashboard |
+| [`config`](config), [`tests`](tests) | Versioned contracts and verification |
 
-## Current development target
-
-Close the Phase 11/12 pre-release gates: verify Build 13 on the physical iPhone, complete real-reviewer sign-in/readback, provision item-scoped ArcGIS OAuth credentials, then run the first provenance-cleared non-test approval → publication → public-view → dashboard readback. The approved-only publisher and public dashboard are already implemented, tested and deliberately gated until those human/external checks are complete.
-
-## Developing
-
-Backend/contracts:
-
-```bash
-npm ci
-npm run test:contracts
-```
-
-QC Console:
-
-```bash
-cd web
-npm ci
-npm run typecheck
-npm run build
-```
-
-iOS is verified in `.github/workflows/mobile-ci.yml` on every pull request; Android native CI is deferred to the manual `.github/workflows/android-deferred.yml` for the iOS 1.0 cycle; platform-specific setup is documented beside each native project. Do not commit credentials, private keys, local build state, DerivedData, Gradle outputs or App Store Connect keys.
-
-## Documentation
-
-Start with [`docs/ENGINEERING_COCKPIT.md`](docs/ENGINEERING_COCKPIT.md) for the shared Mac tool environment and [`docs/README.md`](docs/README.md) for project documentation. Architecture, roadmap, scientific contracts, QC operations and deferred-feature decisions are indexed there.
+Start with the [documentation index](docs/README.md), [current roadmap](docs/ROADMAP.md), [metric ledger](docs/PROJECT_METRICS.md), and [portfolio summary](docs/PORTFOLIO_SUMMARY.md). The [Fall 2026 weekly plan](project-control/SEMESTER_WORK_LOG.md) is a planning and evidence record; its 300-hour target is not a claim of hours completed.
