@@ -1,6 +1,6 @@
 # iOS 1.0 human release checklist
 
-**Status at 2026-09-28 12:22 UTC:** PR #42 tested source `b9580c9` merged into integration as `1da94e0`; PR #34 reported 16/16 checks there. PR #44 merged from reviewed head `8d1c4f5` as integration `8ef5684`, with five PR checks passing. Combined PR #34 checks at exact head `8ef5684` were incomplete: 11/15 passed, the iOS-native and Swift CodeQL jobs were running, one CodeQL result was neutral, and the GitHub Advanced Security AI scan failed before analysis because its requested model was unsupported. **Live Firebase readiness for the iPhone test: NO.** This is not release authorization. Refresh evidence after integration CI settles and at any later release SHA.
+**Status at 2026-09-28 12:32 UTC:** PR #42 tested source `b9580c9` merged as `1da94e0`; PR #44 merged as `8ef5684`; PR #45 added documentation only at current integration `1ac4347`. Combined PR #34 checks at exact head `1ac4347` were incomplete: 11/15 passed, iOS native and Swift CodeQL were running, one CodeQL result was neutral, and the GitHub Advanced Security AI scan failed before analysis because its requested model was unsupported. **Live Firebase readiness for the iPhone test: NO.** This is not release authorization. Refresh evidence after integration CI settles and at any later release SHA.
 
 ## Before TestFlight upload
 
