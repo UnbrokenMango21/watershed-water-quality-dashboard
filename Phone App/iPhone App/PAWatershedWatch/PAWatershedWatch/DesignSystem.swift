@@ -1,6 +1,97 @@
 import Combine
 import SwiftUI
 
+// BEGIN GENERATED BRAND TOKENS: GENERATED from config/brand_tokens.json by scripts/brand-tokens.mjs. Do not edit by hand.
+enum BrandTokens {
+    /// Page / screen background
+    static let canvas = Color(light: 0xF6F3EC, dark: 0x0F1A17)
+    /// Cards and panels
+    static let surface = Color(light: 0xFBFAF6, dark: 0x17261F)
+    /// Card header band
+    static let surfaceHeader = Color(light: 0xF2EEE5, dark: 0x1B2C25)
+    /// Table heads, segmented tracks, selected rows
+    static let surfaceRaised = Color(light: 0xEDE8DD, dark: 0x22352D)
+    /// Text inputs and map/figure grounds
+    static let surfaceField = Color(light: 0xFFFFFF, dark: 0x132019)
+    /// Hairline borders (decorative)
+    static let line = Color(light: 0xD6CEBF, dark: 0x2F443B)
+    /// Row separators inside a card
+    static let lineSoft = Color(light: 0xE3DCCF, dark: 0x243830)
+    /// Draft pill outline, dividers that must read
+    static let lineStrong = Color(light: 0x9AA39F, dark: 0x5B6762)
+    /// Form control borders (3:1 non-text)
+    static let lineInput = Color(light: 0x7E8984, dark: 0x76827D)
+    /// Body text
+    static let ink = Color(light: 0x1C2522, dark: 0xECE8DF)
+    /// Secondary text, eyebrows
+    static let inkMuted = Color(light: 0x4C5854, dark: 0xA9B3AE)
+    /// Primary actions, headings, links
+    static let primary = Color(light: 0x0D5C4B, dark: 0x6CC3AA)
+    /// Text on primary fills
+    static let onPrimary = Color(light: 0xF6F3EC, dark: 0x0F1A17)
+    /// Primary hover / selected tint
+    static let primarySoft = Color(light: 0xE2EDE6, dark: 0x173A31)
+    /// Secondary accent, Submitted
+    static let water = Color(light: 0x167A8B, dark: 0x6CC2D1)
+    /// Monitoring point and graphics only
+    static let goldGraphic = Color(light: 0xA76100, dark: 0xE6A941)
+    /// In review / warning text
+    static let goldText = Color(light: 0x955600, dark: 0xE6A941)
+    /// Approved / success
+    static let fern = Color(light: 0x2E7D52, dark: 0x7CC79A)
+    /// Errors, changes requested, destructive
+    static let alert = Color(light: 0xA3342B, dark: 0xF08A7E)
+
+    static let statusNeutralBackground = Color.clear
+    static let statusNeutralBorder = Color(light: 0x9AA39F, dark: 0x5B6762)
+    static let statusNeutralMark = Color(light: 0x4C5854, dark: 0xA9B3AE)
+    static let statusNeutralText = Color(light: 0x1C2522, dark: 0xECE8DF)
+    static let statusSubmittedBackground = Color(light: 0xDDEDF0, dark: 0x15333A)
+    static let statusSubmittedBorder = Color(light: 0xDDEDF0, dark: 0x15333A)
+    static let statusSubmittedMark = Color(light: 0x167A8B, dark: 0x6CC2D1)
+    static let statusSubmittedText = Color(light: 0x1C2522, dark: 0xECE8DF)
+    static let statusReviewBackground = Color(light: 0xF5EAD9, dark: 0x3A2E17)
+    static let statusReviewBorder = Color(light: 0xF5EAD9, dark: 0x3A2E17)
+    static let statusReviewMark = Color(light: 0x955600, dark: 0xE6A941)
+    static let statusReviewText = Color(light: 0x1C2522, dark: 0xECE8DF)
+    static let statusAttentionBackground = Color(light: 0xF6E3E1, dark: 0x3D1F1C)
+    static let statusAttentionBorder = Color(light: 0xF6E3E1, dark: 0x3D1F1C)
+    static let statusAttentionMark = Color(light: 0xA3342B, dark: 0xF08A7E)
+    static let statusAttentionText = Color(light: 0x1C2522, dark: 0xECE8DF)
+    static let statusApprovedBackground = Color(light: 0xE0EFE5, dark: 0x1A3526)
+    static let statusApprovedBorder = Color(light: 0xE0EFE5, dark: 0x1A3526)
+    static let statusApprovedMark = Color(light: 0x2E7D52, dark: 0x7CC79A)
+    static let statusApprovedText = Color(light: 0x1C2522, dark: 0xECE8DF)
+    static let statusPublishedBackground = Color(light: 0x0D5C4B, dark: 0x6CC3AA)
+    static let statusPublishedBorder = Color(light: 0x0D5C4B, dark: 0x6CC3AA)
+    static let statusPublishedMark = Color(light: 0xE6A941, dark: 0x0F1A17)
+    static let statusPublishedText = Color(light: 0xF6F3EC, dark: 0x0F1A17)
+
+    static let radiusXS: CGFloat = 4
+    static let radiusSM: CGFloat = 6
+    static let radiusMD: CGFloat = 8
+    static let radiusLG: CGFloat = 12
+    static let radiusXL: CGFloat = 16
+
+    /// Presentation tone for each canonical workflow state, keyed by `WorkflowState.rawValue`.
+    static let workflowTone: [String: StatusTone] = [
+        "draft": .neutral,
+        "submitted": .submitted,
+        "validating": .submitted,
+        "resubmitted": .submitted,
+        "pendingReview": .review,
+        "needsCorrection": .attention,
+        "rejected": .attention,
+        "publishFailed": .attention,
+        "approved": .approved,
+        "publishing": .approved,
+        "published": .published,
+    ]
+}
+
+enum StatusTone: String, CaseIterable { case neutral, submitted, review, attention, approved, published }
+// END GENERATED BRAND TOKENS
+
 enum FieldTheme {
     static let hemlock = Color(light: 0x0D5C4B, dark: 0x63D3B3)
     static let water = Color(light: 0x167A8B, dark: 0x6BC9D5)
