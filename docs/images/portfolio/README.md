@@ -1,13 +1,14 @@
 # Portfolio image provenance
 
-The dashboard captures were copied without editing from [PR #42 visual QA run 36384062900](https://github.com/UnbrokenMango21/watershed-water-quality-dashboard/actions/runs/36384062900), which checked out tested source `b9580c91fb1e8da7f529e5e14ab5eb2cd7ab7ee7` on 2026-09-28. That PR subsequently merged into integration as `1da94e04b8a15a99aacd41210f78c8c6bd2288b3`. These images establish interface states, not a live environmental result.
+These images show interface states. None of them is a live environmental result.
 
-| File | CI artifact source | Public-use status |
+| File | Source | What it shows |
 | --- | --- | --- |
-| `dashboard-demo-desktop.png` | `public-dashboard-visual-qa-demo/desktop.png` | Safe labeled synthetic demo; sample readings are not monitoring evidence. |
-| `dashboard-demo-phone-data.png` | `public-dashboard-visual-qa-demo/iphone-data.png` | Safe labeled synthetic demo. |
-| `dashboard-empty-desktop.png` | `public-dashboard-visual-qa-empty/desktop.png` | Safe interface state; empty ArcGIS replies were mocked by the QA script. |
-| `dashboard-empty-phone-sites.png` | `public-dashboard-visual-qa-empty/iphone-sites.png` | Safe interface state; empty ArcGIS replies were mocked by the QA script. |
-| `social-preview.png` | Composed from the [supplied project wordmark](../../../submission/brand/assets/logo/pww-wordmark-horizontal-light-2400w.png) at `3a0547a423a13f00db60a001c0dbfb91d4f07ce7` and [brand palette](../../../config/brand_tokens.json) at `e5afe310b9802057b92b513b131f84cf72b21b26`, 2026-09-28. | Safe branded title card, not a product screenshot or publication claim. Coordinator should review before setting GitHub metadata. |
+| `dashboard-demo-desktop.png` | Repository visual QA (`public-dashboard/scripts/visual-qa.mjs`, demo mode, desktop) run locally on PR #49 head `261196c`, merged into integration as `68a9c5a`, 2026-09-28. | Labeled synthetic demo sites and readings. Not monitoring evidence. |
+| `dashboard-demo-phone-data.png` | Same run, iPhone viewport, time series tab. | Labeled synthetic demo readings. |
+| `qc-console-record.png` | QC Console at `261196c` running against the local Firebase emulators with `scripts/seed_qc_smoke_data.mjs` fixtures, 2026-09-28. | Emulator-only test identities and records. No live account or record is shown. |
+| `dashboard-live-empty-desktop.png` | The deployed development dashboard in production mode, captured 2026-09-28 after rollout of `68a9c5a`. | The real public-safe ArcGIS views, which hold no approved observations yet. |
+| `dashboard-empty-desktop.png`, `dashboard-empty-phone-sites.png` | Earlier visual QA with mocked empty ArcGIS replies ([run 36384062900](https://github.com/UnbrokenMango21/watershed-water-quality-dashboard/actions/runs/36384062900), source `b9580c9`). Kept for history. | Empty-state interface before the map refinements. |
+| `social-preview.png` | Composed from the [project wordmark](../../../submission/brand/assets/logo/pww-wordmark-horizontal-light-2400w.png) and [brand palette](../../../config/brand_tokens.json). | Branded title card for the GitHub social preview. |
 
-The older `PAWatershedWatch-Previews` images were excluded: they contain private-looking names, counts, and requirements that conflict with the current product contract. The Build 13 sign-in capture is an older release image and is linked only as archival evidence.
+Older `PAWatershedWatch-Previews` images are excluded: they contain private-looking names, counts and requirements that conflict with the current product contract.

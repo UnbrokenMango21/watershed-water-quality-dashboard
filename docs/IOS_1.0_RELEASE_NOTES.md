@@ -1,6 +1,6 @@
 # iOS 1.0 release notes (draft)
 
-**Proposed version:** 1.0.0 (17), declared in source. The latest read-only App Store Connect query, 2026-09-28 11:42 UTC, found no matching upload or processed build. This copy is not submitted release metadata. Verify every statement against the final reviewed SHA and the actual uploaded binary before use.
+**Version:** 1.0.0 (17), uploaded to App Store Connect on 2026-09-28 from tag `ios-1.0.0-b17` (`5efd926`); Apple reports it `VALID` and in internal TestFlight testing. This copy is not submitted store metadata; verify every statement against the uploaded binary before using it in App Store Connect.
 
 ## TestFlight: what to test
 
