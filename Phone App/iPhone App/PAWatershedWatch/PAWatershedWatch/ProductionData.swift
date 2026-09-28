@@ -793,7 +793,7 @@ enum ProfileCallable {
     static let region = "us-east4"
 
     static func updateDisplayName(_ name: String, user: User) async throws {
-        guard let projectID = FirebaseApp.app()?.options.projectID else { return }
+        guard let projectID = FirebaseApp.app()?.options.projectID else { throw URLError(.badURL) }
         let url = FirebaseEnvironment.usesEmulators
             ? URL(string: "http://\(FirebaseEnvironment.emulatorHost):5001/\(projectID)/\(region)/updateMyDisplayName")!
             : URL(string: "https://\(region)-\(projectID).cloudfunctions.net/updateMyDisplayName")!
@@ -889,7 +889,7 @@ enum GoogleSignInFailure: LocalizedError {
         try await change.commitChanges()
         // Verification is offered, not required: the program has not decided to gate collection on it.
         try? await user.sendEmailVerification()
-        try? await ProfileCallable.updateDisplayName(fullName, user: user)
+        try await ProfileCallable.updateDisplayName(fullName, user: user)
         return user
     }
 
@@ -897,16 +897,12 @@ enum GoogleSignInFailure: LocalizedError {
         try await Auth.auth().sendPasswordReset(withEmail: email)
     }
 
-    /// The Auth profile name is what new observations record as `data_collected_by`, so it is updated
-    /// first and directly. The research profile (`users/{uid}`) is then mirrored through the
-    /// `updateMyDisplayName` callable; if that server step is unavailable the Auth change still stands
-    /// and the mirror catches up on the next successful change.
+    /// The server updates the research profile and mirrors the name to Firebase Auth. Report a
+    /// failure if either step fails, so Account never claims a name was saved when it was not.
     func updateDisplayName(_ name: String) async throws {
         guard let user = Auth.auth().currentUser else { throw CanonicalizationError.invalid("Sign in to change your name.") }
-        let change = user.createProfileChangeRequest()
-        change.displayName = name
-        try await change.commitChanges()
-        try? await ProfileCallable.updateDisplayName(name, user: user)
+        try await ProfileCallable.updateDisplayName(name, user: user)
+        try await user.reload()
     }
 
     func signOut() throws {

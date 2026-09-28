@@ -124,6 +124,9 @@ struct ObservationDetailContent: View {
                 if let reason = record.correctionReason, record.workflow == .needsCorrection {
                     CorrectionRequestPanel(reason: reason)
                 }
+                if let reason = record.correctionReason, record.workflow == .rejected {
+                    NoticeBanner(title: "Rejected by reviewer", verbatimMessage: reason, systemImage: "xmark.octagon.fill", color: .red)
+                }
                 if record.sync == .failed {
                     SyncFailurePanel(connection: model.connection) { model.retrySync(recordID: record.id) }
                 }

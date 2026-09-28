@@ -57,14 +57,14 @@ struct SelectSiteView: View {
     @FocusState private var searchFocused: Bool
 
     private var ranked: [(site: Site, distance: CLLocationDistance?)] {
-        let matches = model.sites.filter { $0.matches(searchText) }
+        let matches = model.selectableSites.filter { $0.matches(searchText) }
         guard let here = locator.location else {
             return matches.map { ($0, nil) }
         }
         return matches.map { ($0, $0.distance(from: here)) }.sorted { ($0.1 ?? .infinity) < ($1.1 ?? .infinity) }
     }
 
-    private var selectedSite: Site? { model.sites.first { $0.id == selectedID } }
+    private var selectedSite: Site? { model.selectableSites.first { $0.id == selectedID } }
 
     var body: some View {
         let results = ranked
@@ -72,17 +72,17 @@ struct SelectSiteView: View {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: FieldTheme.m) {
                     SiteCatalogStatus(model: model)
-                    if showMap && !model.sites.isEmpty {
+                    if showMap && !model.selectableSites.isEmpty {
                         SiteMap(sites: results.map(\.site), selectedID: $selectedID, camera: $camera, showsUser: locator.isAuthorized)
                     }
-                    if model.sites.isEmpty {
+                    if model.selectableSites.isEmpty {
                         if !model.sitesLoading {
                             ContentUnavailableView(
-                                "No Sites Available",
+                                model.sitesVerified ? "No Sites Available" : "Verify Site Catalog",
                                 systemImage: "mappin.slash",
-                                description: Text(model.connection == .online
+                                description: Text(model.sitesVerified
                                     ? "The site catalog has no active sites for your program yet. Contact your program coordinator."
-                                    : "Connect once to download the site catalog to this phone.")
+                                    : "Connect to verify the current site catalog before choosing a site.")
                             )
                             .padding(.vertical, FieldTheme.l)
                         }
@@ -111,7 +111,7 @@ struct SelectSiteView: View {
                 .padding(.bottom, FieldTheme.l)
             }
             .onChange(of: selectedID) { _, id in
-                guard let id, let site = model.sites.first(where: { $0.id == id }) else { return }
+                guard let id, let site = model.selectableSites.first(where: { $0.id == id }) else { return }
                 withAnimation { proxy.scrollTo(id, anchor: .center) }
                 focusMap(on: site)
             }
@@ -205,8 +205,8 @@ private struct SiteCatalogStatus: View {
 
     var body: some View {
         if model.connection != .online {
-            NoticeBanner(title: "Offline", message: "Showing sites saved on this phone. The map may not load until you reconnect.", systemImage: "wifi.slash")
-        } else if model.sitesLoading && model.sites.isEmpty {
+            NoticeBanner(title: "Offline", message: "Reconnect to verify the current site catalog before choosing a site.", systemImage: "wifi.slash")
+        } else if model.sitesLoading && !model.sitesVerified {
             HStack(spacing: FieldTheme.s) {
                 ProgressView()
                 Text("Loading sites").font(.subheadline).foregroundStyle(.secondary)

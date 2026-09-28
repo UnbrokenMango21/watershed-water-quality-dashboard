@@ -732,6 +732,9 @@ final class AppModel {
     var records: [ObservationRecord] = []
     var sites: [Site] = []
     var sitesLoading = false
+    /// Cached sites support historical drafts; new site selection needs a fresh server result.
+    var sitesVerified = false
+    var selectableSites: [Site] { sitesVerified && connection == .online ? sites : [] }
     /// Set when a validation failure names a measurement. The measurement screens consume it to open
     /// the keyboard on the offending field, then clear it.
     var pendingMeasurementFocus: MeasurementKind?
@@ -831,12 +834,8 @@ final class AppModel {
 
     /// Confirms (and if needed saves) the name shown on the Ready step of onboarding.
     func confirmIdentity(_ raw: String) async {
-        let name = IdentityName.normalized(raw)
-        if name != userDisplayName {
-            guard await updateDisplayName(raw) else { return }
-        } else if let problem = IdentityName.problem(raw) {
-            authError = problem; return
-        }
+        // Save even an unchanged Google profile name so the server-owned research profile exists.
+        guard await updateDisplayName(raw) else { return }
         identityConfirmed = true
         if let ownerUID { storeIdentityConfirmation(uid: ownerUID) }
     }
@@ -994,6 +993,7 @@ final class AppModel {
     func record(id: UUID) -> ObservationRecord? { records.first { $0.id == id } }
 
     func refreshSites() {
+        sitesVerified = false
         guard connection == .online, let remote else { return }
         sitesLoading = true
         Task {
@@ -1001,6 +1001,7 @@ final class AppModel {
                 let values = try await remote.fetchSites()
                 try store.replaceSites(values)
                 sites = try store.cachedSites()
+                sitesVerified = true
             } catch {
                 workflowError = sites.isEmpty ? "Sites could not be updated. Connect and try again." : nil
             }
@@ -1014,6 +1015,7 @@ final class AppModel {
             Self.authLog.info("Session ended")
             remoteListener?.remove(); remoteListener = nil
             ownerUID = nil; isSignedIn = false; userDisplayName = ""; userEmail = ""; userEmailVerified = false
+            sitesVerified = false
             signInProviders = []; identityConfirmed = false; showAccount = false
             draft = nil; records = []; homePath = []; recentPath = []; selectedTab = .home
             return
