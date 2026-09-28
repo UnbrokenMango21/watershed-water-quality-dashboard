@@ -27,6 +27,8 @@ milestone. The Jetpack Compose app, its tests, Gradle configuration and history 
 `Phone App/Android App` unchanged. For this release cycle Android native CI no longer runs on pull
 requests; it lives in `.github/workflows/android-deferred.yml` and runs only on demand
 (`gh workflow run android-deferred.yml --ref <branch>`, or Actions → "Android native (deferred)").
+GitHub offers a manual workflow only once its file is on the default branch, so it becomes runnable
+after this change reaches `main`.
 Locally, `bash scripts/dev.sh android` still runs the unit, lint and build checks.
 
 When the iOS milestone is complete, Android resumes with a full review and unification pass against
