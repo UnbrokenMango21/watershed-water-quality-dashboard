@@ -181,7 +181,7 @@ struct Site: Identifiable, Hashable {
 
     var coordinate: CLLocationCoordinate2D { CLLocationCoordinate2D(latitude: latitude, longitude: longitude) }
 
-    var subtitle: String { [county, watershed].filter { !$0.isEmpty }.joined(separator: " · ") }
+    var subtitle: String { [county, watershed].filter { !$0.isEmpty }.joined(separator: ", ") }
 
     func distance(from location: CLLocation) -> CLLocationDistance {
         location.distance(from: CLLocation(latitude: latitude, longitude: longitude))
@@ -198,7 +198,7 @@ struct Site: Identifiable, Hashable {
     }
 
     var position: String {
-        "\(latitude.formatted(.number.precision(.fractionLength(4))))° N · \(abs(longitude).formatted(.number.precision(.fractionLength(4))))° W"
+        "\(latitude.formatted(.number.precision(.fractionLength(4))))° N, \(abs(longitude).formatted(.number.precision(.fractionLength(4))))° W"
     }
 
     /// Distance for display, in the collector's regional units.
@@ -358,17 +358,17 @@ struct MeasurementUnit: Identifiable, Hashable {
     static let cubicFeetPerSecond = unit("ft3-s", "ft³", per: "s", title: "ft³/s (cfs)", spoken: "cubic feet per second", scale: 0.028316846592)
     static let gallonsPerMinute = unit("gal-min", "gal", per: "min", title: "US gal/min", spoken: "US gallons per minute", scale: 0.0000630901964)
 
-    static let ntu = unit("ntu", "NTU", title: "NTU · white-light method", spoken: "nephelometric turbidity units")
-    static let fnu = unit("fnu", "FNU", title: "FNU · infrared method", spoken: "formazin nephelometric units")
-    static let practicalSalinity = unit("pss78", "PSS-78", title: "PSS-78 · unitless", spoken: "unitless practical salinity scale 1978")
+    static let ntu = unit("ntu", "NTU", title: "NTU (white-light method)", spoken: "nephelometric turbidity units")
+    static let fnu = unit("fnu", "FNU", title: "FNU (infrared method)", spoken: "formazin nephelometric units")
+    static let practicalSalinity = unit("pss78", "PSS-78", title: "PSS-78 (unitless)", spoken: "unitless practical salinity scale 1978")
     static let partsPerThousand = unit("ppt", "‰", title: "Parts per thousand (‰)", spoken: "parts per thousand")
 
     static let milligramsCaCO3PerLiter = unit("mg-caco3-l", "mg CaCO₃", per: "L", title: "mg/L as CaCO₃", spoken: "milligrams per liter as calcium carbonate")
     static let milliequivalentsPerLiter = unit("meq-l", "meq", per: "L", title: "meq/L", spoken: "milliequivalents per liter", scale: 50.04345)
     static let microgramsChlorophyllPerLiter = unit("ug-chla-l", "µg Chl-a", per: "L", title: "µg/L chlorophyll a", spoken: "micrograms chlorophyll a per liter")
     static let milligramsChlorophyllPerCubicMeter = unit("mg-chla-m3", "mg Chl-a", per: "m³", title: "mg/m³ chlorophyll a", spoken: "milligrams chlorophyll a per cubic meter")
-    static let cfuPer100Milliliters = unit("cfu-100ml", "CFU", per: "100 mL", title: "CFU/100 mL · membrane count", spoken: "colony-forming units per 100 milliliters")
-    static let mpnPer100Milliliters = unit("mpn-100ml", "MPN", per: "100 mL", title: "MPN/100 mL · statistical estimate", spoken: "most probable number per 100 milliliters")
+    static let cfuPer100Milliliters = unit("cfu-100ml", "CFU", per: "100 mL", title: "CFU/100 mL (membrane count)", spoken: "colony-forming units per 100 milliliters")
+    static let mpnPer100Milliliters = unit("mpn-100ml", "MPN", per: "100 mL", title: "MPN/100 mL (statistical estimate)", spoken: "most probable number per 100 milliliters")
 }
 
 enum MeasurementKind: String, CaseIterable, Identifiable, Hashable, Codable {
@@ -463,10 +463,10 @@ struct MeasurementValue: Identifiable, Hashable {
         }
         if unit == .fahrenheit {
             let celsius = (number - 32) * 5 / 9
-            return "\(value) °F · \(celsius.formatted(.number.precision(.fractionLength(1)))) °C"
+            return "\(value) °F (\(celsius.formatted(.number.precision(.fractionLength(1)))) °C)"
         }
         let fahrenheit = number * 9 / 5 + 32
-        return "\(value) °C · \(fahrenheit.formatted(.number.precision(.fractionLength(1)))) °F"
+        return "\(value) °C (\(fahrenheit.formatted(.number.precision(.fractionLength(1)))) °F)"
     }
 }
 
@@ -636,7 +636,7 @@ final class ObservationDraft {
     func displayValue(for kind: MeasurementKind) -> String {
         let value = values[kind, default: ""]
         if kind == .temperature, let conversion = temperatureConversion {
-            return "\(value) \(selectedUnit(for: kind).inlineSymbol) · \(conversion)"
+            return "\(value) \(selectedUnit(for: kind).inlineSymbol) (\(conversion))"
         }
         return kind == .ph ? value : "\(value) \(selectedUnit(for: kind).inlineSymbol)"
     }
@@ -1157,7 +1157,7 @@ final class AppModel {
         case .userDisabled: "This account is disabled. Contact your watershed program administrator."
         case .wrongPassword, .userNotFound, .invalidCredential: "Email or password is incorrect."
         case .invalidEmail: "Enter a valid email address."
-        case .emailAlreadyInUse: "An account already uses this email. Sign in instead — use Continue with Google if that is how the account was created."
+        case .emailAlreadyInUse: "An account already uses this email. Sign in instead, or use Continue with Google if you created it that way."
         case .weakPassword: "Choose a stronger password with at least 8 characters."
         case .tooManyRequests: "Too many attempts. Wait a few minutes, then try again."
         case .operationNotAllowed: "Email sign-up is not enabled for this program. Use Continue with Google or contact your program administrator."

@@ -204,7 +204,7 @@ struct GPSQualityPanel: View {
                     .accessibilityLabel("Location quality: \(gpsTitle)")
             }
             if draft.gpsState == .denied {
-                NoticeBanner(title: "Location Access Required", message: "Open Settings to capture the field position. Site coordinates cannot replace the observed GPS reading.", systemImage: "location.slash.fill", tone: .error)
+                NoticeBanner(title: "Location Access Required", message: "Allow location access in Settings to record where you sampled.", systemImage: "location.slash.fill", tone: .error)
                 InlineActionButton(title: "Open Settings", systemImage: "gear") { openSettings() }
             } else {
                 KeyValueRow(
@@ -219,7 +219,7 @@ struct GPSQualityPanel: View {
                 ) { requestLocation() }
             }
             if draft.gpsState == .poor {
-                Text(locationPermission.isApproximate ? "Approximate Location is enabled · target ±20 m" : "Target Accuracy · ±20 m")
+                Text(locationPermission.isApproximate ? "Approximate Location is on. Target is ±20 m." : "Target accuracy is ±20 m.")
                     .font(.subheadline.bold())
                     .foregroundStyle(FieldTheme.goldenrod)
             }
@@ -271,7 +271,7 @@ struct GPSQualityPanel: View {
         guard let latitude = draft.latitude, let longitude = draft.longitude else { return locationPermission.failureMessage ?? "Position unavailable" }
         let latitudeText = abs(latitude).formatted(.number.precision(.fractionLength(5)))
         let longitudeText = abs(longitude).formatted(.number.precision(.fractionLength(5)))
-        return "\(latitudeText)° \(latitude >= 0 ? "N" : "S") · \(longitudeText)° \(longitude >= 0 ? "E" : "W")"
+        return "\(latitudeText)° \(latitude >= 0 ? "N" : "S"), \(longitudeText)° \(longitude >= 0 ? "E" : "W")"
     }
 
     private func openSettings() {
@@ -286,7 +286,7 @@ struct CollectorPanel: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            FieldSectionHeader(title: "Collector", detail: "From your account. Change it in Account → Full name.")
+            FieldSectionHeader(title: "Collector", detail: "From your account settings.")
             Label(name, systemImage: "person.crop.circle.fill")
                 .font(.body.weight(.semibold))
                 .foregroundStyle(FieldTheme.ink)
@@ -325,7 +325,7 @@ struct TestMethodContent: View {
                         .font(.title2.bold())
                         .foregroundStyle(FieldTheme.ink)
                         .accessibilityAddTraits(.isHeader)
-                    Text("Choose the approach, then record what you used. Enter only what you know.")
+                    Text("Choose how you measured, then note what you used.")
                         .font(.subheadline)
                         .foregroundStyle(FieldTheme.inkMuted)
                 }
@@ -451,7 +451,7 @@ struct MethodDetailsCard: View {
     var body: some View {
         @Bindable var draft = draft
         VStack(alignment: .leading, spacing: FieldTheme.m) {
-            FieldSectionHeader(title: "Method details", detail: "Needed so reviewers can trace how each value was produced.")
+            FieldSectionHeader(title: "Method details", detail: "Reviewers use this to trace each value.")
             if type == .other {
                 MethodField(
                     title: "Describe the approach", prompt: "What kind of measurement was this?",
@@ -848,7 +848,7 @@ struct NotesMediaContent: View {
                         .font(.subheadline)
                         .foregroundStyle(FieldTheme.inkMuted)
                 }
-                Text("Conditions, sample context, or anything a reviewer should know.")
+                Text("Anything a reviewer should know.")
                     .font(.subheadline)
                     .foregroundStyle(FieldTheme.inkMuted)
             }
@@ -879,7 +879,7 @@ struct NotesMediaContent: View {
             .contentShape(Rectangle())
             .onTapGesture { editorFocused = true }
             if !draft.notes.isEmpty {
-                Text("\(draft.notes.count) characters · saved on this phone")
+                Text("\(draft.notes.count) characters, saved on this phone")
                     .font(.caption)
                     .foregroundStyle(FieldTheme.inkMuted)
             }

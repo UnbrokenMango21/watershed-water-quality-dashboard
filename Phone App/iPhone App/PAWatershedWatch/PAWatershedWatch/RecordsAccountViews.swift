@@ -89,7 +89,7 @@ struct ObservationRecordRow: View {
                         .foregroundStyle(FieldTheme.ink)
                         .multilineTextAlignment(.leading)
                         .fixedSize(horizontal: false, vertical: true)
-                    Text("Revision \(record.revision) · \(record.date.fieldTimestamp)")
+                    Text("Revision \(record.revision), \(record.date.fieldTimestamp)")
                         .font(.subheadline)
                         .foregroundStyle(FieldTheme.inkMuted)
                         .monospacedDigit()
@@ -245,7 +245,7 @@ struct ObservationDetailHeader: View {
         VStack(alignment: .leading, spacing: FieldTheme.s) {
             Text(record.site.name)
                 .font(.title2.bold())
-            Text("Revision \(record.revision) · \(record.date.fieldTimestamp)")
+            Text("Revision \(record.revision), \(record.date.fieldTimestamp)")
                 .font(.subheadline)
                 .foregroundStyle(FieldTheme.inkMuted)
             WorkflowSyncLine(workflow: record.workflow, sync: record.sync)
@@ -311,7 +311,7 @@ struct DetailVisitSection: View {
 
     private var position: String {
         guard let latitude = record.latitude, let longitude = record.longitude, let accuracy = record.accuracyMeters else { return "Position unavailable" }
-        return "\(abs(latitude).formatted(.number.precision(.fractionLength(5))))° \(latitude >= 0 ? "N" : "S") · \(abs(longitude).formatted(.number.precision(.fractionLength(5))))° \(longitude >= 0 ? "E" : "W") · ±\(accuracy.formatted(.number.precision(.fractionLength(0)))) m"
+        return "\(abs(latitude).formatted(.number.precision(.fractionLength(5))))° \(latitude >= 0 ? "N" : "S"), \(abs(longitude).formatted(.number.precision(.fractionLength(5))))° \(longitude >= 0 ? "E" : "W"), ±\(accuracy.formatted(.number.precision(.fractionLength(0)))) m"
     }
 }
 
@@ -383,10 +383,10 @@ struct RevisionHistorySection: View {
                         .accessibilityHidden(true)
                     VStack(alignment: .leading, spacing: 4) {
                         HStack {
-                            Text("Revision \(revision.number)\(revision.number == revisions.map(\.number).max() ? " · Current" : "")")
+                            Text("Revision \(revision.number)\(revision.number == revisions.map(\.number).max() ? ", current" : "")")
                                 .font(.body.bold())
                         }
-                        Text("\(revision.date.fieldTimestamp) · \(String(localized: revision.state.title))")
+                        Text("\(String(localized: revision.state.title)), \(revision.date.fieldTimestamp)")
                             .font(.subheadline)
                             .foregroundStyle(FieldTheme.inkMuted)
                             .monospacedDigit()
@@ -414,7 +414,7 @@ struct CorrectionRevisionView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: FieldTheme.l) {
                     RevisionIdentityHeader(previousRevision: record.revision)
-                    CorrectionRequestPanel(reason: draft.correctionReason ?? String(localized: "A reviewer asked you to check this observation. Compare each value with your field sheet or instrument record."))
+                    CorrectionRequestPanel(reason: draft.correctionReason ?? String(localized: "A reviewer asked you to check this observation against your field sheet."))
                     if !record.validationFlags.isEmpty {
                         ValidationReadbackSection(summary: record.validation ?? ValidationSummary.derived(from: record.validationFlags), flags: record.validationFlags)
                     }

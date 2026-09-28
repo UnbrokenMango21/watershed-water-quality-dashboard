@@ -210,7 +210,7 @@ struct AttentionPanel: View {
                                     .font(.subheadline.weight(.semibold))
                                     .foregroundStyle(FieldTheme.ink)
                                     .fixedSize(horizontal: false, vertical: true)
-                                Text(correction ? "Correction requested · Revision \(record.revision)" : String(localized: record.sync.title))
+                                Text(correction ? "Correction requested for revision \(record.revision)" : String(localized: record.sync.title))
                                     .font(.footnote)
                                     .foregroundStyle(correction ? FieldTheme.alert : FieldTheme.inkMuted)
                             }

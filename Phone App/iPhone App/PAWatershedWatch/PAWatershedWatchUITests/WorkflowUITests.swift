@@ -111,20 +111,24 @@ final class WorkflowUITests: XCTestCase {
         app.buttons["review.submit"].tap()
         app.alerts.buttons["Submit"].tap()
         XCTAssertTrue(app.buttons["status.done"].waitForExistence(timeout: 10))
-        let received = NSPredicate(format: "label == 'Pending Review' OR label == 'Submitted' OR label == 'Validating'")
+        let received = NSPredicate(format: "label BEGINSWITH 'Waiting for review' OR label BEGINSWITH 'Pending Review' OR label BEGINSWITH 'Submitted' OR label BEGINSWITH 'Validating'")
         XCTAssertTrue(app.staticTexts.containing(received).firstMatch.waitForExistence(timeout: 30))
         snapshot("11-status")
         app.buttons["status.done"].tap()
 
-        // A reviewer requests a correction (simulated at the emulator, as the QC Console's server
-        // action would leave it). The collector's phone receives it through its listener.
+        // The QC Console's real review API, running against the emulators, requests a correction.
+        // A collector who discovers the URL is refused by the server; only the provisioned reviewer
+        // (QC_REVIEWER claim plus an active profile) can decide. The phone receives it by listener.
         let submission = try await waitForSubmission(status: ["PENDING_REVIEW"])
         let submissionPath = submission.name
+        let submissionID = String(submissionPath.split(separator: "/").last ?? "")
         let firstRevisionID = try XCTUnwrap(submission.string("current_revision_id"))
-        try await patch(submissionPath, fields: [
-            "status": ["stringValue": "NEEDS_CORRECTION"],
-            "review_comment": ["stringValue": "Please confirm water temperature against your thermometer log."],
-        ])
+        let collectorToken = try await signIn(email: email, password: "field-sample-2026")
+        let refused = try await review(submissionID, decision: "APPROVE", revisionID: firstRevisionID, reason: nil, token: collectorToken)
+        XCTAssertEqual(refused, 403, "A collector account must not be able to review")
+        let reviewerToken = try await reviewerIDToken()
+        let requested = try await review(submissionID, decision: "NEEDS_CORRECTION", revisionID: firstRevisionID, reason: "Please confirm water temperature against your thermometer log.", token: reviewerToken)
+        XCTAssertEqual(requested, 200)
 
         app.tabBars.buttons["Observations"].tap()
         let row = app.buttons.containing(NSPredicate(format: "label CONTAINS 'Houserville'")).firstMatch
@@ -164,6 +168,19 @@ final class WorkflowUITests: XCTestCase {
         let second = try XCTUnwrap(revisions.first { !$0.name.hasSuffix(firstRevisionID) })
         XCTAssertEqual(second.double("temp_entered_value"), 18.2)
         XCTAssertEqual(second.integer("revision_no"), 2)
+
+        // The reviewer sees revision 2 and approves it through the same API; the phone follows.
+        let pending = try await waitForSubmission(status: ["PENDING_REVIEW"], path: submissionPath)
+        let secondRevisionID = try XCTUnwrap(pending.string("current_revision_id"))
+        XCTAssertNotEqual(secondRevisionID, firstRevisionID)
+        let approvedStatus = try await review(submissionID, decision: "APPROVE", revisionID: secondRevisionID, reason: nil, token: reviewerToken)
+        XCTAssertEqual(approvedStatus, 200)
+        _ = try await waitForSubmission(status: ["APPROVED"], path: submissionPath, timeout: 15)
+        let unchanged = try await listDocuments("\(submissionPath)/revisions")
+        XCTAssertEqual(unchanged.first { $0.name.hasSuffix(firstRevisionID) }?.double("temp_entered_value"), 18.5)
+        app.buttons["status.done"].tap()
+        XCTAssertTrue(app.staticTexts["Approved"].waitForExistence(timeout: 20), "The phone should show the reviewer's approval")
+        snapshot("15-approved")
     }
 
     /// First run through Method at an accessibility text size: every primary action must stay reachable.
@@ -194,6 +211,10 @@ final class WorkflowUITests: XCTestCase {
         let site = app.buttons["site.\(siteID)"]
         XCTAssertTrue(site.waitForExistence(timeout: 20))
         site.tap()
+        // The footer gives the selected site's full name its own wrapping line at accessibility sizes.
+        let footerName = app.staticTexts["Selected site, Spring Creek at Houserville Road Bridge"]
+        XCTAssertTrue(footerName.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.frame.contains(footerName.frame), "The selected site name must stay on screen")
         snapshot("ax-04-site-picker")
         XCTAssertTrue(app.buttons["site.continue"].isHittable)
         app.buttons["site.continue"].tap()
@@ -337,6 +358,46 @@ final class WorkflowUITests: XCTestCase {
         add(attachment)
     }
 
+    // MARK: - QC Console review API and Auth emulator (emulator only)
+
+    private let qcBase = "http://127.0.0.1:3109"
+    private let authBase = "http://127.0.0.1:9099/identitytoolkit.googleapis.com/v1"
+    private let reviewerEmail = "test.qc.reviewer@emulator.invalid"
+
+    private func postJSON(_ url: URL, body: [String: Any], bearer: String?) async throws -> (Int, [String: Any]) {
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        if let bearer { request.setValue("Bearer \(bearer)", forHTTPHeaderField: "Authorization") }
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let (data, response) = try await URLSession.shared.data(for: request)
+        return ((response as? HTTPURLResponse)?.statusCode ?? 0, (try? JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:])
+    }
+
+    private func signIn(email: String, password: String) async throws -> String {
+        let (status, json) = try await postJSON(URL(string: "\(authBase)/accounts:signInWithPassword?key=emulator")!, body: ["email": email, "password": password, "returnSecureToken": true], bearer: nil)
+        XCTAssertEqual(status, 200, "Auth emulator sign-in failed for \(email)")
+        return try XCTUnwrap(json["idToken"] as? String)
+    }
+
+    /// The reviewer identity comes from provision_test_users.mjs, which never sets a password; the
+    /// emulator's owner access gives it a local one for this run.
+    private func reviewerIDToken() async throws -> String {
+        let (_, lookup) = try await postJSON(URL(string: "\(authBase)/projects/\(projectID)/accounts:lookup")!, body: ["email": [reviewerEmail]], bearer: "owner")
+        let uid = try XCTUnwrap((lookup["users"] as? [[String: Any]])?.first?["localId"] as? String, "Run `bash scripts/dev.sh ios-ui`, which provisions the emulator reviewer")
+        let password = "review-\(UUID().uuidString.prefix(8))"
+        let (updated, _) = try await postJSON(URL(string: "\(authBase)/projects/\(projectID)/accounts:update")!, body: ["localId": uid, "password": password], bearer: "owner")
+        XCTAssertEqual(updated, 200)
+        return try await signIn(email: reviewerEmail, password: password)
+    }
+
+    private func review(_ submissionID: String, decision: String, revisionID: String, reason: String?, token: String) async throws -> Int {
+        var body: [String: Any] = ["decision": decision, "expectedRevisionId": revisionID]
+        if let reason { body["reason"] = reason }
+        let (status, _) = try await postJSON(URL(string: "\(qcBase)/api/submissions/\(submissionID)/review")!, body: body, bearer: token)
+        return status
+    }
+
     // MARK: - Firestore emulator (owner access bypasses rules; emulator only)
 
     private struct Document {
@@ -356,6 +417,9 @@ final class WorkflowUITests: XCTestCase {
         request.httpMethod = "GET"
         do { _ = try await URLSession.shared.data(for: request) } catch {
             throw XCTSkip("Firestore emulator is not running on 127.0.0.1:8080; run `bash scripts/dev.sh ios-ui`.")
+        }
+        do { _ = try await URLSession.shared.data(for: URLRequest(url: URL(string: "\(qcBase)/review")!, timeoutInterval: 5)) } catch {
+            throw XCTSkip("The QC Console is not running on \(qcBase); run `bash scripts/dev.sh ios-ui`.")
         }
     }
 
@@ -380,12 +444,6 @@ final class WorkflowUITests: XCTestCase {
         }
     }
 
-    private func patch(_ name: String, fields: [String: [String: Any]]) async throws {
-        let relative = name.components(separatedBy: "/documents/").last ?? name
-        var components = URLComponents(string: "\(base)/\(relative)")!
-        components.queryItems = fields.keys.map { URLQueryItem(name: "updateMask.fieldPaths", value: $0) }
-        _ = try await send(components.url!, method: "PATCH", body: ["fields": fields])
-    }
 
     private func waitForSubmission(status: Set<String>, path: String? = nil, timeout: TimeInterval = 45) async throws -> Document {
         let deadline = Date().addingTimeInterval(timeout)

@@ -284,7 +284,7 @@ private struct SiteRow: View {
                         .foregroundStyle(FieldTheme.ink)
                         .multilineTextAlignment(.leading)
                     if !site.subtitle.isEmpty || !site.code.isEmpty {
-                        Text([site.code, site.subtitle].filter { !$0.isEmpty }.joined(separator: " · "))
+                        Text([site.code, site.subtitle].filter { !$0.isEmpty }.joined(separator: ", "))
                             .font(.subheadline)
                             .foregroundStyle(FieldTheme.inkMuted)
                             .multilineTextAlignment(.leading)
@@ -314,9 +314,36 @@ private struct SelectedSiteFooter: View {
     let site: Site?
     let distance: CLLocationDistance?
     let onContinue: () -> Void
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
         ActionShelf {
+            if dynamicTypeSize.isAccessibilitySize {
+                // At accessibility sizes the site name gets the full width and wraps in full; distance
+                // and step move to their own line instead of squeezing the name.
+                VStack(alignment: .leading, spacing: FieldTheme.xs) {
+                    if let site {
+                        Text(site.name)
+                            .font(.subheadline.weight(.semibold))
+                            .fixedSize(horizontal: false, vertical: true)
+                            .accessibilityLabel(Text("Selected site, \(site.name)"))
+                    } else {
+                        Text("Tap a site in the list or on the map.")
+                            .font(.subheadline)
+                            .foregroundStyle(FieldTheme.inkMuted)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    HStack {
+                        if let distance, site != nil {
+                            Text(Site.distanceText(distance)).font(.caption.monospacedDigit())
+                        }
+                        Spacer(minLength: FieldTheme.s)
+                        Text("Step 1 of 6").font(.footnote.weight(.semibold)).monospacedDigit()
+                    }
+                    .foregroundStyle(FieldTheme.inkMuted)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
             HStack {
                 if let site {
                     VStack(alignment: .leading, spacing: 2) {
@@ -338,6 +365,7 @@ private struct SelectedSiteFooter: View {
                     .font(.footnote.weight(.semibold))
                     .monospacedDigit()
                     .foregroundStyle(FieldTheme.inkMuted)
+            }
             }
             StepProgressBar(step: 1, total: 6)
             PrimaryActionButton(title: "Continue with This Site", isEnabled: site != nil, action: onContinue)

@@ -19,7 +19,7 @@ struct WelcomeView: View {
                         .font(.largeTitle.bold())
                         .foregroundStyle(FieldTheme.hemlock)
                         .accessibilityAddTraits(.isHeader)
-                    Text("Collect watershed observations, preserve field provenance, and move samples through validation and scientific review.")
+                    Text("Monitor local water quality, support Penn State research, and help care for our watersheds.")
                         .font(.title3)
                         .foregroundStyle(FieldTheme.inkMuted)
                         .fixedSize(horizontal: false, vertical: true)
@@ -28,17 +28,17 @@ struct WelcomeView: View {
                     WelcomeStep(
                         systemImage: "mappin.and.ellipse",
                         title: "Record in the field",
-                        detail: "Choose a catalog site, capture time and GPS position, and enter readings. Work is saved on your phone, even offline."
+                        detail: "Choose a site, capture your position, and enter readings. Everything saves on your phone, even offline."
                     )
                     WelcomeStep(
                         systemImage: "checkmark.seal",
-                        title: "Validated, then reviewed",
-                        detail: "Automated checks run on every submission, then a member of the research team reviews it. Corrections become a new revision; nothing you submit is overwritten."
+                        title: "Checked and reviewed",
+                        detail: "Automated checks run first, then the research team reviews each submission."
                     )
                     WelcomeStep(
                         systemImage: "person.text.rectangle",
                         title: "Attributed to you",
-                        detail: "Your full name identifies your observations to authorized research and QC staff. Collector names are never shown on the public dashboard."
+                        detail: "The research team sees your name with your observations. It never appears on the public dashboard."
                     )
                 }
                 .fieldCard()
@@ -156,7 +156,7 @@ struct AuthenticationView: View {
                                 .submitLabel(.next)
                                 .onSubmit { focused = .email }
                                 .authFieldStyle()
-                            Text("Shown to authorized research and QC staff to attribute your observations. This is your real name, not a username.")
+                            Text("Your real name, shown to the research team with your observations.")
                                 .font(.footnote)
                                 .foregroundStyle(FieldTheme.inkMuted)
                                 .fixedSize(horizontal: false, vertical: true)
@@ -216,7 +216,7 @@ struct AuthenticationView: View {
                     }
                     .frame(maxWidth: .infinity, minHeight: 48)
                     .accessibilityLabel("Continue with Google")
-                    Text("Use the same sign-in method each time so all of your observations stay under one account.")
+                    Text("Use the same sign-in method each time to keep your observations together.")
                         .font(.footnote)
                         .foregroundStyle(FieldTheme.inkMuted)
                         .multilineTextAlignment(.center)
@@ -364,7 +364,7 @@ struct IdentityConfirmationView: View {
                         .submitLabel(.done)
                         .onSubmit(confirm)
                         .authFieldStyle()
-                    Text("Visible to authorized research and QC staff. You can change it later in Account. Observations you already submitted keep the name they were recorded with.")
+                    Text("Shown to the research team. You can change it later in Account.")
                         .font(.footnote)
                         .foregroundStyle(FieldTheme.inkMuted)
                         .fixedSize(horizontal: false, vertical: true)

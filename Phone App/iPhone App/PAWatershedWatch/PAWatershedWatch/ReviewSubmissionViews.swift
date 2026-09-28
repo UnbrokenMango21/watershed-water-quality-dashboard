@@ -34,7 +34,7 @@ struct ReviewContent: View {
                     if let site = draft.site {
                         Text(site.name).font(.headline)
                         if !site.subtitle.isEmpty || !site.code.isEmpty {
-                            Text([site.code, site.subtitle].filter { !$0.isEmpty }.joined(separator: " · "))
+                            Text([site.code, site.subtitle].filter { !$0.isEmpty }.joined(separator: ", "))
                                 .font(.subheadline).foregroundStyle(FieldTheme.inkMuted)
                         }
                     } else {
@@ -48,15 +48,10 @@ struct ReviewContent: View {
                 ReviewCard(title: "Location", systemImage: "location", edit: { edit(.visitDetails, step: 2) }) {
                     if let latitude = draft.latitude, let longitude = draft.longitude {
                         Text(Self.coordinates(latitude, longitude)).font(.headline).monospacedDigit()
-                        HStack(spacing: FieldTheme.s) {
-                            if let accuracy = draft.accuracyMeters {
-                                Text("±\(Int(accuracy.rounded())) m accuracy")
-                            }
-                            if let distance = draft.siteDistanceMeters {
-                                Text("·")
-                                Text("\(Site.distanceText(distance)) from site")
-                            }
-                        }
+                        Text([
+                            draft.accuracyMeters.map { String(localized: "±\(Int($0.rounded())) m accuracy") },
+                            draft.siteDistanceMeters.map { String(localized: "\(Site.distanceText($0)) from site") },
+                        ].compactMap { $0 }.joined(separator: ", "))
                         .font(.subheadline)
                         .foregroundStyle(FieldTheme.inkMuted)
                     } else {
@@ -170,7 +165,7 @@ private struct ReadinessCard: View {
                 Label("Ready to submit", systemImage: "checkmark.seal.fill")
                     .font(.headline)
                     .foregroundStyle(FieldTheme.fern)
-                Text("Check each section below. After you submit, changes are made through a correction revision.")
+                Text("Review your observation before submitting.")
                     .font(.subheadline)
                     .foregroundStyle(FieldTheme.inkMuted)
             } else {
@@ -332,7 +327,7 @@ struct SubmissionStatusView: View {
                     StatusHero(record: record)
                     VStack(alignment: .leading, spacing: FieldTheme.xs) {
                         Text(record.site.name).font(.headline).foregroundStyle(FieldTheme.ink)
-                        Text("Revision \(record.revision) · \(record.date.fieldTimestamp)")
+                        Text("Revision \(record.revision), \(record.date.fieldTimestamp)")
                             .font(.subheadline)
                             .foregroundStyle(FieldTheme.inkMuted)
                     }
@@ -402,25 +397,25 @@ private struct StatusHero: View {
         case .savedLocally, .waiting: return "Saved on this phone"
         case .syncing: return "Sending to the archive"
         case .failed: return "Not sent yet"
-        case .synced: return record.workflow.title
+        case .synced: return record.workflow == .pendingReview ? "Waiting for review" : record.workflow.title
         }
     }
 
     private var detail: LocalizedStringResource {
         switch record.sync {
-        case .savedLocally, .waiting: return "It is locked and will sync automatically when a connection is available."
-        case .syncing: return "Waiting for the archive to confirm receipt."
-        case .failed: return "The record is safe on this phone. Retry when you have a connection."
+        case .savedLocally, .waiting: return "It will send automatically when you are back online."
+        case .syncing: return "Waiting for the archive to confirm."
+        case .failed: return "It is safe on this phone. Retry when you are online."
         case .synced:
             switch record.workflow {
-            case .submitted, .resubmitted, .validating: return "The archive received this revision. Automated validation runs next."
-            case .pendingReview: return "Validation finished. A reviewer on the research team will look at it."
-            case .needsCorrection: return "A reviewer asked for a correction. Open the observation to see why."
-            case .approved: return "Approved by a reviewer. Approval is not publication; public release happens separately."
+            case .submitted, .resubmitted, .validating: return "Received. Automated checks run next."
+            case .pendingReview: return "Your submission is with the research team."
+            case .needsCorrection: return "A reviewer asked for a correction."
+            case .approved: return "Approved by a reviewer. Public release happens separately."
             case .rejected: return "A reviewer rejected this revision. It will not be published."
-            case .publishing: return "Approved and being published to the public data layer."
-            case .publishFailed: return "Approved, but publication did not complete. The program team will retry."
-            case .published: return "Published to the public data layer without collector details."
+            case .publishing: return "Approved and being published."
+            case .publishFailed: return "Approved. Publication did not finish, and the program team will retry."
+            case .published: return "Published without your name or other collector details."
             case .draft: return "Not yet submitted."
             }
         }
@@ -462,7 +457,7 @@ struct ObservationLifecycleView: View {
         let reviewed: Set<WorkflowState> = [.approved, .rejected, .publishing, .publishFailed, .published]
 
         let archiveState: Stage.State = received ? .done : (sync == .failed ? .failed : .active)
-        let archiveDetail: String? = sync == .failed ? String(localized: "Sync failed · retry available") : (received ? nil : String(localized: sync.title))
+        let archiveDetail: String? = sync == .failed ? String(localized: "Sync failed. Retry is available.") : (received ? nil : String(localized: sync.title))
 
         let validationState: Stage.State = !received ? .upcoming : (validated.contains(workflow) ? .done : .active)
 
@@ -481,7 +476,7 @@ struct ObservationLifecycleView: View {
         switch workflow {
         case .approved: releaseDetail = String(localized: "Approved, not yet published"); releaseState = .active
         case .publishing: releaseDetail = String(localized: "Publishing"); releaseState = .active
-        case .publishFailed: releaseDetail = String(localized: "Publication failed · program team will retry"); releaseState = .failed
+        case .publishFailed: releaseDetail = String(localized: "Publication failed. The program team will retry."); releaseState = .failed
         case .published: releaseDetail = String(localized: "Published without collector details"); releaseState = .done
         case .rejected: releaseDetail = String(localized: "Not published"); releaseState = .skipped
         default: releaseDetail = nil; releaseState = .upcoming

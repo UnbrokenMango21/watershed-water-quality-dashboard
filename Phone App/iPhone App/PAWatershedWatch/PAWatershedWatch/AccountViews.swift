@@ -53,7 +53,7 @@ struct AccountView: View {
                 } header: {
                     Text("Research Identity")
                 } footer: {
-                    Text("Recorded as the collector on new observations and visible to authorized research and QC staff. Never shown on the public dashboard.")
+                    Text("Shown to the research team with new observations. Never shown publicly.")
                 }
                 .listRowBackground(FieldTheme.surface)
 
@@ -86,7 +86,7 @@ struct AccountView: View {
                 } header: {
                     Text("Field Data")
                 } footer: {
-                    Text("Drafts and submitted observations stay on this phone until the archive confirms them. Sync resumes automatically when a connection returns.")
+                    Text("Observations stay on this phone until the archive confirms them.")
                 }
                 .listRowBackground(FieldTheme.surface)
 
@@ -165,7 +165,7 @@ struct EditDisplayNameView: View {
                     .submitLabel(.done)
                     .onSubmit(save)
             } footer: {
-                Text("Use the name your research team knows you by. Observations you already submitted keep the name they were recorded with; the change applies to new observations.")
+                Text("Use the name your research team knows you by. It applies to new observations.")
             }
             .listRowBackground(FieldTheme.surface)
             if let error = model.authError {

@@ -21,7 +21,7 @@ final class ProductContractTests: XCTestCase {
         XCTAssertEqual(schema.watershed, "Spring Creek")
         XCTAssertEqual(schema.code, "SPC-01")
         XCTAssertEqual(schema.toleranceMeters, 30)
-        XCTAssertEqual(schema.subtitle, "Centre · Spring Creek")
+        XCTAssertEqual(schema.subtitle, "Centre, Spring Creek")
 
         let legacy = try XCTUnwrap(SiteCatalogDecoder.site(documentID: "site-b", data: [
             "site_id": "site-b", "site_name_display": "Legacy", "county_display": "Huntingdon County",
