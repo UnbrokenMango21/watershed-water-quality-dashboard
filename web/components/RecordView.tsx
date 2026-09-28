@@ -89,10 +89,7 @@ function Fact({
   sub?: ReactNode;
 }) {
   return (
-    <div className="fact">
-      <span className="fact-icon" aria-hidden="true">
-        <Icon name={icon} size={14} />
-      </span>
+    <div className="fact" data-icon={icon}>
       <span className="fact-body">
         <span className="fact-label">{label}</span>
         <span className="fact-value">{value}</span>
@@ -205,13 +202,14 @@ function MeasurementsTable({ measurements }: { measurements: MeasurementDoc[] })
               <Fragment key={measurement.measurement_id}>
                 <tr>
                   <th scope="row">
-                    <span className="cell-strong">
+                    <span className="cell-strong" title={measurement.parameter_code ?? undefined}>
                       {formatText(measurement.display_name ?? measurement.parameter_code)}
                     </span>
-                    <span style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 3, flexWrap: 'wrap' }}>
-                      <Uuid value={measurement.parameter_code} label="Parameter code" chars={26} />
-                      {measurement.qualifier ? <Badge tone="neutral">{measurement.qualifier}</Badge> : null}
-                    </span>
+                    {measurement.qualifier ? (
+                      <span style={{ display: 'flex', marginTop: 3 }}>
+                        <Badge tone="neutral">{measurement.qualifier}</Badge>
+                      </span>
+                    ) : null}
                   </th>
                   <td data-label="Entered">
                     <span className="mvalue">
@@ -364,7 +362,7 @@ function Findings({ flags }: { flags: ValidationFlagDoc[] }) {
               </div>
               <div className="finding-meta">
                 <Badge tone="neutral">{formatText(flag.severity)}</Badge>
-                <span className="mono">{formatText(flag.rule_code)}</span>
+                <span className="muted">{formatText(flag.rule_code)}</span>
               </div>
             </div>
           ))}
@@ -384,14 +382,17 @@ function AuditTimeline({ audit }: { audit: AuditDoc[] }) {
         const isDecision = DECISION_EVENTS.test(String(event.event_type ?? ''));
         const actor = event.actor_type ? (ACTOR_LABELS[event.actor_type] ?? humanizeSentence(event.actor_type)) : null;
         return (
-          <li key={event.audit_id} className={isDecision ? 'is-decision' : undefined}>
+          <li
+            key={event.audit_id}
+            className={isDecision ? 'is-decision' : undefined}
+            title={[event.actor_id && `Actor ID ${event.actor_id}`, event.revision_id && `Revision ID ${event.revision_id}`].filter(Boolean).join('\n') || undefined}
+          >
             <div className="tl-head">
               <span className="tl-title">{humanizeSentence(event.event_type)}</span>
               <span className="tl-time">{formatEastern(event.occurred_at)}</span>
             </div>
             <div className="tl-meta">
               {actor ? <span>{actor}</span> : null}
-              {event.actor_id ? <Uuid value={event.actor_id} label="Actor ID" /> : null}
               {event.previous_state || event.new_state ? (
                 <span className="tl-transition">
                   <span>{humanizeCode(event.previous_state)}</span>
@@ -400,7 +401,6 @@ function AuditTimeline({ audit }: { audit: AuditDoc[] }) {
                   <strong>{humanizeCode(event.new_state)}</strong>
                 </span>
               ) : null}
-              {event.revision_id ? <Uuid value={event.revision_id} label="Revision ID" /> : null}
             </div>
             {event.reason ? <p className="tl-reason">{event.reason}</p> : null}
           </li>
@@ -464,7 +464,7 @@ export default function RecordView({ detail, user }: { detail: SubmissionDetail;
             <p className="record-sub">
               {context.map((part, index) => (
                 <span key={part}>
-                  {index > 0 ? <span className="sep"> · </span> : null}
+                  {index > 0 ? <span className="sep">, </span> : null}
                   {part}
                 </span>
               ))}
@@ -488,7 +488,6 @@ export default function RecordView({ detail, user }: { detail: SubmissionDetail;
           icon="user"
           label="Collector"
           value={formatText(currentRevision?.data_collected_by)}
-          sub={<Uuid value={submission.collector_user_id} label="Collector user ID" />}
         />
         <Fact
           icon="layers"
@@ -541,8 +540,8 @@ export default function RecordView({ detail, user }: { detail: SubmissionDetail;
                 {blocking == null
                   ? 'Validation state unknown'
                   : blocking
-                    ? 'Blocking — approval unavailable'
-                    : 'Reviewable — no blocking errors'}
+                    ? 'Approval unavailable until corrected'
+                    : 'No blocking errors'}
               </strong>
               <span>Validated {formatEastern(validation?.validated_at)}</span>
             </span>
@@ -597,23 +596,18 @@ export default function RecordView({ detail, user }: { detail: SubmissionDetail;
           </dl>
         </Panel>
 
-        <Panel title="Method &amp; provenance" icon="tool">
+        <Panel title="Method" icon="tool">
           <dl className="kv">
             <KV label="Test type">{formatText(currentRevision?.test_type)}</KV>
             <KV label="Method">{formatText(currentRevision?.method_name)}</KV>
             <KV label="Instrument">
               {formatText(currentRevision?.instrument_name)}
-              {currentRevision?.instrument_other ? ` — ${currentRevision.instrument_other}` : ''}
+              {currentRevision?.instrument_other ? `, ${currentRevision.instrument_other}` : ''}
             </KV>
             <KV label="Revision state">{humanizeCode(currentRevision?.revision_status)}</KV>
             <KV label="Created">{formatEastern(submission.created_at)}</KV>
             <KV label="Last updated">{formatEastern(submission.updated_at)}</KV>
           </dl>
-          <div style={{ marginTop: 12 }}>
-            <IdRow label="Submission ID" value={submission.submission_id} />
-            <IdRow label="Revision ID" value={submission.current_revision_id} />
-            <IdRow label="Event ID" value={submission.event_id} />
-          </div>
         </Panel>
 
       </div>
@@ -678,7 +672,7 @@ export default function RecordView({ detail, user }: { detail: SubmissionDetail;
           >
             <div className="table-scroll">
               <table className="dtable stack-table">
-                <caption className="sr-only">Every revision filed against this submission, oldest first.</caption>
+                <caption className="sr-only">Oldest first.</caption>
                 <thead>
                   <tr>
                     <th scope="col">Revision</th>
@@ -699,9 +693,6 @@ export default function RecordView({ detail, user }: { detail: SubmissionDetail;
                             <Badge tone="brand">Current</Badge>
                           </span>
                         ) : null}
-                        <span style={{ display: 'block', marginTop: 2 }}>
-                          <Uuid value={revision.revision_id} label="Revision ID" chars={10} />
-                        </span>
                       </th>
                       <td data-label="State">{humanizeCode(revision.revision_status)}</td>
                       <td data-label="Collected" className="nowrap">
@@ -748,6 +739,7 @@ export default function RecordView({ detail, user }: { detail: SubmissionDetail;
             user={user}
             submissionId={submission.submission_id}
             expectedRevisionId={submission.current_revision_id ?? null}
+            revisionNo={submission.current_revision_no ?? null}
             reviewable={submission.status === 'PENDING_REVIEW'}
             currentStatus={submission.status}
           />

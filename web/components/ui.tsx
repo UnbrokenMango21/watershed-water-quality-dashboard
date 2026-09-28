@@ -46,7 +46,7 @@ export const SEVERITY_META: Record<FlagSeverity, SeverityMeta> = {
     word: 'warning',
     tone: 'warning',
     icon: 'alert',
-    note: 'The value is possible but unusual for this site. Use your judgement — a warning does not block approval.',
+    note: 'The value is possible but unusual for this site. Use your judgement; a warning does not block approval.',
   },
   ENVIRONMENTAL_ALERT: {
     label: 'Environmental alerts',
@@ -207,7 +207,7 @@ export function QualityBlock({ value }: { value: Nullable<number> }) {
       <div className="quality-block">
         <span className="quality-number">{formatNumber(Math.round(percent))}</span>
         <span className="quality-scale">
-          / 100 · <span className={`quality-band quality-band-${band}`}>{band === 'good' ? 'Good' : band === 'fair' ? 'Fair' : 'Low'}</span>
+          / 100 <span className={`quality-band quality-band-${band}`}>{band === 'good' ? 'Good' : band === 'fair' ? 'Fair' : 'Low'}</span>
         </span>
       </div>
       <span className="meter" aria-hidden="true">
@@ -339,8 +339,8 @@ export function Panel({
   return (
     <section className={`panel${flush ? ' panel-flush' : ''} ${className}`.trim()} id={id}>
       <div className="panel-head">
-        <h2 className="panel-title">
-          {icon ? <Icon name={icon} size={15} /> : null}
+        {/* Panel titles are words alone; icons are reserved for status and actions. */}
+        <h2 className="panel-title" data-icon={icon}>
           {title}
         </h2>
         {note ? <div className="panel-note">{note}</div> : null}
@@ -365,8 +365,7 @@ export function Disclosure({
 }) {
   return (
     <details className="disclosure" open={defaultOpen}>
-      <summary>
-        {icon ? <Icon name={icon} size={15} /> : null}
+      <summary data-icon={icon}>
         {title}
         {note ? <span className="disclosure-note">{note}</span> : null}
         <Icon name="chevronDown" size={15} className="disclosure-chevron" />

@@ -49,7 +49,7 @@ export default function ReviewIndexPage() {
     <div className="record-inner">
       {reviewed ? (
         <Notice kind="ok">
-          Decision recorded — <strong>{humanizeCode(reviewed)}</strong>. That submission has left the queue.
+          Decision recorded: <strong>{humanizeCode(reviewed)}</strong>. The submission has left the queue.
         </Notice>
       ) : null}
 
@@ -64,8 +64,8 @@ export default function ReviewIndexPage() {
             </h1>
             <p className="muted" style={{ maxWidth: '44ch', margin: '0 auto' }}>
               {waiting === 0
-                ? 'Submissions appear in the queue as soon as validation finishes and they enter pending review.'
-                : 'Pick a record from the queue on the left. The full scientific record, validation findings and decision controls open here.'}
+                ? 'New submissions appear here after validation.'
+                : 'Choose a submission from the queue to open it here.'}
             </p>
           </div>
 
