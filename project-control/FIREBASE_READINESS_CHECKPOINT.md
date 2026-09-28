@@ -114,6 +114,18 @@ reviewer profile was deactivated.
 - Per the gate, nothing was deployed: Firestore rules, Storage rules, functions and the QC console are
   unchanged on the live project.
 
+## Work console Auth linkage readback (attributed, aggregate only)
+
+Recorded by the Work coordinator from the signed-in Firebase console, read-only, no identities:
+
+- Firebase Auth has 1 user in total. It is linked to an active ADMIN `users/{uid}` profile.
+- Of the 6 active profiles (2 ADMIN, 2 QC_REVIEWER, 2 COLLECTOR), none of the QC_REVIEWER or
+  COLLECTOR profiles has an Auth account, and one ADMIN profile has none either.
+- Result: FAIL. There is no QC_REVIEWER account and no collector account on the live project. The
+  review loop can only be exercised by the single ADMIN account, whose custom claim is still unread.
+  Creating accounts or changing profiles is a provisioning decision for the project owner; nothing was
+  changed.
+
 ## Gates
 
 - Stricter Firestore rules and the QC console rollout: CLOSED until custom claims are read and
@@ -122,8 +134,8 @@ reviewer profile was deactivated.
 
 ## Blockers for a live iPhone test
 
-1. Custom claims unverified, so the reviewer side of the loop (and the rules/QC gate) is unproven.
-   Profiles alone do not grant access; the claim is required.
+1. Reviewer access FAIL: the live project has 1 Auth user (ADMIN profile); no QC_REVIEWER or
+   collector account exists, and the ADMIN custom claim is unread. Profiles alone do not grant access.
 2. The only selectable site is `SITE-SYNTHETIC-001`, which already carries private in-flight
    submissions. A live iPhone run would collect against a synthetic site: acceptable only as a clearly
    labelled development smoke test, not as monitoring science. Its `publication_approved` flag is
