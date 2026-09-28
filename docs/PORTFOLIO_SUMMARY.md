@@ -1,43 +1,42 @@
 # Portfolio summary
 
-Use these descriptions with the [metric ledger](PROJECT_METRICS.md). The exact current integration head is `1ac4347bbb3f26f2e89b4378a4b3ce27e2aab48f` (PR #45 documentation merge); its dashboard/publication source is unchanged from `8ef5684`, where the latest public-view readback was performed. PR #42 tested source `b9580c9` and PR #44 reviewed head `8d1c4f5` are separately identified where their evidence applies. At the 2026-09-28 15:00 UTC cutoff, normal PR #34 release CI and CodeQL at exactly `1ac4347` are green: 14/14 checks passed, including iOS native and Swift CodeQL (read 2026-09-28 15:00 UTC). GitHub's managed AI Scan failed before analysis on an unsupported requested model ([issue #47](https://github.com/UnbrokenMango21/watershed-water-quality-dashboard/issues/47)); it returned no findings and is not a pass or a clean security review. **Live Firebase readiness for the iPhone test: NO.** The iOS release and first non-test scientific publication remain pending. No institutional endorsement, live monitoring result, or completed semester-hour total is implied.
+Reusable descriptions of PA Watershed Watch. Every statement is backed by the repository, CI or release records listed in the [metric ledger](PROJECT_METRICS.md). Replace the bracketed placeholder with the lab or supervisor name you want to show; the repository does not record it.
 
-## 50 words
+Do not add users, adoption, environmental findings, institutional endorsement or completed-hour totals. None of these is established. The 300-hour figure is a semester planning target.
 
-PA Watershed Watch connects field collection to a private scientific review workflow and an ArcGIS-backed public dashboard. Submitted readings keep immutable revisions and original units. Trusted validation and human approval guard publication; restricted public views protect identities and workflow details. The iOS candidate remains under review, with live publication pending.
+## Short pitch
 
-## 100 words
+I built PA Watershed Watch, a water-quality monitoring system for a Penn State watershed research program. Field readings are collected in a native iPhone app, validated on the server and reviewed by a person before they can appear on a public ArcGIS map. The design keeps every submitted revision and its provenance, so a reading on the public dashboard can be traced back to what was originally recorded.
 
-PA Watershed Watch is a watershed monitoring platform built around the boundary between field records and public evidence. A native SwiftUI app collects readings into private Firebase records; trusted services validate submissions, and an authenticated QC Console supports revision-aware human decisions. Approved revisions are eligible for server-side ArcGIS publication through a private authoritative service and restricted public views. A dashboard reads those views without access to collector identities or review notes. Submitted science remains immutable, corrections create new revisions, and entered units survive normalization. The iOS release candidate is still under review; first non-test publication requires authorized review and readback.
+## LinkedIn project description
 
-## 250 words
+**PA Watershed Watch**, Penn State watershed research program [lab or supervisor]
 
-PA Watershed Watch is a research engineering project for accountable watershed observations. Its native SwiftUI iPhone app supports field entry and durable local records. Firebase Authentication and private Firestore store submitted scientific revisions. Trusted server code validates the submitted record; collectors cannot assign validation outcomes, review decisions, audit events, or publication status. An authenticated web QC Console lets an authorized reviewer approve, request correction, or reject the current revision.
+A system for collecting, reviewing and publishing stream water-quality readings in Central Pennsylvania. I built the native SwiftUI iPhone app, the Firebase backend (security rules, validation functions, private Firestore records), a Next.js review console where a scientist approves, rejects or requests corrections, and a public ArcGIS dashboard that reads only anonymous, schema-checked views. Submitted readings are immutable: a correction becomes a new revision and the original is kept. The iOS app is in TestFlight testing; the full pipeline runs under automated tests on every pull request.
 
-A submitted revision is immutable. When a collector corrects a reading, the system creates a revision and retains the earlier one. The record also preserves entered and canonical values and units. Water Temperature is the only confirmed mandatory science measurement. Validation warnings support human judgment; they do not silently rewrite a reading or declare an environmental condition.
+## Experience bullets (LinkedIn)
 
-Publication is a separate trusted step after approval. A server-side publisher is designed to write only the current approved revision into a private ArcGIS authoritative service. Restricted, query-only public views expose approved scientific fields to the dashboard while withholding identities, internal site labels, notes, and workflow identifiers. Demo data is visibly labeled and cannot replace production data when public views are empty.
-
-The architecture, contracts, and interface have automated verification, but the release is still gated. The iOS candidate awaits final review and device evidence. A provenance-cleared, non-test observation, authorized human decision, scoped ArcGIS credential, schema check, and publication readback are needed before claiming a live scientific result. Android implementation remains in the repository; its release work follows the iOS submission and publication milestone.
+- Built a native SwiftUI field-collection app that stores drafts on the device, captures GPS and site tolerance, keeps entered and canonical units, and submits immutable revisions to Firebase; shipped version 1.0.0 to TestFlight through a tag-pinned CI release pipeline.
+- Designed the Firebase trust model: Firestore security rules that stop collectors from writing validation, review or publication fields, server-side validation in Cloud Functions, and reviewer access that requires both a role claim and an active profile, covered by 45 rules tests and 17 review-lifecycle tests.
+- Built a Next.js QC Console for revision-aware human review (approve, request correction with a reason, reject), with audit history, stale-decision protection and an ArcGIS map of the sample position against the catalogued site.
+- Built the public side of the pipeline: an approved-only ArcGIS publisher and a public dashboard that reads four query-only views through a fail-closed field allowlist, with watershed map layers, time-series charts and CSV export, tested across four viewport sizes.
+- Worked with a research supervisor to keep scientific decisions (required measurements, thresholds, publication approval) with the scientists and out of the code.
 
 ## Resume bullets
 
-- Built a native SwiftUI field collection workflow backed by Firebase Authentication, private Firestore revisions, and trusted validation, preserving entered and canonical measurement values.
-- Implemented revision-aware human QC and an approved-only ArcGIS publication boundary with restricted public views and fail-closed schema checks.
-- Developed a responsive public dashboard with explicit demo and empty states; documented exact-source CI evidence and separated software verification from live scientific publication.
+- Built PA Watershed Watch, a native SwiftUI + Firebase + ArcGIS water-quality monitoring system for a Penn State research program; iOS 1.0.0 released to TestFlight via a tag-pinned GitHub Actions pipeline.
+- Enforced data provenance with immutable revisions, server-side validation and Firestore rules that block client-authored review or publication state (45 rules tests, 30 iOS unit tests, 3 UI workflow tests).
+- Developed a Next.js review console and a public ArcGIS dashboard; public data flows only through query-only views checked against a field allowlist, so collector and reviewer identities never leave the private system.
+- Set up CI across Swift, TypeScript and Python with CodeQL, emulator-backed security tests and responsive visual QA on every pull request.
 
-## LinkedIn draft
+## Longer description
 
-I’m developing PA Watershed Watch, a watershed field-data system that links a native iPhone app to private validation and human QC, then to controlled ArcGIS publication and a public dashboard. The design preserves submitted revisions and original units, and keeps reviewer identities and workflow details out of public views. PR #42 tested source `b9580c9` merged as `1da94e0`; PR #44 merged as `8ef5684`; PR #45 added documentation only at current integration `1ac4347`. Normal release CI and CodeQL at `1ac4347` passed 14/14 at the 2026-09-28 15:00 UTC evidence cutoff. Live Firebase readiness for the iPhone test is **NO**. Physical-device review and the first provenance-cleared non-test publication remain open. Android release work follows the iOS submission and publication milestone. Project architecture and evidence: [repository README](../README.md).
+PA Watershed Watch treats a field observation as a record with history rather than a single chart point. A collector records a visit in a native SwiftUI app: site, GPS position, method, instrument and measurements, with values kept in the units entered alongside canonical units. Submitting freezes that revision. Firestore security rules prevent the phone from writing validation results, review decisions or publication state; a Cloud Function validates the submission and moves it to review.
+
+A reviewer uses the QC Console to approve the current revision, request a correction with a reason the collector sees, or reject it. Corrections create a new revision and leave the previous one untouched, and a decision on an out-of-date revision is refused. Only the current approved revision can be published. A server-side publisher writes it to a private ArcGIS service, and the public dashboard reads four query-only views whose fields are checked against an allowlist; anything unexpected fails closed.
+
+The iOS app is in TestFlight internal testing, and the backend, review console and dashboard run in a development environment. No observation has been published yet: the first publication waits for an authorized, non-test reading and a human scientific decision.
 
 ## Technical explanation
 
-The collector writes a revision to private Firestore under Security Rules. Server-owned validation and workflow code advances it to review. Reviewer actions are authenticated, revision-aware, and audited; the UI does not become the source of scientific values. Approval marks a revision eligible for a separate server-side publication job. That job uses idempotent keys and readback against a private ArcGIS authoritative service, then exposes a constrained field set through query-only public views. The Next.js dashboard reads those views anonymously. The public schema verifier fails if fields exceed the allowlist or edit capabilities appear. See [architecture](ARCHITECTURE.md), [publication contract](PHASE12_ARCGIS_PUBLICATION.md), and [metric limits](PROJECT_METRICS.md).
-
-## Research explanation
-
-The system treats a field observation as a record with provenance, not simply a chart point. Original entries, units, submission history, validation flags, review decisions, and publication outcomes have distinct roles. Corrections add a revision instead of erasing what was submitted. A warning invites human examination without silently changing science. Only a current human-approved revision can enter publication, and the public dashboard receives only fields cleared for anonymous use. This supports traceability, but it does not itself establish data quality, environmental impairment, or regulatory compliance. A non-test observation with known provenance and complete readback is still needed for the first public scientific claim.
-
-## Suggested GitHub settings for coordinator review
-
-Current remote description (read 2026-09-28): “Public-facing watershed water quality dashboard (ArcGIS-backed) with dynamic parameter charts, site map linking, and a future researcher-only mode.” The remote has no topics or homepage set. Suggested description: **“Native watershed field collection, private scientific QC, approved-only ArcGIS publication, and a public-safe dashboard.”** Suggested topics: `water-quality`, `watershed`, `swiftui`, `jetpack-compose`, `firebase`, `arcgis`, `nextjs`, `data-provenance`. Use [the proposed social preview](images/portfolio/social-preview.png) after visual review. These are suggestions only; no remote settings were changed.
+The collector writes to private Firestore under security rules. Server-owned validation code advances a submission to review. Reviewer actions go through an authenticated API route that re-reads the caller's current claims and profile, applies the decision in a transaction against the expected revision and writes one audit event. Approval makes a revision eligible for a separate publication job with idempotent keys and readback against a private ArcGIS service, exposed through a constrained field set in query-only public views. The Next.js dashboard reads those views anonymously and refuses to render if their schema changes.

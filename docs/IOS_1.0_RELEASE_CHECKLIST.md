@@ -14,13 +14,16 @@ Physical-device, live Firebase/reviewer, and real scientific publication checks 
 ## After upload: internal device and live-service verification
 
 - [x] Confirm the uploaded build processed `VALID` and reports `IN_BETA_TESTING` internally in App Store Connect.
-- [ ] Install that signed build on the physical iPhone and complete the existing [physical-iPhone runbook](PHYSICAL_IPHONE_HAPPY_PATH_2026-09-28.md). Attach actual device evidence; simulator success is not physical-device proof. Check sign-in, durable draft after relaunch, controlled test submission, and private readback after Firebase is ready.
-- [ ] Resolve the live Firebase readiness gate before claiming a successful live iPhone workflow: verify required custom claims and reviewer Auth linkage, then verify deployed rules and QC source. Readiness remains **NO** until evidence is recorded. Keep reviewer identities and evidence private.
+- [x] Install that signed build on the physical iPhone from TestFlight (fresh install, 2026-09-28).
+- [ ] Complete the existing [physical-iPhone runbook](PHYSICAL_IPHONE_HAPPY_PATH_2026-09-28.md). Attach actual device evidence; simulator success is not physical-device proof. Check sign-in, durable draft after relaunch, controlled test submission, and private readback after Firebase is ready.
+- [x] Provision role-separated test identities with matching custom claims and active profiles; deploy the reviewed Firestore rules and the validation and profile functions, and read the live ruleset back identical to source (2026-09-28).
+- [x] Roll out the QC Console and public dashboard from reviewed integration source; a test reviewer signed in to the live QC Console and loaded the queue (2026-09-28).
+- [ ] Record the live collector → review → correction → approval and rejection run on test accounts, and a collector's "Not authorized" QC sign-in. Keep identities and evidence private.
 - [ ] Complete real reviewer sign-in and revision-aware readback. A controlled test record may verify workflow behavior but must not be represented as environmental science.
 
 ## Separate final scientific-publication gate
 
-- [ ] Obtain the full UltraReview report. Record each of its five finding IDs, exact text, source location, disposition, and verification evidence. **0/5 are accounted for** until the report is available. Resolve or explicitly disposition the GitHub-managed AI scan failure before claiming a clean security review.
+- [x] UltraReview: the texts of findings 3–5 were never retrieved; the project owner waived recovering them on 2026-09-28. Record them as unavailable evidence, not resolved findings. The GitHub-managed AI Scan failure ([#47](https://github.com/UnbrokenMango21/watershed-water-quality-dashboard/issues/47)) is an external scanner failure, not a pass.
 - [ ] Verify exact ArcGIS authoritative item scope and every public-view schema/capability before publishing. Publish only an authorized, provenance-cleared non-test observation after independent human scientific review; approval is not publication success.
 - [ ] Read the approved revision back through the private service, anonymous public views, and dashboard; verify retry/idempotency and privacy. If no eligible observation or authorization exists, leave public views empty. Do not use controlled tests or unresolved-provenance history as public evidence.
 - [ ] Keep PR #34/main promotion and public App Store submission **blocked** until combined CI is final, live/device and reviewer gates pass, the scientific publication gate is resolved, and final independent release review is recorded.
