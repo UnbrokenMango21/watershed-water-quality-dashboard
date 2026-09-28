@@ -43,7 +43,8 @@ jobs:
           cache-dependency-path: public-dashboard/package-lock.json
       - run: npm ci --no-audit --no-fund
       - name: Install Playwright for QA only
-        run: npm install --no-save --package-lock=false playwright@1.55.0
+        # Without --package-lock=false the locked app dependencies stay as tested; only Playwright is added.
+        run: npm install --no-save playwright@1.55.0
       - run: npx playwright install --with-deps chromium
       - run: npm run build
       - name: Start dashboard

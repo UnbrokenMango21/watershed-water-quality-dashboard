@@ -17,7 +17,7 @@ import { Fragment, useCallback, useState, type ReactNode } from 'react';
 import type { User } from 'firebase/auth';
 
 import { Icon, type IconName } from '@/components/icons';
-import LocationDiagram from '@/components/LocationDiagram';
+import SampleLocationMap from '@/components/SampleLocationMap';
 import ReviewActions from '@/components/ReviewActions';
 import {
   Badge,
@@ -460,13 +460,14 @@ export default function RecordView({ detail, user }: { detail: SubmissionDetail;
           <div className="record-title-line">
             <h1>{siteTitle}</h1>
             <StatusBadge status={submission.status} large />
-            {blocking == null ? (
-              <Badge tone="neutral" large>
-                Reviewability unknown
-              </Badge>
-            ) : blocking ? (
+            {/* Reviewability only means something while the record waits for a decision; blocking errors always show. */}
+            {blocking ? (
               <Badge tone="error" icon="xCircle" large>
                 Blocked by errors
+              </Badge>
+            ) : submission.status !== 'PENDING_REVIEW' ? null : blocking == null ? (
+              <Badge tone="neutral" large>
+                Reviewability unknown
               </Badge>
             ) : (
               <Badge tone="ok" icon="checkCircle" large>
@@ -782,7 +783,7 @@ export default function RecordView({ detail, user }: { detail: SubmissionDetail;
               ) : undefined
             }
           >
-            <LocationDiagram
+            <SampleLocationMap
               siteLat={site?.latitude}
               siteLon={site?.longitude}
               sampleLat={currentRevision?.latitude}

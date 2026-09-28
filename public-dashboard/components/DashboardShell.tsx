@@ -187,9 +187,9 @@ export function DashboardShell() {
             conditions={conditions}
             selectedSite={selectedSite}
             hoveredSite={hoveredSite}
+            activeParameter={activeParameter}
             onSelectSite={handleSelectFromMap}
             onHoverSite={handleHover}
-            hasOperationalLayers={true}
           />
           <ChartPanel
             site={selectedSite}

@@ -1944,6 +1944,133 @@ ol.timeline li.is-decision::before {
   text-align: center;
 }
 
+.location-map-frame {
+  position: relative;
+  border-radius: calc(var(--r-sm) - 2px);
+  overflow: hidden;
+}
+
+.location-map {
+  height: 240px;
+  background: var(--surface-sunken);
+}
+
+.location-map .esri-view-surface--inset-outline:focus::after {
+  outline: 2px solid var(--brand-600);
+}
+
+.location-map-zoom {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  box-shadow: var(--shadow-xs);
+  overflow: hidden;
+}
+
+.location-map-zoom button {
+  width: 28px;
+  height: 28px;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.location-map-zoom button + button {
+  border-top: 1px solid var(--border-soft);
+}
+
+.location-map-zoom button:hover,
+.location-map-basemaps button:hover:not(.active) {
+  background: var(--surface-sunken);
+}
+
+.location-map-basemaps {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  box-shadow: var(--shadow-xs);
+  overflow: hidden;
+}
+
+.location-map-basemaps button {
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: var(--fs-xs);
+  padding: 4px 10px;
+  cursor: pointer;
+}
+
+.location-map-basemaps button.active {
+  background: var(--brand-600);
+  color: var(--surface);
+}
+
+.location-map-key {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 4px 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.location-map-key li {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.location-map-key span {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.location-map-key .key-site {
+  width: 8px;
+  height: 8px;
+  border-radius: 1px;
+  transform: rotate(45deg);
+  background: #F6F3EC;
+  border: 2px solid #0D5C4B;
+}
+
+.location-map-key .key-sample {
+  background: #167A8B;
+  border: 2px solid #F6F3EC;
+  box-shadow: 0 0 0 1px var(--border);
+}
+
+.location-map-key .key-accuracy {
+  background: color-mix(in srgb, #6CC2D1 35%, transparent);
+  border: 1px solid #6CC2D1;
+}
+
+.location-map-key .key-tolerance {
+  border: 1.5px dashed var(--ok);
+  background: var(--ok-bg);
+}
+
+.location-map-key .key-tolerance.warn {
+  border-color: var(--warning);
+  background: var(--warning-bg);
+}
+
 /* ============================================================== forms ===== */
 
 button {

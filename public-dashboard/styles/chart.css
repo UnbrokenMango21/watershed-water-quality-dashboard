@@ -56,3 +56,6 @@
 .chart-context-empty strong { color: var(--ink); font-size: 14px; font-weight: 600; }
 .chart-context-empty span { max-width: 380px; font-size: 13px; line-height: 1.45; }
 .chart-context-empty button { min-height: 34px; padding: 0 12px; border: 1px solid var(--accent); border-radius: var(--radius-sm); background: var(--surface); color: var(--accent); font-weight: 600; cursor: pointer; }
+/* The CSV hint opens below the button: above it, it was clipped by the panel edge or covered the range buttons. */
+.export-button[data-tooltip]::after { bottom: auto; top: calc(100% + 7px); left: auto; right: 0; transform: translateY(-2px); }
+.export-button[data-tooltip]:hover::after, .export-button[data-tooltip]:focus-visible::after { transform: translateY(0); }
