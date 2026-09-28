@@ -33,6 +33,15 @@
 | Dashboard App Hosting rollout source | INFO | Backend `public-dashboard-dev` tracks `final/public-dashboard-v1` (`1fe71e4`), not integration; live build 2026-09-25 predates PR #42. |
 | Live `siteCatalog` audit | BLOCKED | See access gap. |
 
+## Post-merge review triage (PR #42)
+
+| Report | Verdict | Resolution on this branch |
+| --- | --- | --- |
+| 4119220956: rules cannot enforce the API's Auth `disabled` check, so "parity" was overstated | Valid (documentation and procedure) | Rules, runbook and preflight now state exactly what is immediate: the active-profile flag suspends reads and decisions at once; disabling Auth stops sign-in, refresh and decisions, but reads with an already-issued token continue until it expires (at most about an hour). Suspension order is profile first. The preflight fails for a disabled account that still has an active profile. No access semantics changed. |
+| 4119221009: async profile lookup can restore a stale review screen after sign-out or a user switch | Valid (bug) | The gate logic moved to `web/lib/reviewerGate.mjs`: every auth event starts a new generation, results from an older generation are dropped, and teardown cancels pending lookups. `tests/qc/reviewer_gate.test.mjs` covers sign-out, user switch, slow role read, teardown and late failures; 4 of its 5 tests fail against a copy without the guards. |
+
+Both test folders now run in `npm run test:contracts` (CI).
+
 ## Access gap
 
 The three BLOCKED reads (Auth claims and settings, `users/{uid}` profiles, `siteCatalog`) need a
@@ -44,6 +53,9 @@ credential that can call the Firebase Admin/Identity Toolkit and Firestore APIs.
 - No GitHub Actions workflow holds a Firebase or Google Cloud credential (only App Store Connect keys).
 - Deriving a credential from the Firebase CLI login was refused by the agent permission policy as
   credential materialization and was not attempted another way.
+- Re-assessed after the PR #42 merge: no already-authorized route exists. The remaining options are
+  credential extraction (refused), widening the MCP allowlist (access expansion), or `firebase
+  auth:export` (writes password hashes to disk). None was used.
 
 Any one of these, approved by the project owner, closes the gap: Application Default Credentials for a
 project reader; a read-only service account used through Workload Identity in a manual workflow; or
@@ -73,8 +85,8 @@ Ordered so reviewers cannot be locked out. Stop at the first failure.
    release history) and roll the QC backend back to build `build-2026-09-13-001`. Both are reversible
    and leave data untouched.
 
-Tested locally at `1da94e0`: Firestore rules 45/45, Storage rules 6/6, validation 7/7, review API 17/17,
-contracts 37/37, publication 17/17, profile 5/5 (including the preflight's parity with the review API),
+Tested locally on this branch (integration `1da94e0` plus the fixes above): contracts 47/47 (includes the QC gate and profile tests), QC typecheck and production build, Firestore rules 45/45, Storage rules 6/6, validation 7/7, review API 17/17,
+publication 17/17,
 and an emulator run of the preflight: PASS with an active reviewer and admin, FAIL (exit 1) after the
 reviewer profile was deactivated.
 

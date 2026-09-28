@@ -3,8 +3,10 @@
 //
 // Lists every Firebase Auth account whose custom `role` claim is QC_REVIEWER or ADMIN and checks that it
 // is enabled and has an active users/{uid} profile with a reviewer role: the rule enforced by the QC
-// review API (web/lib/reviewSubmission.mjs reviewerAccessProblem) and by the candidate Firestore and
-// Storage rules. Never writes. Prints no emails, names or UIDs; accounts are reported by position with a
+// review API (web/lib/reviewSubmission.mjs reviewerAccessProblem). The Firestore and Storage rules
+// check the claim and the active profile but cannot see the Auth `disabled` flag, so a disabled account
+// that still has an active profile is reported here as a problem to fix (deactivate its profile).
+// Never writes. Prints no emails, names or UIDs; accounts are reported by position with a
 // masked email domain only.
 //
 // Exit code 0 only when at least one active reviewer or admin exists and none would be locked out, so

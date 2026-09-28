@@ -146,9 +146,14 @@ Reviewer accounts are provisioned by an administrator; there is no sign-up or ac
 1.0. Access needs all three: an enabled Firebase Auth account, a `QC_REVIEWER` or `ADMIN` custom claim,
 and an active `users/{uid}` profile with a reviewer role (`scripts/ensure_dev_admin.mjs` and
 `scripts/provision_test_users.mjs` write both). The review API (`reviewerAccessProblem` in
-`web/lib/reviewSubmission.mjs`) and the Firestore and Storage read rules enforce the same requirement,
-so read access and decision access cannot disagree. To suspend a reviewer, set the profile's `active`
-to false (reads and decisions stop at once), remove the claim, and revoke refresh tokens.
+`web/lib/reviewSubmission.mjs`) checks all three. The Firestore and Storage read rules check the claim
+and the active profile but cannot see the Auth `disabled` flag, so a disabled account can keep reading
+with its already-issued ID token until that token expires (at most about an hour).
+
+To suspend a reviewer, in this order: set the profile's `active` to false first (reads and decisions
+stop at once), then remove the claim or disable the account, and revoke refresh tokens. Disabling the
+Auth account alone stops decisions immediately but not reads. `scripts/verify_reviewer_access.mjs`
+fails for any account that has a reviewer claim but is disabled or lacks an active profile.
 
 The rules requiring an active profile are in `firebase/firestore.rules` and `firebase/storage.rules`
 on the release branch and are covered by `tests/firestore-rules`. They are not yet deployed to the live
