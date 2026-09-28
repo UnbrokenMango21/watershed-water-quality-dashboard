@@ -38,6 +38,9 @@ The responsive Next.js dashboard is implemented and deployed against the verifie
 - ArcGIS Workflow Manager as a required QC system.
 - Historical 117-record/5-site migration until provenance is documented.
 - Public App Store release until internal TestFlight and release-lock evidence are complete.
+- Reviewer access requests. 1.0 provisions reviewers explicitly. A future request flow would record a
+  request for an administrator to approve and must never grant a role or activate a profile by itself;
+  its intake destination and approver still need to be decided.
 
 ## Post-1.0: accessibility polish (iOS)
 

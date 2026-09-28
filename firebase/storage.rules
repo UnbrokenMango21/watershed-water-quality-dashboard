@@ -6,10 +6,15 @@ service firebase.storage {
       return request.auth != null;
     }
 
+    // Same rule as Firestore reads and the QC review API: reviewer claim plus an active
+    // administrator-managed reviewer profile.
     function privilegedReader() {
       return signedIn()
         && "role" in request.auth.token
-        && request.auth.token.role in ["ADMIN", "QC_REVIEWER"];
+        && request.auth.token.role in ["ADMIN", "QC_REVIEWER"]
+        && firestore.exists(/databases/(default)/documents/users/$(request.auth.uid))
+        && firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.active == true
+        && firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role in ["ADMIN", "QC_REVIEWER"];
     }
 
     function submission(submissionId) {

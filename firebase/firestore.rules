@@ -17,12 +17,23 @@ service cloud.firestore {
         : "COLLECTOR";
     }
 
+    // Reviewer and admin reads match the QC review API (web/lib/reviewSubmission.mjs
+    // reviewerAccessProblem): the role claim alone is not enough; the administrator-managed
+    // users/{uid} profile must exist, be active and carry a reviewer role. Deactivating the
+    // profile ends access immediately; a disabled Auth account cannot refresh its token.
+    function activeReviewerProfile() {
+      let profilePath = /databases/$(database)/documents/users/$(uid());
+      return exists(profilePath)
+        && get(profilePath).data.active == true
+        && get(profilePath).data.role in ["QC_REVIEWER", "ADMIN"];
+    }
+
     function isAdmin() {
-      return signedIn() && role() == "ADMIN";
+      return signedIn() && role() == "ADMIN" && activeReviewerProfile();
     }
 
     function isReviewer() {
-      return signedIn() && role() == "QC_REVIEWER";
+      return signedIn() && role() == "QC_REVIEWER" && activeReviewerProfile();
     }
 
     function submissionPath(submissionId) {
