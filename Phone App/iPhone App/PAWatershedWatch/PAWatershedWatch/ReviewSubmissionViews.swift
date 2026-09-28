@@ -232,7 +232,7 @@ struct ReviewCard<Content: View>: View {
     var body: some View {
         VStack(alignment: .leading, spacing: FieldTheme.s) {
             HStack {
-                Label(title, systemImage: systemImage)
+                Label { Text(title) } icon: { Image(systemName: systemImage) }
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(FieldTheme.water)
                     .accessibilityAddTraits(.isHeader)
@@ -310,7 +310,7 @@ private struct MissingValue: View {
     init(_ text: LocalizedStringResource) { self.text = text }
 
     var body: some View {
-        Label(text, systemImage: "xmark.octagon.fill")
+        Label { Text(text) } icon: { Image(systemName: "xmark.octagon.fill") }
             .font(.subheadline.weight(.semibold))
             .foregroundStyle(.red)
     }
