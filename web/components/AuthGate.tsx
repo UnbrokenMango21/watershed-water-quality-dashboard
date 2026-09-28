@@ -74,12 +74,14 @@ function AppBar({ session }: { session: ReviewerSession | null }) {
   return (
     <header className="appbar">
       <a className="brand" href="/review">
-        <span className="brand-mark" aria-hidden="true">
-          <Icon name="waves" size={17} strokeWidth={2} />
-        </span>
+        <picture className="brand-mark">
+          <source srcSet="/brand/pww-mark-on-dark.svg" media="(prefers-color-scheme: dark)" />
+          {/* eslint-disable-next-line @next/next/no-img-element -- static SVG mark, no optimisation needed */}
+          <img src="/brand/pww-mark-master.svg" alt="" width={22} height={26} />
+        </picture>
         <span className="brand-text">
           <strong>PA Watershed Watch</strong>
-          <span>Quality Review · Private workspace</span>
+          <span>Quality review · Private</span>
         </span>
       </a>
 
@@ -109,9 +111,9 @@ function AppBar({ session }: { session: ReviewerSession | null }) {
               </span>
             </span>
           </div>
-          <button type="button" className="signout" onClick={() => void signOut(clientAuth())}>
+          <button type="button" className="signout" onClick={() => void signOut(clientAuth())} title="Sign out">
             <Icon name="logOut" size={14} />
-            Sign out
+            <span className="signout-label">Sign out</span>
           </button>
         </div>
       ) : null}

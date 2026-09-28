@@ -15,7 +15,8 @@ import { useCallback, useState, type ReactNode } from 'react';
 
 import { Icon, type IconName } from '@/components/icons';
 import { EMPTY, formatNumber, humanizeCode, qualityPercent, shortId } from '@/lib/format';
-import type { FlagSeverity, Nullable, SubmissionStatus } from '@/lib/types';
+import { workflowTone } from '@/lib/brandTokens';
+import type { FlagSeverity, Nullable } from '@/lib/types';
 
 export type Tone = 'neutral' | 'ok' | 'error' | 'warning' | 'alert' | 'brand';
 
@@ -98,30 +99,6 @@ export function Badge({
   );
 }
 
-const STATUS_TONE: Record<SubmissionStatus, Tone> = {
-  DRAFT: 'neutral',
-  SUBMITTED: 'neutral',
-  VALIDATING: 'neutral',
-  PENDING_REVIEW: 'warning',
-  NEEDS_CORRECTION: 'warning',
-  RESUBMITTED: 'brand',
-  APPROVED: 'ok',
-  REJECTED: 'error',
-  PUBLISHING: 'neutral',
-  PUBLISH_FAILED: 'error',
-  PUBLISHED: 'ok',
-};
-
-const STATUS_ICON: Partial<Record<SubmissionStatus, IconName>> = {
-  PENDING_REVIEW: 'clock',
-  NEEDS_CORRECTION: 'history',
-  APPROVED: 'checkCircle',
-  REJECTED: 'ban',
-  PUBLISHED: 'shield',
-  PUBLISH_FAILED: 'alert',
-  VALIDATING: 'refresh',
-};
-
 /**
  * Workflow state in words. The raw enum stays reachable as a tooltip so the
  * console still speaks the database's language when someone needs it to.
@@ -130,12 +107,12 @@ export function StatusBadge({ status, large = false }: { status: Nullable<string
   if (!status) {
     return <Badge tone="neutral">Unknown status</Badge>;
   }
-  const key = status as SubmissionStatus;
+  // Brand workflow pill: tinted rectangle, leading square, the word carries the meaning.
   return (
-    <Badge tone={STATUS_TONE[key] ?? 'neutral'} icon={STATUS_ICON[key]} large={large} title={status}>
+    <span className={`wf-pill wf-${workflowTone[status] ?? 'neutral'}${large ? ' wf-pill-lg' : ''}`} title={status}>
       <span className="sr-only">Workflow status: </span>
       {humanizeCode(status)}
-    </Badge>
+    </span>
   );
 }
 
