@@ -17,7 +17,7 @@ import { Fragment, useCallback, useState, type ReactNode } from 'react';
 import type { User } from 'firebase/auth';
 
 import { Icon, type IconName } from '@/components/icons';
-import LocationDiagram from '@/components/LocationDiagram';
+import SampleLocationMap from '@/components/SampleLocationMap';
 import ReviewActions from '@/components/ReviewActions';
 import {
   Badge,
@@ -782,7 +782,7 @@ export default function RecordView({ detail, user }: { detail: SubmissionDetail;
               ) : undefined
             }
           >
-            <LocationDiagram
+            <SampleLocationMap
               siteLat={site?.latitude}
               siteLon={site?.longitude}
               sampleLat={currentRevision?.latitude}
