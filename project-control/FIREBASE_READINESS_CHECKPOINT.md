@@ -58,8 +58,9 @@ Both test folders now run in `npm run test:contracts` (CI).
 
 ## Access gap
 
-The three BLOCKED reads (Auth claims and settings, `users/{uid}` profiles, `siteCatalog`) need a
-credential that can call the Firebase Admin/Identity Toolkit and Firestore APIs. On this Mac:
+Auth providers, `users/{uid}` profiles and `siteCatalog` were resolved by the Work console readback
+above. Only the Auth custom claims remain BLOCKED: reading them needs a credential that can call the
+Firebase Admin/Identity Toolkit API, and the console view used did not show them. On this Mac:
 
 - Application Default Credentials are not configured and `gcloud` is not installed.
 - The project's MCP wrapper (`scripts/firebase-mcp-readonly.mjs`) deliberately exposes only core,
