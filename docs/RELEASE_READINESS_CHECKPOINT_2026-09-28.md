@@ -2,6 +2,12 @@
 
 This is a dated release evidence record. Parth authorized routine engineering and the exact-source internal TestFlight upload. PR #34/main, live scientific decisions, siteCatalog mutation, real-data publication, physical-iPhone use, and personal submission remain gated. Recheck moving external state before acting.
 
+## Coordinator update — 2026-09-28, 16:45 EDT
+
+- Draft PR #34 remains OPEN/MERGEABLE at exact integration SHA `436447c560055e8437d5983f00dded34cea0fd3d`. **All 14 reported non-Android product/CodeQL checks now passed**, including the previously pending Swift analysis ([CodeQL run 36471436390](https://github.com/UnbrokenMango21/watershed-water-quality-dashboard/actions/runs/36471436390)). GitHub's separate managed AI scan still failed before analysis on its unsupported model; issue #47 stays open. No merge to `main` occurred.
+- Fresh [App Store Connect run 36474657023](https://github.com/UnbrokenMango21/watershed-water-quality-dashboard/actions/runs/36474657023) confirms signed iOS `1.0.0 (17)` from pinned source `5efd92699bb71199e7bbcdd887bc89497ecb4034` remains upload COMPLETE, processing VALID, internal IN_BETA_TESTING, external READY_FOR_BETA_SUBMISSION. Issue #26 was updated with the later owner-reported device install, development Firebase/QC preflight, and still-unproven one-reading live phone workflow; it remains open. The combined integration head and binary source are intentionally reported as separate SHAs.
+- Existing lanes are quiescent and isolated: Claude Firebase checkout clean at `db25970`, Codex publication checkout holds its already-accounted-for local checklist copy (merged via PR #48), Antigravity public checkout clean at `1ac4347`. The next substantive proof needs Parth's physical-iPhone collector/reviewer actions and a separate human scientific/siteCatalog decision. No automated test, deployment, GitHub comment, or documentation claim can substitute for those gates.
+
 ## Coordinator update — 2026-09-28, 15:47 EDT
 
 - PRs #48, #50 (QC webpack build repair), and #51 (final README/metrics/gallery release evidence) merged. Integration and draft, mergeable PR #34 now point to **`436447c560055e8437d5983f00dded34cea0fd3d`**. At this readback the non-Android product checks and four CodeQL analyzers passed; Swift CodeQL was still running. GitHub's separate managed AI scan failed before analysis again on the unsupported-model problem in issue #47. This is not a clean AI review. No PR #34/main merge occurred.
