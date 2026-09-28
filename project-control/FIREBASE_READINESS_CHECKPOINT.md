@@ -105,6 +105,15 @@ publication 17/17,
 and an emulator run of the preflight: PASS with an active reviewer and admin, FAIL (exit 1) after the
 reviewer profile was deactivated.
 
+## Re-check at integration `8ef5684` (PR #44 merged)
+
+- Access routes unchanged: `gcloud` not installed, no Application Default Credentials file, no
+  `GOOGLE_APPLICATION_CREDENTIALS`, MCP wrapper unchanged.
+- `node scripts/verify_reviewer_access.mjs` against live: BLOCKED before any read ("Could not load the
+  default credentials"), exit 1. Custom claims and the claim-to-profile linkage remain unverified.
+- Per the gate, nothing was deployed: Firestore rules, Storage rules, functions and the QC console are
+  unchanged on the live project.
+
 ## Gates
 
 - Stricter Firestore rules and the QC console rollout: CLOSED until custom claims are read and
