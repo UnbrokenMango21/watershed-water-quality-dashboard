@@ -4,11 +4,11 @@ This records read-only verification and development deployment of the PA Watersh
 
 ## Deployment and source identity
 
-- **Source SHA**: `1da94e04b8a15a99aacd41210f78c8c6bd2288b3` (PR #42 merged into integration).
-- **Previous hosted build**: `7dcac7d4469f6e624cfa8c66e2c38096f9a94474` (predated brand system overhaul; missing SVG mark and tokens).
-- **Deployed SHA**: `1da94e04b8a15a99aacd41210f78c8c6bd2288b3`.
+- **Integration Tip SHA**: `8ef568421f9d74ce7ef6aeb73244742bfebb3522` (PR #34, PR #44 merged).
+- **Public Dashboard Source Tree**: Identical between `1da94e0` and `8ef5684` (`git diff 1da94e0..8ef5684 -- public-dashboard/ publication/` produced zero changes).
+- **Deployed Source SHA**: `1da94e04b8a15a99aacd41210f78c8c6bd2288b3`.
 - **App Hosting Backend**: `public-dashboard-dev` (Project `central-pa-watershed-dev`, region `us-central1`).
-- **Build / Rollout ID**: `build-2026-09-28-001` (`state: SUCCEEDED`, build `state: READY`).
+- **Build / Rollout ID**: `build-2026-09-28-001` (`state: SUCCEEDED`, build `state: READY`, rollout time `2026-09-28T06:34:11Z`).
 - **Hosted Development URL**: `https://public-dashboard-dev--central-pa-watershed-dev.us-central1.hosted.app/`.
 
 ## Local verification on merged source
@@ -40,6 +40,10 @@ This records read-only verification and development deployment of the PA Watersh
    - Esri Hydro Reference Overlay (`MapServer`): **HTTP 200 OK**.
    - World Reference Overlay (`MapServer`): **HTTP 200 OK**.
    - Watershed Boundary Dataset HUC-12s (`FeatureServer/0`): **HTTP 200 OK**.
+6. **Integration tip re-verification (2026-09-28 08:15 EDT)**:
+   - Re-verified following PR #44 merge into integration tip `8ef568421f9d74ce7ef6aeb73244742bfebb3522`.
+   - Confirmed active rollout `build-2026-09-28-001` matches public dashboard source tree at `8ef5684`.
+   - Re-confirmed live HTTP 200, master brand mark SVG, route chunk `page-e16ed13c50754976.js`, 4 anonymous views query-only with count 0, authoritative boundary code 499 token required, zero unexpected/private fields, and connected zero-data state with no demo fallback.
 
 ## Tooling limits and visual QA note
 
