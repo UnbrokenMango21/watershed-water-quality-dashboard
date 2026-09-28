@@ -15,9 +15,9 @@
 | Check | Result | Evidence |
 | --- | --- | --- |
 | Project identity | PASS | `central-pa-watershed-dev`, number 652403958133, ACTIVE, billing enabled; `default` and `dev` aliases resolve to it. |
-| Auth configuration (providers, settings) | BLOCKED | See access gap. |
-| Reviewer/admin role claims | BLOCKED | See access gap. |
-| Active reviewer/admin `users/{uid}` profiles | BLOCKED | See access gap. By code, `scripts/ensure_dev_admin.mjs --apply` writes both the ADMIN claim and an active ADMIN profile, but no read has confirmed the live state. |
+| Auth configuration (providers, settings) | PASS (Work console) | Email/Password and Google providers enabled, matching the iOS sign-in methods. |
+| Reviewer/admin role claims | BLOCKED | Custom claims not yet read by any route (Work console did not show them). This gates the stricter rules and QC rollout. |
+| Active reviewer/admin `users/{uid}` profiles | PARTIAL (Work console) | 6 active profiles: 2 ADMIN, 2 QC_REVIEWER, 2 COLLECTOR. One enabled Auth account has a matching active ADMIN profile. Which of the other profiles map to enabled accounts, and their claims, was not reported. |
 | Deployed Firestore rules | PASS (previous model) | Live ruleset is the previous release: reviewer/admin reads trust the role claim only. |
 | Deployed rules vs integration | GAP (expected, not deployed) | Integration requires an active reviewer profile in `isAdmin()`/`isReviewer()`. Compiles cleanly (rules validation: no errors). |
 | Deployed Storage rules | NOT DEPLOYED (expected) | No active Storage release; media capture deferred. Integration Storage rules compile cleanly. |
@@ -30,8 +30,22 @@
 | Approval publisher | PASS (gated off) | Not deployed while `ENABLE_ARCGIS_PUBLICATION_FUNCTION` is off. |
 | Live QC review API authorization | PASS (previous model), GAP vs integration | QC backend serves build 2026-09-13. The review route changed only on 2026-08-14 and in PR #42, so the live route verifies the ID token with revocation, re-reads the live user, refuses disabled accounts and requires a reviewer claim, without the active-profile check. Consistent with the live rules. |
 | QC App Hosting rollout source | FAIL (configuration) | Backend `qc-console-dev` rolls out from `codex/qc-console-production-v1`, which no longer exists on the remote. PR #42 cannot reach the live console without an explicit rollout. |
-| Dashboard App Hosting rollout source | INFO | Backend `public-dashboard-dev` tracks `final/public-dashboard-v1` (`1fe71e4`), not integration; live build 2026-09-25 predates PR #42. |
-| Live `siteCatalog` audit | BLOCKED | See access gap. |
+| Dashboard App Hosting rollout | PASS (Work console) | Development dashboard rolled out successfully at integration `1da94e0`. |
+| Live `siteCatalog` audit | PASS with finding (Work console) | 19 documents. All 18 `site-test-001`..`018` are `active=false`. `SITE-SYNTHETIC-001` is `active=true` and is the only selectable site; it has 5 private submission references (2 NEEDS_CORRECTION, 2 RESUBMITTED, 1 SUBMITTED). No data was changed. |
+
+## Work console readback (attributed)
+
+Recorded by the Work coordinator from the Firebase console on 2026-09-28, read-only, no data mutation.
+Identities are omitted here.
+
+- Auth: Email/Password and Google enabled; one enabled account has a matching active ADMIN profile;
+  custom claims not verified.
+- `users`: 6 active profiles (2 ADMIN, 2 QC_REVIEWER, 2 COLLECTOR).
+- `siteCatalog`: 19 documents; 18 TEST fixtures inactive; `SITE-SYNTHETIC-001` active with 5 private
+  in-flight submissions. Publication requires `publication_approved == true` and a non-TEST site code
+  (`publication/transform.mjs`); that flag was not reported, and the publisher is not deployed, so
+  nothing can reach the public views today.
+- Dashboard: development rollout at `1da94e0` succeeded.
 
 ## Post-merge review triage (PR #42)
 
@@ -90,11 +104,19 @@ publication 17/17,
 and an emulator run of the preflight: PASS with an active reviewer and admin, FAIL (exit 1) after the
 reviewer profile was deactivated.
 
+## Gates
+
+- Stricter Firestore rules and the QC console rollout: CLOSED until custom claims are read and
+  `scripts/verify_reviewer_access.mjs` passes on live data (every QC_REVIEWER/ADMIN claim enabled with an
+  active reviewer profile).
+
 ## Blockers for a live iPhone test
 
-1. `siteCatalog` not audited: which sites the phone offers, and whether test fixtures are selectable, is
-   unverified.
-2. Reviewer and admin claims and active profiles not verified; the stricter rules must not deploy until
-   the preflight passes.
-3. Live QC console (2026-09-13) and dashboard (2026-09-25) predate PR #42, and the QC backend's rollout
-   branch no longer exists.
+1. Custom claims unverified, so the reviewer side of the loop (and the rules/QC gate) is unproven.
+   Profiles alone do not grant access; the claim is required.
+2. The only selectable site is `SITE-SYNTHETIC-001`, which already carries private in-flight
+   submissions. A live iPhone run would collect against a synthetic site: acceptable only as a clearly
+   labelled development smoke test, not as monitoring science. Its `publication_approved` flag is
+   unreported.
+3. The live QC console is still the 2026-09-13 build, and its App Hosting rollout branch no longer
+   exists; review would use the older console until an explicit rollout (gated above).
