@@ -2,6 +2,12 @@
 
 This is a dated release evidence record. Parth authorized routine engineering and the exact-source internal TestFlight upload. PR #34/main, live scientific decisions, siteCatalog mutation, real-data publication, physical-iPhone use, and personal submission remain gated. Recheck moving external state before acting.
 
+## Coordinator update — 2026-09-28, 13:43 EDT
+
+- Draft PR #34 remains OPEN/MERGEABLE at exact integration SHA `5efd92699bb71199e7bbcdd887bc89497ecb4034`; its 14 reported non-Android checks are green. Signed TestFlight `1.0.0 (17)` remains pinned to that SHA. Firebase live readiness is still NO, with no new credential grant, rules/functions deployment, siteCatalog mutation, scientific decision, or physical-iPhone test.
+- Claude's isolated `feature/arcgis-map-context` work is now clean and pushed as [PR #49](https://github.com/UnbrokenMango21/watershed-water-quality-dashboard/pull/49), exact head `8537033ab0100bc68c141303d904446b4706074d`. It changes only QC Console/public dashboard map and UX files, including a review-status wording fix. Backend/security, dashboard build, and hygiene checks passed at this readback; iOS, QC, and dashboard visual checks were still pending. **Do not merge PR #49 as part of the pinned `5efd926` release without an explicit release-source decision:** merging changes the integration SHA after the exact-SHA TestFlight candidate was uploaded. Keep its checkout and PR isolated while CI completes and evaluate it for a later source/build if needed.
+- Draft PR #48 remains isolated and unmerged for the same exact-source reason. Codex's presentation checkout still has its preserved, already-accounted-for local checklist edit; Antigravity's public-system checkout is clean. No checkout/file collision was found. UltraReview finding texts/IDs remain unavailable, 0/5 accounted.
+
 ## Morning coordinator update — 2026-09-28, 12:47 EDT
 
 - PR #46 merged from reviewed documentation head `16459c6f8b1f740e3e9af3cc146f06bcc1d77739` as integration and draft PR #34 head **`5efd92699bb71199e7bbcdd887bc89497ecb4034`**. PR #34 remains OPEN/DRAFT/MERGEABLE. All 14 reported non-Android checks on this exact head succeeded, including iOS native, backend/security, QC, publication, dashboard build/visual QA, repository hygiene, and five CodeQL analyzers; the managed AI scan did not report on this documentation merge. Its earlier unsupported-model execution failures remain open in issue #47 and are not a clean review. Android is intentionally deferred from normal PR CI.
