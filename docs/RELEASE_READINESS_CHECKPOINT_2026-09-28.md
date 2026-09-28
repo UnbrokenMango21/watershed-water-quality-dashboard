@@ -2,6 +2,12 @@
 
 This is a source and CI assessment, not authorization to merge, deploy, approve scientific records, or upload an app. Recheck moving GitHub heads and CI before acting.
 
+## Coordinator update — 2026-09-28, 08:24 EDT
+
+- PR #45 (public-system verification checkpoint and one-reading physical-iPhone runbook) merged from reviewed head `362212f6464bff8eb7caaef6045d09a77ef05a3a` as integration SHA `1ac4347bbb3f26f2e89b4378a4b3ce27e2aab48f`. Its two files are documentation only. The runbook excludes specific TEST IDs and requires an authentic reviewer-identified error before a correction revision; it does not mandate a scientific approval. Draft PR #34 now points to `1ac4347` and is mergeable. Combined non-Android CI is running at that SHA; no pass is claimed yet.
+- Claude finished the GitHub Advanced Security AI-scan investigation. This is a GitHub-managed `github-advanced-security` agent, not a repository workflow. The repository setting remains enabled; its requested `claude-opus-5` model has been rejected before analysis in 60/60 runs since September 25. No findings were produced and no repository-side fix or scan disablement was made. GitHub account-level model configuration or GitHub Support is required; conventional CodeQL and product checks are separate. Claude's aggregate-only live Auth FAIL checkpoint is pushed at `db25970b2b4e410f5885760ce208b7c300f38c02`.
+- PR #46 remains draft and isolated at `85d2e7282256ced12dcf9ed16ffcd0aea72035fa`. Codex is completing the privacy/metrics pass and reconciling its presentation text to `1ac4347`; PR #46 reports no branch checks. Do not merge stale exact-head claims. No Firebase deployment, siteCatalog mutation, TestFlight upload, real-data publication, or physical-iPhone interaction occurred in this update. **Firebase ready for live iPhone test: NO.**
+
 ## Coordinator update — 2026-09-28, 08:12 EDT
 
 - PR #44 merged after all five reported checks passed at `8d1c4f5f6632595fb3ed6b95e02ccc3286cc7f76`. The integration branch and draft PR #34 now point to exact SHA `8ef568421f9d74ce7ef6aeb73244742bfebb3522`; GitHub reports PR #34 mergeable. Combined non-Android CI is running at this SHA. Backend, QC, publication, hygiene, and three CodeQL jobs had succeeded at the 08:12 readback; iOS, dashboard build/visual QA, and Java/Kotlin/Swift CodeQL were still running. No TestFlight upload or Firebase deployment has occurred.
