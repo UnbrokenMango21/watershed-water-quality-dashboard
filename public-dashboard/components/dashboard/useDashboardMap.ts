@@ -134,8 +134,9 @@ export function useDashboardMap({
           renderer: new SimpleRenderer({
             symbol: new SimpleFillSymbol({
               style: "solid",
-              color: [31, 139, 160, 0.11],
-              outline: { color: [34, 117, 151, 0.58], width: 1.05 },
+              // Deep Water tint and outline (brand #167A8B) for reference watersheds.
+              color: [22, 122, 139, 0.08],
+              outline: { color: [22, 122, 139, 0.55], width: 1.05 },
             }),
           }),
         });
@@ -161,8 +162,9 @@ export function useDashboardMap({
               attributes: watershed.attributes,
               symbol: new SimpleFillSymbol({
                 style: "solid",
-                color: [0, 103, 190, 0.24],
-                outline: { color: [0, 78, 145, 0.96], width: 2.35 },
+                // Hemlock (brand #0D5C4B) marks the selected site's watershed.
+                color: [13, 92, 75, 0.16],
+                outline: { color: [13, 92, 75, 0.95], width: 2.35 },
               }),
             }));
           }).catch(() => undefined);
@@ -191,9 +193,10 @@ export function useDashboardMap({
         }));
         const markerSymbol = new SimpleMarkerSymbol({
           style: "circle",
-          color: [10, 103, 190, 0.92],
-          size: 9,
-          outline: { color: [255, 255, 255, 1], width: 1.4 },
+          // Sites in Deep Water with a Limestone halo, matching the iOS site map.
+          color: [22, 122, 139, 0.95],
+          size: 10,
+          outline: { color: [246, 243, 236, 1], width: 1.6 },
         });
         const siteLayer = new FeatureLayer({
           title: "Monitoring sites",
@@ -224,9 +227,9 @@ export function useDashboardMap({
             geometry: new Point({ longitude: site.longitude, latitude: site.latitude }),
             symbol: new SimpleMarkerSymbol({
               style: "circle",
-              color: selected ? [255, 255, 255, 0.18] : [255, 255, 255, 0.08],
-              size: selected ? 21 : 16,
-              outline: { color: selected ? [0, 90, 156, 1] : [0, 122, 194, 0.82], width: selected ? 3 : 2 },
+              color: selected ? [246, 243, 236, 0.22] : [246, 243, 236, 0.1],
+              size: selected ? 22 : 17,
+              outline: { color: selected ? [13, 92, 75, 1] : [22, 122, 139, 0.85], width: selected ? 3 : 2 },
             }),
           }));
         };

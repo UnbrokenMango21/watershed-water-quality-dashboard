@@ -1,11 +1,26 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { DashboardObservationSeriesPoint } from "@/lib/data/DashboardDataSource";
 import { formatDateTime, formatShortDate } from "./dashboard-utils";
 
 export function TrendChart({ points, label, decimals }: { points: DashboardObservationSeriesPoint[]; label: string; decimals: number }) {
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
+  // The drawing uses the container's real pixel size, so axis text renders at its CSS size
+  // instead of shrinking with a fixed viewBox.
+  const svgRef = useRef<SVGSVGElement | null>(null);
+  const [size, setSize] = useState({ width: 830, height: 254 });
+  useEffect(() => {
+    const element = svgRef.current;
+    if (!element || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(([entry]) => {
+      const width = Math.max(Math.round(entry.contentRect.width), 240);
+      const height = Math.max(Math.round(entry.contentRect.height), 120);
+      setSize((current) => (current.width === width && current.height === height ? current : { width, height }));
+    });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [points.length]);
 
   if (points.length === 0) {
     return (
@@ -27,7 +42,7 @@ export function TrendChart({ points, label, decimals }: { points: DashboardObser
   const spread = Math.max(rawMax - rawMin, Math.abs(rawMax) * 0.05, 0.1);
   const min = rawMin - spread * 0.18;
   const max = rawMax + spread * 0.18;
-  const plot = { left: 66, right: 794, top: 18, bottom: 218 };
+  const plot = { left: 58, right: size.width - 14, top: 14, bottom: size.height - 26 };
   const width = plot.right - plot.left;
   const height = plot.bottom - plot.top;
   const timeMin = times[0];
@@ -58,12 +73,12 @@ export function TrendChart({ points, label, decimals }: { points: DashboardObser
   const hovered = hoveredIndex === null ? null : ordered[hoveredIndex];
   const hoveredX = hovered ? xForTime(Date.parse(hovered.observedAt)) : 0;
   const hoveredY = hovered ? yFor(hovered.value) : 0;
-  const tooltipX = hoveredX > 620 ? hoveredX - 170 : hoveredX + 12;
-  const tooltipY = Math.max(8, Math.min(hoveredY - 54, 164));
+  const tooltipX = hoveredX > size.width - 190 ? hoveredX - 170 : hoveredX + 12;
+  const tooltipY = Math.max(8, Math.min(hoveredY - 54, plot.bottom - 52));
 
   return (
     <div className="chart-wrap">
-      <svg className="trend-chart" viewBox="0 0 830 254" role="img" aria-label={`${label} observation series with ${ordered.length} measurements from ${formatShortDate(ordered[0].observedAt)} to ${formatShortDate(ordered.at(-1)!.observedAt)}.`}>
+      <svg ref={svgRef} className="trend-chart" viewBox={`0 0 ${size.width} ${size.height}`} role="img" aria-label={`${label} observation series with ${ordered.length} measurements from ${formatShortDate(ordered[0].observedAt)} to ${formatShortDate(ordered.at(-1)!.observedAt)}.`}>
         {gridValues.map((gridValue) => {
           const y = yFor(gridValue);
           return (
@@ -113,18 +128,18 @@ export function TrendChart({ points, label, decimals }: { points: DashboardObser
         {[0, Math.floor((ordered.length - 1) / 2), ordered.length - 1]
           .filter((value, index, array) => array.indexOf(value) === index)
           .map((index) => (
-            <text key={index} x={xForTime(times[index])} y="242" textAnchor={index === 0 ? "start" : index === ordered.length - 1 ? "end" : "middle"} className="chart-axis-label">
+            <text key={index} x={xForTime(times[index])} y={size.height - 8} textAnchor={index === 0 ? "start" : index === ordered.length - 1 ? "end" : "middle"} className="chart-axis-label">
               {formatShortDate(ordered[index].observedAt)}
             </text>
           ))}
-        <text x="16" y="120" transform="rotate(-90 16 120)" textAnchor="middle" className="chart-unit-label">{unit}</text>
+        <text x="14" y={(plot.top + plot.bottom) / 2} transform={`rotate(-90 14 ${(plot.top + plot.bottom) / 2})`} textAnchor="middle" className="chart-unit-label">{unit}</text>
 
         {hovered && (
           <g className="chart-tooltip" aria-hidden="true">
             <line x1={hoveredX} x2={hoveredX} y1={plot.top} y2={plot.bottom} className="chart-hover-line" />
             <rect x={tooltipX} y={tooltipY} width="158" height="44" rx="5" />
             <text x={tooltipX + 10} y={tooltipY + 17}>{formatDateTime(hovered.observedAt)}</text>
-            <text x={tooltipX + 10} y={tooltipY + 34} className="chart-tooltip-value">{hovered.value.toFixed(decimals)} {hovered.unit === "pH" ? "" : hovered.unit}</text>
+            <text x={tooltipX + 10} y={tooltipY + 34} className="chart-tooltip-value">{hovered.value.toFixed(decimals)}{hovered.unit === "pH" ? "" : `\u00A0${hovered.unit}`}</text>
           </g>
         )}
       </svg>

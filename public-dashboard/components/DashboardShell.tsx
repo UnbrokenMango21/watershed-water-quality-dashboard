@@ -127,7 +127,8 @@ export function DashboardShell() {
     <main className="dashboard-shell" data-mobile-view={mobileView} data-source-connected={sourceConnected ? "true" : "false"}>
       <header className="app-bar">
         <div className="brand-block">
-          <div className="brand-mark" aria-hidden="true">≈</div>
+          {/* eslint-disable-next-line @next/next/no-img-element -- static SVG mark */}
+          <span className="brand-mark"><img src="/brand/pww-mark-master.svg" alt="" width={24} height={28} /></span>
           <div><h1>PA Watershed Watch</h1><p>Watershed Dashboard</p></div>
         </div>
         {sourceConnected ? (
