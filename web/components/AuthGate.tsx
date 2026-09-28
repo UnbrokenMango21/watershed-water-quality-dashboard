@@ -17,8 +17,8 @@ import { Icon } from '@/components/icons';
 import { Notice } from '@/components/ui';
 import { doc, getDoc } from 'firebase/firestore';
 import { clientAuth, clientDb, isFirebaseConfigured } from '@/lib/firebase-client';
+import { createAuthSequence, resolveReviewerGate } from '@/lib/reviewerGate.mjs';
 
-const REVIEWER_ROLES = new Set(['QC_REVIEWER', 'ADMIN']);
 
 type GateState =
   | { kind: 'loading' }
@@ -146,24 +146,32 @@ export default function AuthGate({ children }: { children: ReactNode }) {
       return;
     }
 
-    return onAuthStateChanged(clientAuth(), (user) => {
+    // Each auth event starts a new generation; a lookup for an earlier user or a signed-out session
+    // never applies after a later event has been handled.
+    const sequence = createAuthSequence();
+    const unsubscribe = onAuthStateChanged(clientAuth(), (user) => {
+      const isCurrent = sequence.begin();
       if (!user) {
         setState({ kind: 'signed-out' });
         return;
       }
       // The role lives on the ID token's custom claims, and the administrator-managed profile must
-      // be active. This only shapes the screen; the review API enforces the same rule server-side.
-      user
-        .getIdTokenResult()
-        .then(async (token) => {
-          const role = typeof token.claims.role === 'string' ? token.claims.role : 'COLLECTOR';
-          if (!REVIEWER_ROLES.has(role)) return setState({ kind: 'unauthorized', user, role });
+      // be active. This only shapes the screen; the review API and the rules enforce access.
+      void resolveReviewerGate({
+        user,
+        readRole: async () => (await user.getIdTokenResult()).claims.role,
+        readProfile: async () => {
           const profile = await getDoc(doc(clientDb(), 'users', user.uid));
-          const active = profile.exists() && profile.get('active') === true && REVIEWER_ROLES.has(profile.get('role'));
-          setState(active ? { kind: 'ready', user, role } : { kind: 'unauthorized', user, role });
-        })
-        .catch(() => setState({ kind: 'unauthorized', user, role: 'UNKNOWN' }));
+          return profile.exists() ? { active: profile.get('active'), role: profile.get('role') } : null;
+        },
+        isCurrent,
+        apply: (next) => setState({ kind: next.kind, user, role: next.role }),
+      });
     });
+    return () => {
+      sequence.invalidate();
+      unsubscribe();
+    };
   }, []);
 
   const handleSignIn = useCallback(

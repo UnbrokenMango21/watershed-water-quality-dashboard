@@ -17,10 +17,13 @@ service cloud.firestore {
         : "COLLECTOR";
     }
 
-    // Reviewer and admin reads match the QC review API (web/lib/reviewSubmission.mjs
-    // reviewerAccessProblem): the role claim alone is not enough; the administrator-managed
-    // users/{uid} profile must exist, be active and carry a reviewer role. Deactivating the
-    // profile ends access immediately; a disabled Auth account cannot refresh its token.
+    // Reviewer and admin reads need the role claim AND the administrator-managed users/{uid}
+    // profile to exist, be active and carry a reviewer role (the same claim and profile checks as
+    // web/lib/reviewSubmission.mjs reviewerAccessProblem). Rules cannot see the Auth `disabled`
+    // flag: a disabled account cannot sign in or refresh, but an already-issued ID token keeps
+    // passing these rules until it expires (at most about an hour). Setting the profile's `active`
+    // to false is therefore the immediate suspension control for reads; the review API refuses
+    // both inactive profiles and disabled accounts at once.
     function activeReviewerProfile() {
       let profilePath = /databases/$(database)/documents/users/$(uid());
       return exists(profilePath)
