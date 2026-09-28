@@ -10,6 +10,7 @@ This directory contains the current authoritative project documentation. Histori
 - [`DATA_DICTIONARY.md`](DATA_DICTIONARY.md) — scientific/workflow field definitions and provenance.
 - [`QUALITY_SCORE.md`](QUALITY_SCORE.md) — quality-score semantics.
 - [`QC_CONSOLE_RUNBOOK.md`](QC_CONSOLE_RUNBOOK.md) — operating the trusted reviewer surface.
+- [`DESIGN_SYSTEM.md`](DESIGN_SYSTEM.md) — shared brand tokens, status grammar and how each surface consumes them.
 - [`DEFERRED_MEDIA_FEATURE.md`](DEFERRED_MEDIA_FEATURE.md) — explicit decision to keep photo/audio/media out of the current release.
 
 ## Source-of-truth contracts
