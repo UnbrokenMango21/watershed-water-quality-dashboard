@@ -6,6 +6,10 @@ This directory contains the current authoritative project documentation. Histori
 
 - [`ARCHITECTURE.md`](ARCHITECTURE.md) — current native/Firebase/QC/ArcGIS trust architecture and lifecycle.
 - [`ROADMAP.md`](ROADMAP.md) — current pre-release closure gates for the implemented Phase 11/12 system.
+- [`PROJECT_METRICS.md`](PROJECT_METRICS.md) — dated, source-linked public claim ledger and limits.
+- [`PORTFOLIO_SUMMARY.md`](PORTFOLIO_SUMMARY.md) — reusable project descriptions and suggested repository metadata.
+- [`IOS_1.0_RELEASE_CHECKLIST.md`](IOS_1.0_RELEASE_CHECKLIST.md) — human release, privacy, TestFlight, and public-submission gates.
+- [`IOS_1.0_RELEASE_NOTES.md`](IOS_1.0_RELEASE_NOTES.md) — draft internal testing and user-facing notes for the proposed iOS 1.0 build.
 - [`semester/WORK_RECORD.md`](semester/WORK_RECORD.md) — supervisor-ready semester work record with weekly hours, plain-language comments and evidence.
 - [`DATA_DICTIONARY.md`](DATA_DICTIONARY.md) — scientific/workflow field definitions and provenance.
 - [`QUALITY_SCORE.md`](QUALITY_SCORE.md) — quality-score semantics.
