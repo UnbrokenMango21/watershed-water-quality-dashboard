@@ -30,6 +30,18 @@ Collection and review stay private. Collector clients cannot write validation, r
 - Public views exclude identities, workflow IDs, private site labels, reviewer notes, credentials, and internal diagnostics. The schema verifier fails closed on unexpected fields or edit capabilities.
 - Controlled test observations and historical data with unresolved provenance are excluded from public scientific proof. Demo data is explicitly labeled and is never a production fallback.
 
+## Fall 2026 Engineering Program
+
+**15 weeks × 20 planned hours per week = a 300-hour planning target.** It is not a completed-hours claim. The [authoritative week-by-week plan](project-control/SEMESTER_WORK_LOG.md) separates work evidence from verified time; its hours are not certified by Git activity or CI duration.
+
+| Weeks | Planned focus | Evidence status at 2026-09-28 |
+| --- | --- | --- |
+| 1–2 · Aug 24–Sep 6 | Reconcile the semester start and earlier native/backend work against dated records. | **Reconciliation open.** The plan does not certify these hours. |
+| 3–4 · Sep 7–20 | ArcGIS/public views, dashboard, Build 13, system audit and native verification. | **Work evidenced** in Git and Actions; release gates remain open. Hours are not certified by those artifacts. |
+| 5–6 · Sep 21–Oct 4 | Finalization and release controls, then physical iPhone and real-reviewer proof. | **Current closure.** Week 5 activity is documented; Week 6 device and reviewer proof is pending. |
+| 7–10 · Oct 5–Nov 1 | Firebase reliability, dashboard interaction, ArcGIS scope/privacy checks and non-test publication readback. | **Planned.** No completion is claimed from the calendar. |
+| 11–15 · Nov 2–Dec 6 | Usability, regression, privacy review, submission evidence and final presentation. | **Planned.** Android release work remains deferred until after the iOS submission/publication milestone. |
+
 ## Screen evidence
 
 These are [PR #42 dashboard visual QA](https://github.com/UnbrokenMango21/watershed-water-quality-dashboard/actions/runs/36384062900) captures at tested source `b9580c9`, now merged into integration as `1da94e0`; they are not evidence of a live scientific publication. Demo screens contain labeled sample sites and readings. Empty screens use mocked empty public-view responses to verify the interface. The earlier [Build 13 sign-in capture](docs/images/mobile/build-13-sign-in.png) is archival and is not presented as the current iOS release candidate.
