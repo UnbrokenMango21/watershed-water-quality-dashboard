@@ -374,7 +374,7 @@ struct CorrectionRevisionView: View {
                     RevisionIdentityHeader(previousRevision: record.revision)
                     CorrectionRequestPanel(reason: draft.correctionReason ?? String(localized: "A reviewer asked you to check this observation. Compare each value with your field sheet or instrument record."))
                     if !record.validationFlags.isEmpty {
-                        ValidationReadbackSection(summary: record.validation ?? ValidationSummary(errorCount: record.validationFlags.count(where: { $0.severity == "ERROR" }), warningCount: 0, infoCount: 0, overallQualityScore: nil), flags: record.validationFlags)
+                        ValidationReadbackSection(summary: record.validation ?? ValidationSummary.derived(from: record.validationFlags), flags: record.validationFlags)
                     }
                     if let message = validationMessage ?? model.workflowError {
                         NoticeBanner(title: "Correction Required", verbatimMessage: message, systemImage: "exclamationmark.circle.fill", color: .red)

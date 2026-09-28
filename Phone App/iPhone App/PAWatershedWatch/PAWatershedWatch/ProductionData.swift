@@ -255,10 +255,9 @@ extension ObservationDraft {
         func add(_ id: String, _ message: String, _ section: WorkflowSection?, _ kind: MeasurementKind? = nil) {
             issues.append(ReviewIssue(id: id, severity: .blocking, message: message, section: section, measurement: kind))
         }
+        if ownerUID.isEmpty { add("owner", "Sign in again before submitting.", nil) }
         if site == nil { add("site", "Choose a sampling site.", nil) }
-        if latitude == nil || longitude == nil || accuracyMeters == nil || (latitude == 0 && longitude == 0) {
-            add("gps", "Capture a GPS position at the site.", .visitDetails)
-        }
+        if !hasValidFieldPosition { add("gps", "Capture a GPS position at the site.", .visitDetails) }
         if collector.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { add("collector", "Add your full name in Account before submitting.", .visitDetails) }
         if let testType {
             if testType == .other && testTypeOther.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -282,7 +281,26 @@ extension ObservationDraft {
         if isCorrection && revisionNote.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             add("revisionNote", "Explain what you checked and changed.", nil)
         }
+        if attachments.contains(where: { $0.ownerUID != ownerUID || $0.submissionID != id || $0.revisionID != revisionID || !(1...50 * 1024 * 1024).contains($0.sizeBytes) }) {
+            add("attachments", "An attachment does not belong to this revision.", .notesMedia)
+        }
+        // Safety net: canonicalSnapshot() is the authority. If it rejects something this list did not
+        // name, show its message rather than claiming the draft is ready.
+        if issues.isEmpty {
+            do { _ = try canonicalSnapshot() } catch let error as CanonicalizationError {
+                add("gate", error.localizedDescription, error.section, error.measurement)
+            } catch {
+                add("gate", error.localizedDescription, nil)
+            }
+        }
         return issues
+    }
+
+    /// The same position rule `canonicalSnapshot()` enforces.
+    var hasValidFieldPosition: Bool {
+        guard let latitude, let longitude, let accuracyMeters else { return false }
+        return (-90...90).contains(latitude) && (-180...180).contains(longitude)
+            && !(latitude == 0 && longitude == 0) && accuracyMeters >= 0
     }
 
     /// Non-blocking field checks. The server's validation makes the authoritative quality judgment.

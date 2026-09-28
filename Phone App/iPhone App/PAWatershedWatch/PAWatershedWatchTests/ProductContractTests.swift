@@ -140,6 +140,53 @@ final class ProductContractTests: XCTestCase {
         XCTAssertThrowsError(try ready.canonicalSnapshot())
     }
 
+    /// Review's checklist and the submit gate must agree for every draft, so Review never says "Ready to
+    /// submit" for a draft that submitDraft() would reject, and never blocks one it would accept.
+    @MainActor
+    func testReviewChecklistAgreesWithSubmitGate() {
+        let mutations: [(String, (ObservationDraft) -> Void)] = [
+            ("ready", { _ in }),
+            ("no owner", { $0.ownerUID = "" }),
+            ("latitude out of range", { $0.latitude = 91 }),
+            ("longitude out of range", { $0.longitude = -181 }),
+            ("negative accuracy", { $0.accuracyMeters = -1 }),
+            ("null island", { $0.latitude = 0; $0.longitude = 0 }),
+            ("blank collector", { $0.collector = " " }),
+            ("no test type", { $0.testType = nil }),
+            ("other without description", { $0.testType = .other }),
+            ("blank instrument", { $0.instrument = "" }),
+            ("temperature out of range", { $0[valueFor: .temperature] = "80" }),
+            ("gated value", { $0[valueFor: .turbidity] = "3" }),
+            ("correction without note", { $0.isCorrection = true }),
+            ("foreign attachment", { draft in
+                draft.attachments = [AttachmentRecord(
+                    id: UUID(), ownerUID: "someone-else", submissionID: draft.id, revisionID: draft.revisionID,
+                    localURL: URL(fileURLWithPath: "/tmp/x.jpg"), contentType: "image/jpeg", sizeBytes: 10,
+                    kind: .sitePhoto, caption: nil, createdAt: .now, transferState: .localOnly
+                )]
+            }),
+        ]
+        for (name, mutate) in mutations {
+            let draft = readyDraft()
+            mutate(draft)
+            // submitDraft() = canonicalSnapshot() plus the correction-note rule (also enforced by the store).
+            let noteOK = !draft.isCorrection || !draft.revisionNote.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            let gateAccepts = (try? draft.canonicalSnapshot()) != nil && noteOK
+            XCTAssertEqual(draft.blockingIssues.isEmpty, gateAccepts, name)
+        }
+    }
+
+    func testDerivedValidationSummaryCountsEverySeverity() {
+        let flags = [
+            ValidationFlag(id: "a", severity: "ERROR", ruleCode: "A", message: "a"),
+            ValidationFlag(id: "b", severity: "WARNING", ruleCode: "B", message: "b"),
+            ValidationFlag(id: "c", severity: "PLAUSIBILITY_WARNING", ruleCode: "C", message: "c"),
+            ValidationFlag(id: "d", severity: "INFO", ruleCode: "D", message: "d"),
+        ]
+        let summary = ValidationSummary.derived(from: flags)
+        XCTAssertEqual([summary.errorCount, summary.warningCount, summary.infoCount], [1, 2, 1])
+    }
+
     @MainActor
     func testReviewWarningsNeverBlockSubmission() throws {
         let draft = readyDraft()

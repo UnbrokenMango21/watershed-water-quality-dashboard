@@ -490,6 +490,14 @@ struct ValidationSummary: Hashable {
     let warningCount: Int
     let infoCount: Int
     let overallQualityScore: Double?
+
+    /// Counts taken from the flags themselves, for when the server summary fields are not present yet.
+    /// Anything that is neither ERROR nor INFO (for example PLAUSIBILITY_WARNING) counts as a warning.
+    static func derived(from flags: [ValidationFlag]) -> ValidationSummary {
+        let errors = flags.count { $0.severity == "ERROR" }
+        let info = flags.count { $0.severity == "INFO" }
+        return ValidationSummary(errorCount: errors, warningCount: flags.count - errors - info, infoCount: info, overallQualityScore: nil)
+    }
 }
 
 struct ValidationFlag: Identifiable, Hashable {
