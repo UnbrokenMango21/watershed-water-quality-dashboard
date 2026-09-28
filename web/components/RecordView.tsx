@@ -158,7 +158,7 @@ function Temperature({ revision }: { revision: RevisionDoc | null }) {
       <p className="temp-note">
         <Icon name="info" size={14} />
         <span>
-          Both readings are stored on the revision exactly as submitted. The console displays them; it never converts.
+          Both readings are stored exactly as submitted.
         </span>
       </p>
     </div>
@@ -461,14 +461,7 @@ export default function RecordView({ detail, user }: { detail: SubmissionDetail;
             )}
           </div>
           {context.length > 0 ? (
-            <p className="record-sub">
-              {context.map((part, index) => (
-                <span key={part}>
-                  {index > 0 ? <span className="sep">, </span> : null}
-                  {part}
-                </span>
-              ))}
-            </p>
+            <p className="record-sub">{context.join(', ')}</p>
           ) : null}
         </div>
         <div className="record-tools">
