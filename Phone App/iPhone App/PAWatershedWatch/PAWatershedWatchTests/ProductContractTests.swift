@@ -21,7 +21,7 @@ final class ProductContractTests: XCTestCase {
         XCTAssertEqual(schema.watershed, "Spring Creek")
         XCTAssertEqual(schema.code, "SPC-01")
         XCTAssertEqual(schema.toleranceMeters, 30)
-        XCTAssertEqual(schema.subtitle, "Centre · Spring Creek")
+        XCTAssertEqual(schema.subtitle, "Centre, Spring Creek")
 
         let legacy = try XCTUnwrap(SiteCatalogDecoder.site(documentID: "site-b", data: [
             "site_id": "site-b", "site_name_display": "Legacy", "county_display": "Huntingdon County",
@@ -225,7 +225,7 @@ final class ProductContractTests: XCTestCase {
             "arrow.clockwise", "arrow.right", "arrow.right.circle.fill", "calendar", "checkmark", "checkmark.circle",
             "checkmark.circle.fill", "checkmark.seal", "checkmark.seal.fill", "chevron.down", "chevron.right", "circle",
             "circle.dotted.circle", "clock.arrow.circlepath", "doc.badge.plus", "doc.questionmark", "drop.circle", "drop.fill",
-            "envelope.badge", "exclamationmark.bubble.fill", "exclamationmark.circle", "exclamationmark.circle.fill",
+            "envelope.badge", "exclamationmark.bubble.fill", "gear", "exclamationmark.circle", "exclamationmark.circle.fill",
             "exclamationmark.icloud", "exclamationmark.icloud.fill", "exclamationmark.triangle.fill",
             "gauge.with.dots.needle.33percent", "hammer.fill", "house.fill", "internaldrive.fill", "location", "location.fill",
             "location.slash.fill", "location.viewfinder", "lock.fill", "magnifyingglass", "map", "map.fill", "mappin.and.ellipse",
@@ -237,6 +237,21 @@ final class ProductContractTests: XCTestCase {
         for name in Set(enumSymbols + viewSymbols) {
             XCTAssertNotNil(UIImage(systemName: name), "SF Symbol '\(name)' does not exist on this OS")
         }
+    }
+
+    // MARK: Brand
+
+    /// Status tones are generated from config/brand_tokens.json; every state needs an explicit entry so
+    /// a new state can never fall back silently to the neutral draft appearance.
+    func testEveryWorkflowStateHasAGeneratedBrandTone() {
+        for state in WorkflowState.allCases {
+            XCTAssertNotNil(BrandTokens.workflowTone[state.rawValue], "No brand tone for \(state.rawValue)")
+        }
+        XCTAssertEqual(WorkflowState.draft.tone, .neutral)
+        XCTAssertEqual(WorkflowState.pendingReview.tone, .review)
+        XCTAssertEqual(WorkflowState.needsCorrection.tone, .attention)
+        XCTAssertEqual(WorkflowState.approved.tone, .approved)
+        XCTAssertEqual(WorkflowState.published.tone, .published)
     }
 
     // MARK: Identity

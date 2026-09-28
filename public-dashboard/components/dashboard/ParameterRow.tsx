@@ -24,7 +24,7 @@ export function ParameterRow({
       <div className="metric-glyph" aria-hidden="true">{glyph}</div>
       <div className="metric-name">{label}</div>
       <div className="metric-value">
-        {current ? <>{current.value.toFixed(decimals)} <span>{current.unit === "pH" ? "" : current.unit}</span></> : <span className="metric-missing-value">—</span>}
+        {current ? <>{current.value.toFixed(decimals)}{"\u00A0"}<span>{current.unit === "pH" ? "" : current.unit}</span></> : <span className="metric-missing-value">Not recorded</span>}
       </div>
       <div className="metric-delta" aria-label={deltaLabel}>{deltaText}</div>
     </div>

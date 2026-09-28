@@ -97,3 +97,16 @@ test('retry recovers transient failure, and configured units match the native pr
   const series = await f.source.getObservationSeries(record.site_id, 'waterTemperature', new Date(time + 1).toISOString());
   assert.deepEqual(series, []);
 });
+
+test('production public sites become map markers without demo mode, and an empty view yields none', async () => {
+  const { siteMarkerAttributes } = await import('../components/dashboard/siteMarkers.ts');
+  const sites = await fixture().source.listSites();
+  const markers = siteMarkerAttributes(sites, () => 'Reviewed');
+  assert.deepEqual(markers.map((m) => [m.siteId, m.code]), [[record.site_id, 'PUBLIC-1']]);
+  const none = fixture();
+  none.rows.sites.length = 0;
+  const empty = await none.source.listSites();
+  assert.deepEqual(siteMarkerAttributes(empty, () => 'Reviewed'), []);
+  const mapSource = readFileSync(new URL('../components/dashboard/useDashboardMap.ts', import.meta.url), 'utf8');
+  assert.ok(!/demoMode/.test(mapSource), 'site plotting must not depend on demo mode');
+});

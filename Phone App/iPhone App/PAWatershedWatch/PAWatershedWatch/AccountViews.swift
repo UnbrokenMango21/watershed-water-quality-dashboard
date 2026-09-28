@@ -35,13 +35,14 @@ struct AccountView: View {
                             if !model.userEmail.isEmpty {
                                 Text(model.userEmail)
                                     .font(.subheadline)
-                                    .foregroundStyle(.secondary)
+                                    .foregroundStyle(FieldTheme.inkMuted)
                             }
                         }
                     }
                     .padding(.vertical, FieldTheme.xs)
                     .accessibilityElement(children: .combine)
                 }
+                .listRowBackground(FieldTheme.surface)
 
                 Section {
                     NavigationLink {
@@ -52,8 +53,9 @@ struct AccountView: View {
                 } header: {
                     Text("Research Identity")
                 } footer: {
-                    Text("Recorded as the collector on new observations and visible to authorized research and QC staff. Never shown on the public dashboard.")
+                    Text("Shown to the research team with new observations. Never shown publicly.")
                 }
+                .listRowBackground(FieldTheme.surface)
 
                 Section("Sign-In") {
                     LabeledContent("Method", value: providerText)
@@ -66,6 +68,7 @@ struct AccountView: View {
                         .disabled(model.connection != .online || model.isAuthenticating)
                     }
                 }
+                .listRowBackground(FieldTheme.surface)
 
                 Section {
                     LabeledContent("Connection") {
@@ -83,8 +86,9 @@ struct AccountView: View {
                 } header: {
                     Text("Field Data")
                 } footer: {
-                    Text("Drafts and submitted observations stay on this phone until the archive confirms them. Sync resumes automatically when a connection returns.")
+                    Text("Observations stay on this phone until the archive confirms them.")
                 }
+                .listRowBackground(FieldTheme.surface)
 
                 Section("About") {
                     Button("About PA Watershed Watch") { showAbout = true }
@@ -92,11 +96,15 @@ struct AccountView: View {
                     if let url = AppLinks.support { Link("Support", destination: url) }
                     LabeledContent("Version", value: AppBuildInfo.display)
                 }
+                .listRowBackground(FieldTheme.surface)
 
                 Section {
                     Button("Sign Out", role: .destructive) { confirmSignOut = true }
+                        .foregroundStyle(FieldTheme.alert)
                 }
+                .listRowBackground(FieldTheme.surface)
             }
+            .fieldScreen()
             .navigationTitle("Account")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -157,14 +165,17 @@ struct EditDisplayNameView: View {
                     .submitLabel(.done)
                     .onSubmit(save)
             } footer: {
-                Text("Use the name your research team knows you by. Observations you already submitted keep the name they were recorded with; the change applies to new observations.")
+                Text("Use the name your research team knows you by. It applies to new observations.")
             }
+            .listRowBackground(FieldTheme.surface)
             if let error = model.authError {
                 Section {
-                    Label(error, systemImage: "exclamationmark.circle.fill").foregroundStyle(.red)
+                    Label(error, systemImage: "exclamationmark.circle.fill").foregroundStyle(FieldTheme.alert)
                 }
+                .listRowBackground(FieldTheme.surface)
             }
         }
+        .fieldScreen()
         .navigationTitle("Full Name")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -207,11 +218,11 @@ struct AccountInitialsBadge: View {
             if initials.isEmpty {
                 Image(systemName: "person.fill")
                     .font(.system(size: size * 0.45, weight: .semibold))
-                    .foregroundStyle(Color(uiColor: .systemBackground))
+                    .foregroundStyle(FieldTheme.onPrimary)
             } else {
                 Text(initials)
                     .font(.system(size: size * 0.4, weight: .semibold, design: .rounded))
-                    .foregroundStyle(Color(uiColor: .systemBackground))
+                    .foregroundStyle(FieldTheme.onPrimary)
                     .minimumScaleFactor(0.6)
             }
         }

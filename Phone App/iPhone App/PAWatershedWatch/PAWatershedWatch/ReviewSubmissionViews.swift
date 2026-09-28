@@ -28,14 +28,14 @@ struct ReviewContent: View {
             VStack(alignment: .leading, spacing: FieldTheme.m) {
                 ReadinessCard(issues: issues, warnings: warnings, onFix: fix)
                 if let error = model.workflowError, issues.isEmpty {
-                    NoticeBanner(title: "Not Submitted", verbatimMessage: error, systemImage: "exclamationmark.circle.fill", color: .red)
+                    NoticeBanner(title: "Not Submitted", verbatimMessage: error, systemImage: "exclamationmark.circle.fill", tone: .error)
                 }
                 ReviewCard(title: "Site", systemImage: "mappin.and.ellipse", edit: { edit(.selectSite, step: 1) }) {
                     if let site = draft.site {
                         Text(site.name).font(.headline)
                         if !site.subtitle.isEmpty || !site.code.isEmpty {
-                            Text([site.code, site.subtitle].filter { !$0.isEmpty }.joined(separator: " · "))
-                                .font(.subheadline).foregroundStyle(.secondary)
+                            Text([site.code, site.subtitle].filter { !$0.isEmpty }.joined(separator: ", "))
+                                .font(.subheadline).foregroundStyle(FieldTheme.inkMuted)
                         }
                     } else {
                         MissingValue("No site selected")
@@ -43,22 +43,17 @@ struct ReviewContent: View {
                 }
                 ReviewCard(title: "Date and time", systemImage: "calendar", edit: { edit(.visitDetails, step: 2) }) {
                     Text(draft.date.fieldTimestamp).font(.headline).monospacedDigit()
-                    Text("Pennsylvania time (Eastern)").font(.subheadline).foregroundStyle(.secondary)
+                    Text("Pennsylvania time (Eastern)").font(.subheadline).foregroundStyle(FieldTheme.inkMuted)
                 }
                 ReviewCard(title: "Location", systemImage: "location", edit: { edit(.visitDetails, step: 2) }) {
                     if let latitude = draft.latitude, let longitude = draft.longitude {
                         Text(Self.coordinates(latitude, longitude)).font(.headline).monospacedDigit()
-                        HStack(spacing: FieldTheme.s) {
-                            if let accuracy = draft.accuracyMeters {
-                                Text("±\(Int(accuracy.rounded())) m accuracy")
-                            }
-                            if let distance = draft.siteDistanceMeters {
-                                Text("·")
-                                Text("\(Site.distanceText(distance)) from site")
-                            }
-                        }
+                        Text([
+                            draft.accuracyMeters.map { String(localized: "±\(Int($0.rounded())) m accuracy") },
+                            draft.siteDistanceMeters.map { String(localized: "\(Site.distanceText($0)) from site") },
+                        ].compactMap { $0 }.joined(separator: ", "))
                         .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(FieldTheme.inkMuted)
                     } else {
                         MissingValue("No GPS position captured")
                     }
@@ -90,14 +85,14 @@ struct ReviewContent: View {
                                     isRequired: draft.requiredMeasurements.contains(kind),
                                     problem: draft.measurementProblem(for: kind)
                                 )
-                                if kind != entered.last { Divider() }
+                                if kind != entered.last { CardDivider() }
                             }
                         }
                     }
                 }
                 ReviewCard(title: "Field notes", systemImage: "note.text", edit: { edit(.media, step: 5) }) {
                     if draft.notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        Text("None").foregroundStyle(.secondary)
+                        Text("None").foregroundStyle(FieldTheme.inkMuted)
                     } else {
                         Text(verbatim: draft.notes).font(.body)
                     }
@@ -113,24 +108,20 @@ struct ReviewContent: View {
         .navigationTitle("Review")
         .navigationBarTitleDisplayMode(.inline)
         .safeAreaInset(edge: .bottom) {
-            VStack(spacing: 8) {
+            ActionShelf {
                 HStack {
                     Label(issues.isEmpty ? "Ready to submit" : "\(issues.count) item(s) to fix", systemImage: issues.isEmpty ? "checkmark.circle" : "exclamationmark.circle")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(issues.isEmpty ? FieldTheme.fern : .red)
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(issues.isEmpty ? FieldTheme.fern : FieldTheme.alert)
                     Spacer()
-                    Text("Step 6 of 6").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                    Text("Step 6 of 6").font(.footnote.weight(.semibold)).foregroundStyle(FieldTheme.inkMuted).monospacedDigit()
                 }
+                StepProgressBar(step: 6, total: 6)
                 PrimaryActionButton(title: "Submit Observation", systemImage: "paperplane.fill", isEnabled: issues.isEmpty) {
                     confirmSubmit = true
                 }
                 .accessibilityIdentifier("review.submit")
             }
-            .padding(.horizontal, FieldTheme.m)
-            .padding(.top, 12)
-            .padding(.bottom, 8)
-            .background(.bar)
-            .overlay(alignment: .top) { Divider() }
         }
         .alert("Submit this observation?", isPresented: $confirmSubmit) {
             Button("Submit") { model.submitDraft() }
@@ -174,26 +165,24 @@ private struct ReadinessCard: View {
                 Label("Ready to submit", systemImage: "checkmark.seal.fill")
                     .font(.headline)
                     .foregroundStyle(FieldTheme.fern)
-                Text("Check each section below. After you submit, changes are made through a correction revision.")
+                Text("Review your observation before submitting.")
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(FieldTheme.inkMuted)
             } else {
                 Label("Must fix before submitting", systemImage: "xmark.octagon.fill")
                     .font(.headline)
-                    .foregroundStyle(.red)
+                    .foregroundStyle(FieldTheme.alert)
                 ForEach(issues) { issue in IssueRow(issue: issue, onFix: onFix) }
             }
             if !warnings.isEmpty {
-                Divider()
+                CardDivider()
                 Label("Worth checking (won't block)", systemImage: "exclamationmark.triangle.fill")
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(FieldTheme.goldenrod)
                 ForEach(warnings) { issue in IssueRow(issue: issue, onFix: onFix) }
             }
         }
-        .padding(FieldTheme.m)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background((issues.isEmpty ? FieldTheme.fern : Color.red).opacity(0.08), in: RoundedRectangle(cornerRadius: FieldTheme.radiusM, style: .continuous))
+        .fieldCard(fill: (issues.isEmpty ? StatusTone.success : StatusTone.error).background)
     }
 }
 
@@ -232,10 +221,18 @@ struct ReviewCard<Content: View>: View {
     var body: some View {
         VStack(alignment: .leading, spacing: FieldTheme.s) {
             HStack {
-                Label { Text(title) } icon: { Image(systemName: systemImage) }
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(FieldTheme.water)
-                    .accessibilityAddTraits(.isHeader)
+                Label {
+                    Text(title)
+                        .font(.footnote.weight(.semibold))
+                        .textCase(.uppercase)
+                        .tracking(0.6)
+                        .foregroundStyle(FieldTheme.inkMuted)
+                } icon: {
+                    Image(systemName: systemImage)
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(FieldTheme.water)
+                }
+                .accessibilityAddTraits(.isHeader)
                 Spacer()
                 if let edit {
                     Button("Edit", action: edit)
@@ -246,10 +243,8 @@ struct ReviewCard<Content: View>: View {
             }
             content
         }
-        .padding(.horizontal, FieldTheme.m)
-        .padding(.vertical, 12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(uiColor: .systemBackground), in: RoundedRectangle(cornerRadius: FieldTheme.radiusM, style: .continuous))
+        .padding(.top, -6)
+        .fieldCard()
     }
 }
 
@@ -259,10 +254,10 @@ private struct ReviewDetailRow: View {
 
     var body: some View {
         HStack(alignment: .firstTextBaseline) {
-            Text(label).font(.subheadline).foregroundStyle(.secondary)
+            Text(label).font(.subheadline).foregroundStyle(FieldTheme.inkMuted)
             Spacer(minLength: FieldTheme.m)
             if value.trimmingCharacters(in: .whitespaces).isEmpty {
-                Text("Missing").font(.subheadline.weight(.semibold)).foregroundStyle(.red)
+                Text("Missing").font(.subheadline.weight(.semibold)).foregroundStyle(FieldTheme.alert)
             } else {
                 Text(verbatim: value).font(.subheadline.weight(.semibold)).multilineTextAlignment(.trailing)
             }
@@ -287,7 +282,7 @@ private struct ReviewMeasurementRow: View {
                     if isRequired { RequiredMark() }
                 }
                 if let problem {
-                    Label(problem, systemImage: "xmark.octagon.fill").font(.caption.weight(.semibold)).foregroundStyle(.red)
+                    Label(problem, systemImage: "xmark.octagon.fill").font(.caption.weight(.semibold)).foregroundStyle(FieldTheme.alert)
                 }
             }
             Spacer(minLength: FieldTheme.s)
@@ -295,7 +290,7 @@ private struct ReviewMeasurementRow: View {
                 Text(kind == .ph ? value : "\(value) \(unit.inlineSymbol)")
                     .font(.title3.bold().monospacedDigit())
                 if let conversion {
-                    Text(conversion).font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+                    Text(conversion).font(.caption.monospacedDigit()).foregroundStyle(FieldTheme.inkMuted)
                 }
             }
         }
@@ -312,7 +307,7 @@ private struct MissingValue: View {
     var body: some View {
         Label { Text(text) } icon: { Image(systemName: "xmark.octagon.fill") }
             .font(.subheadline.weight(.semibold))
-            .foregroundStyle(.red)
+            .foregroundStyle(FieldTheme.alert)
     }
 }
 
@@ -331,14 +326,13 @@ struct SubmissionStatusView: View {
                 if let record = statusRecord {
                     StatusHero(record: record)
                     VStack(alignment: .leading, spacing: FieldTheme.xs) {
-                        Text(record.site.name).font(.headline)
-                        Text("Revision \(record.revision) · \(record.date.fieldTimestamp)")
+                        Text(record.site.name).font(.headline).foregroundStyle(FieldTheme.ink)
+                        Text("Revision \(record.revision), \(record.date.fieldTimestamp)")
                             .font(.subheadline)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(FieldTheme.inkMuted)
                     }
                     ObservationLifecycleView(workflow: record.workflow, sync: record.sync)
-                        .padding(FieldTheme.m)
-                        .background(Color(uiColor: .systemBackground), in: RoundedRectangle(cornerRadius: FieldTheme.radiusM, style: .continuous))
+                        .fieldCard()
                     if record.sync == .failed || record.sync == .waiting {
                         PrimaryActionButton(title: "Retry Sync", systemImage: "arrow.clockwise", isEnabled: model.connection == .online) {
                             model.retrySync(recordID: record.id)
@@ -382,16 +376,17 @@ private struct StatusHero: View {
         HStack(alignment: .top, spacing: FieldTheme.m) {
             Group {
                 if record.sync == .syncing {
-                    ProgressView().controlSize(.large)
+                    ProgressView()
                 } else {
-                    Image(systemName: icon).font(.title).foregroundStyle(color)
+                    Image(systemName: icon).font(.title2.weight(.semibold)).foregroundStyle(color)
                 }
             }
-            .frame(width: 44, height: 44)
+            .frame(width: 52, height: 52)
+            .background(tileColor, in: RoundedRectangle(cornerRadius: FieldTheme.radiusS, style: .continuous))
             .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: FieldTheme.xs) {
-                Text(title).font(.title2.bold())
-                Text(detail).font(.subheadline).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                Text(title).font(.title2.bold()).foregroundStyle(FieldTheme.ink)
+                Text(detail).font(.subheadline).foregroundStyle(FieldTheme.inkMuted).fixedSize(horizontal: false, vertical: true)
             }
         }
         .accessibilityElement(children: .combine)
@@ -402,25 +397,25 @@ private struct StatusHero: View {
         case .savedLocally, .waiting: return "Saved on this phone"
         case .syncing: return "Sending to the archive"
         case .failed: return "Not sent yet"
-        case .synced: return record.workflow.title
+        case .synced: return record.workflow == .pendingReview ? "Waiting for review" : record.workflow.title
         }
     }
 
     private var detail: LocalizedStringResource {
         switch record.sync {
-        case .savedLocally, .waiting: return "It is locked and will sync automatically when a connection is available."
-        case .syncing: return "Waiting for the archive to confirm receipt."
-        case .failed: return "The record is safe on this phone. Retry when you have a connection."
+        case .savedLocally, .waiting: return "It will send automatically when you are back online."
+        case .syncing: return "Waiting for the archive to confirm."
+        case .failed: return "It is safe on this phone. Retry when you are online."
         case .synced:
             switch record.workflow {
-            case .submitted, .resubmitted, .validating: return "The archive received this revision. Automated validation runs next."
-            case .pendingReview: return "Validation finished. A reviewer on the research team will look at it."
-            case .needsCorrection: return "A reviewer asked for a correction. Open the observation to see why."
-            case .approved: return "Approved by a reviewer. Approval is not publication; public release happens separately."
+            case .submitted, .resubmitted, .validating: return "Received. Automated checks run next."
+            case .pendingReview: return "Your submission is with the research team."
+            case .needsCorrection: return "A reviewer asked for a correction."
+            case .approved: return "Approved by a reviewer. Public release happens separately."
             case .rejected: return "A reviewer rejected this revision. It will not be published."
-            case .publishing: return "Approved and being published to the public data layer."
-            case .publishFailed: return "Approved, but publication did not complete. The program team will retry."
-            case .published: return "Published to the public data layer without collector details."
+            case .publishing: return "Approved and being published."
+            case .publishFailed: return "Approved. Publication did not finish, and the program team will retry."
+            case .published: return "Published without your name or other collector details."
             case .draft: return "Not yet submitted."
             }
         }
@@ -428,6 +423,10 @@ private struct StatusHero: View {
 
     private var icon: String { record.sync == .synced ? record.workflow.icon : record.sync.icon }
     private var color: Color { record.sync == .synced ? record.workflow.color : record.sync.color }
+    private var tileColor: Color {
+        guard record.sync == .synced else { return record.sync == .failed ? StatusTone.error.background : FieldTheme.surfaceRaised }
+        return record.workflow.tone == .neutral ? FieldTheme.surfaceRaised : record.workflow.tone.background
+    }
 }
 
 /// The path an observation takes, from this phone to public release. Each stage states its own
@@ -437,9 +436,10 @@ struct ObservationLifecycleView: View {
     let sync: SyncState
 
     var body: some View {
-        VStack(alignment: .leading, spacing: FieldTheme.m) {
-            ForEach(stages, id: \.title) { stage in
-                LifecycleRow(stage: stage)
+        let stages = stages
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(Array(stages.enumerated()), id: \.element.title) { index, stage in
+                LifecycleRow(stage: stage, next: index + 1 < stages.count ? stages[index + 1] : nil)
             }
         }
     }
@@ -457,7 +457,7 @@ struct ObservationLifecycleView: View {
         let reviewed: Set<WorkflowState> = [.approved, .rejected, .publishing, .publishFailed, .published]
 
         let archiveState: Stage.State = received ? .done : (sync == .failed ? .failed : .active)
-        let archiveDetail: String? = sync == .failed ? String(localized: "Sync failed · retry available") : (received ? nil : String(localized: sync.title))
+        let archiveDetail: String? = sync == .failed ? String(localized: "Sync failed. Retry is available.") : (received ? nil : String(localized: sync.title))
 
         let validationState: Stage.State = !received ? .upcoming : (validated.contains(workflow) ? .done : .active)
 
@@ -476,7 +476,7 @@ struct ObservationLifecycleView: View {
         switch workflow {
         case .approved: releaseDetail = String(localized: "Approved, not yet published"); releaseState = .active
         case .publishing: releaseDetail = String(localized: "Publishing"); releaseState = .active
-        case .publishFailed: releaseDetail = String(localized: "Publication failed · program team will retry"); releaseState = .failed
+        case .publishFailed: releaseDetail = String(localized: "Publication failed. The program team will retry."); releaseState = .failed
         case .published: releaseDetail = String(localized: "Published without collector details"); releaseState = .done
         case .rejected: releaseDetail = String(localized: "Not published"); releaseState = .skipped
         default: releaseDetail = nil; releaseState = .upcoming
@@ -494,23 +494,39 @@ struct ObservationLifecycleView: View {
 
 private struct LifecycleRow: View {
     let stage: ObservationLifecycleView.Stage
+    /// The following stage, if any; the connector below this row is drawn solid once that stage has begun.
+    let next: ObservationLifecycleView.Stage?
+    @ScaledMetric(relativeTo: .title3) private var iconSize: CGFloat = 26
 
     var body: some View {
         HStack(alignment: .top, spacing: FieldTheme.m) {
             Image(systemName: icon)
                 .font(.title3)
                 .foregroundStyle(color)
-                .frame(width: 28)
+                .frame(width: 28, height: iconSize)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
                 Text(stage.title)
                     .font(.body.weight(stage.state == .upcoming || stage.state == .skipped ? .regular : .semibold))
-                    .foregroundStyle(stage.state == .upcoming || stage.state == .skipped ? .secondary : .primary)
+                    .foregroundStyle(stage.state == .upcoming || stage.state == .skipped ? FieldTheme.inkMuted : FieldTheme.ink)
                 if let detail = stage.detail {
-                    Text(detail).font(.subheadline).foregroundStyle(.secondary)
+                    Text(detail).font(.subheadline).foregroundStyle(FieldTheme.inkMuted)
                 }
             }
+            .padding(.bottom, next == nil ? 0 : 18)
             Spacer(minLength: 0)
+        }
+        .overlay(alignment: .topLeading) {
+            if next != nil {
+                Rectangle()
+                    .fill(connectorColor)
+                    .frame(width: 2)
+                    .padding(.top, iconSize + 2)
+                    // Runs into the next row so the rail reads as one continuous line.
+                    .padding(.bottom, -2)
+                    .padding(.leading, 13)
+                    .accessibilityHidden(true)
+            }
         }
         .accessibilityElement(children: .combine)
         .accessibilityValue(Text(stateLabel))
@@ -532,9 +548,14 @@ private struct LifecycleRow: View {
         case .done: FieldTheme.fern
         case .active: FieldTheme.water
         case .attention: FieldTheme.goldenrod
-        case .failed: .red
-        case .upcoming, .skipped: .secondary
+        case .failed: FieldTheme.alert
+        case .upcoming, .skipped: FieldTheme.lineInput
         }
+    }
+
+    private var connectorColor: Color {
+        guard let next, stage.state == .done else { return FieldTheme.line }
+        return next.state == .upcoming || next.state == .skipped ? FieldTheme.line : FieldTheme.fern
     }
 
     private var stateLabel: LocalizedStringResource {

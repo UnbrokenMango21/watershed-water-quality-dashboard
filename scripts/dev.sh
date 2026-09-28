@@ -71,9 +71,16 @@ case "$command" in
     # About 20 m from the TEST-001 fixture site.
     xcrun simctl location "$udid" set 40.79355,-77.86010
     printf 'UI simulator: %s (%s)\n' "$device_name" "$udid"
+    # The QC Console runs against the same emulators so the test reviews through the real server
+    # route with the emulator-only reviewer identity (QC_REVIEWER claim and active profile).
+    qc_log="${TMPDIR:-/tmp}/pww-ios-ui-qc.log"
+    printf 'QC Console log: %s\n' "$qc_log"
     # Ad-hoc "sign to run locally" gives the simulator app a keychain, which Firebase Auth needs.
     ./node_modules/.bin/firebase emulators:exec --project central-pa-watershed-dev --only auth,firestore,functions \
-      "node scripts/seed_test_sites.mjs --apply && cd 'Phone App/iPhone App/PAWatershedWatch' && xcodebuild test -project PAWatershedWatch.xcodeproj -scheme PAWatershedWatchUITests -destination id=$udid CODE_SIGN_IDENTITY=- -collect-test-diagnostics never $*"
+      "export FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099 FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 && node scripts/seed_test_sites.mjs --apply && node scripts/provision_test_users.mjs --apply >/dev/null \
+       && (cd web && NEXT_PUBLIC_USE_FIREBASE_EMULATORS=true npx next build >'$qc_log' 2>&1 && (NEXT_PUBLIC_USE_FIREBASE_EMULATORS=true npx next start -H 127.0.0.1 -p 3109 >>'$qc_log' 2>&1 &)) \
+       && for i in \$(seq 1 60); do curl -fs http://127.0.0.1:3109/review >/dev/null && break; sleep 1; done \
+       && cd 'Phone App/iPhone App/PAWatershedWatch' && xcodebuild test -project PAWatershedWatch.xcodeproj -scheme PAWatershedWatchUITests -destination id=$udid CODE_SIGN_IDENTITY=- -collect-test-diagnostics never $*; status=\$?; pkill -f 'next start -H 127.0.0.1 -p 3109'; exit \$status"
     ;;
   ios)
     destination="${IOS_DESTINATION:-platform=iOS Simulator,name=iPhone 18 Pro}"

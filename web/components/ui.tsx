@@ -15,7 +15,8 @@ import { useCallback, useState, type ReactNode } from 'react';
 
 import { Icon, type IconName } from '@/components/icons';
 import { EMPTY, formatNumber, humanizeCode, qualityPercent, shortId } from '@/lib/format';
-import type { FlagSeverity, Nullable, SubmissionStatus } from '@/lib/types';
+import { workflowTone } from '@/lib/brandTokens';
+import type { FlagSeverity, Nullable } from '@/lib/types';
 
 export type Tone = 'neutral' | 'ok' | 'error' | 'warning' | 'alert' | 'brand';
 
@@ -45,7 +46,7 @@ export const SEVERITY_META: Record<FlagSeverity, SeverityMeta> = {
     word: 'warning',
     tone: 'warning',
     icon: 'alert',
-    note: 'The value is possible but unusual for this site. Use your judgement — a warning does not block approval.',
+    note: 'The value is possible but unusual for this site. Use your judgement; a warning does not block approval.',
   },
   ENVIRONMENTAL_ALERT: {
     label: 'Environmental alerts',
@@ -98,30 +99,6 @@ export function Badge({
   );
 }
 
-const STATUS_TONE: Record<SubmissionStatus, Tone> = {
-  DRAFT: 'neutral',
-  SUBMITTED: 'neutral',
-  VALIDATING: 'neutral',
-  PENDING_REVIEW: 'warning',
-  NEEDS_CORRECTION: 'warning',
-  RESUBMITTED: 'brand',
-  APPROVED: 'ok',
-  REJECTED: 'error',
-  PUBLISHING: 'neutral',
-  PUBLISH_FAILED: 'error',
-  PUBLISHED: 'ok',
-};
-
-const STATUS_ICON: Partial<Record<SubmissionStatus, IconName>> = {
-  PENDING_REVIEW: 'clock',
-  NEEDS_CORRECTION: 'history',
-  APPROVED: 'checkCircle',
-  REJECTED: 'ban',
-  PUBLISHED: 'shield',
-  PUBLISH_FAILED: 'alert',
-  VALIDATING: 'refresh',
-};
-
 /**
  * Workflow state in words. The raw enum stays reachable as a tooltip so the
  * console still speaks the database's language when someone needs it to.
@@ -130,12 +107,12 @@ export function StatusBadge({ status, large = false }: { status: Nullable<string
   if (!status) {
     return <Badge tone="neutral">Unknown status</Badge>;
   }
-  const key = status as SubmissionStatus;
+  // Brand workflow pill: tinted rectangle, leading square, the word carries the meaning.
   return (
-    <Badge tone={STATUS_TONE[key] ?? 'neutral'} icon={STATUS_ICON[key]} large={large} title={status}>
+    <span className={`wf-pill wf-${workflowTone[status] ?? 'neutral'}${large ? ' wf-pill-lg' : ''}`} title={status}>
       <span className="sr-only">Workflow status: </span>
       {humanizeCode(status)}
-    </Badge>
+    </span>
   );
 }
 
@@ -219,7 +196,7 @@ export function QualityBlock({ value }: { value: Nullable<number> }) {
     return (
       <div>
         <span className="figure-label">Overall quality</span>
-        <span className="quality-number faint">{EMPTY}</span>
+        <span className="figure-missing">Not available</span>
       </div>
     );
   }
@@ -230,7 +207,7 @@ export function QualityBlock({ value }: { value: Nullable<number> }) {
       <div className="quality-block">
         <span className="quality-number">{formatNumber(Math.round(percent))}</span>
         <span className="quality-scale">
-          / 100 · <span className={`quality-band quality-band-${band}`}>{band === 'good' ? 'Good' : band === 'fair' ? 'Fair' : 'Low'}</span>
+          / 100 <span className={`quality-band quality-band-${band}`}>{band === 'good' ? 'Good' : band === 'fair' ? 'Fair' : 'Low'}</span>
         </span>
       </div>
       <span className="meter" aria-hidden="true">
@@ -362,8 +339,8 @@ export function Panel({
   return (
     <section className={`panel${flush ? ' panel-flush' : ''} ${className}`.trim()} id={id}>
       <div className="panel-head">
-        <h2 className="panel-title">
-          {icon ? <Icon name={icon} size={15} /> : null}
+        {/* Panel titles are words alone; icons are reserved for status and actions. */}
+        <h2 className="panel-title" data-icon={icon}>
           {title}
         </h2>
         {note ? <div className="panel-note">{note}</div> : null}
@@ -388,8 +365,7 @@ export function Disclosure({
 }) {
   return (
     <details className="disclosure" open={defaultOpen}>
-      <summary>
-        {icon ? <Icon name={icon} size={15} /> : null}
+      <summary data-icon={icon}>
         {title}
         {note ? <span className="disclosure-note">{note}</span> : null}
         <Icon name="chevronDown" size={15} className="disclosure-chevron" />

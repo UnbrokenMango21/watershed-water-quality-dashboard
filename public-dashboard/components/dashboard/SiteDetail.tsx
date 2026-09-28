@@ -11,8 +11,8 @@ export function SiteDetail({ site, condition }: { site: DashboardSite | null; co
   if (!site) {
     return (
       <aside className="site-detail site-detail-empty" aria-label="Selected site details">
-        <div className="detail-heading"><span className="eyebrow">Selected site</span><h2>No site selected</h2><p>Choose a monitoring site from the browser or map to view measurements.</p></div>
-        <div className="detail-context-empty" role="status"><CalciteIcon icon="pin" label="No monitoring site selected" /><strong>Select a site to inspect readings</strong><span>Observation status and parameter values appear only after a monitoring site is selected.</span></div>
+        <div className="detail-heading"><span className="eyebrow">Selected site</span><h2>No site selected</h2><p>Choose a site from the list or the map.</p></div>
+        <div className="detail-context-empty" role="status"><CalciteIcon icon="pin" label="No monitoring site selected" /><strong>Readings appear here</strong><span>Select a site to see its most recent reviewed sample.</span></div>
       </aside>
     );
   }
@@ -20,8 +20,8 @@ export function SiteDetail({ site, condition }: { site: DashboardSite | null; co
   if (!condition) {
     return (
       <aside className="site-detail site-detail-empty" aria-label="Selected site details">
-        <div className="detail-heading"><span className="eyebrow">Selected site</span><h2>{site.name}</h2><div className="detail-meta"><span>{site.code}</span><span>{site.county}</span><span>Stream · {site.watershed}</span></div></div>
-        <div className="detail-context-empty" role="status"><CalciteIcon icon="table" label="No measurements available" /><strong>No approved measurements available for this site</strong><span>The site is available, but no reviewed public observation is available to display.</span></div>
+        <div className="detail-heading"><span className="eyebrow">Selected site</span><h2>{site.name}</h2><div className="detail-meta"><span>{[site.watershed, site.county].filter(Boolean).join(", ")}</span><span>Site {site.code}</span></div></div>
+        <div className="detail-context-empty" role="status"><CalciteIcon icon="table" label="No measurements available" /><strong>No reviewed readings yet</strong><span>This site has no published observations.</span></div>
       </aside>
     );
   }
@@ -33,7 +33,7 @@ export function SiteDetail({ site, condition }: { site: DashboardSite | null; co
 
   return (
     <aside className="site-detail" aria-label="Selected site details">
-      <div className="detail-heading"><span className="eyebrow">Selected site</span><h2>{site.name}</h2><div className="detail-meta"><span>{site.code}</span><span>{site.county}</span><span>Stream · {site.watershed}</span></div></div>
+      <div className="detail-heading"><span className="eyebrow">Selected site</span><h2>{site.name}</h2><div className="detail-meta"><span>{[site.watershed, site.county].filter(Boolean).join(", ")}</span><span>Site {site.code}</span></div></div>
 
       <div className={`sample-summary ${completeness}`}>
         <div><span>Latest sample</span><strong>{formatDateTime(condition.observedAt)}</strong></div>
@@ -42,11 +42,11 @@ export function SiteDetail({ site, condition }: { site: DashboardSite | null; co
 
       <section className="metrics" aria-label="Latest readings">
         <div className="metrics-heading">
-          <div><span className="eyebrow">Latest readings</span><h3>Water-quality measurements</h3></div>
+          <div><span className="eyebrow">Latest readings</span><h3>Water quality</h3></div>
           {hasTrendInformation && (
             <div className="detail-info-wrap">
               <button type="button" className="info-button" aria-label="Explain trend indicators" aria-expanded={showTrendInfo} data-tooltip="About trends" onClick={() => setShowTrendInfo((value) => !value)}><CalciteIcon icon="information" label="About trends" /></button>
-              {showTrendInfo && <div className="info-popover" role="note">Trend arrows show numeric change from the previous sampled measurement only. They do not classify water quality, safety, or ecological health.</div>}
+              {showTrendInfo && <div className="info-popover" role="note">Arrows show the change from the previous sample. They do not rate water quality or safety.</div>}
             </div>
           )}
         </div>
@@ -55,7 +55,7 @@ export function SiteDetail({ site, condition }: { site: DashboardSite | null; co
         </div>
       </section>
 
-      <div className="missing-summary" role="status">{recordedCount} of {parameterDefinitions.length} displayed parameters were recorded in the latest sample{missingCount === 0 ? "." : `; ${missingCount} optional ${missingCount === 1 ? "parameter was" : "parameters were"} not recorded.`}</div>
+      <div className="missing-summary" role="status">{recordedCount} of {parameterDefinitions.length} parameters recorded in this sample.</div>
     </aside>
   );
 }

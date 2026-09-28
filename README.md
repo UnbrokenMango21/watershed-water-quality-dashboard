@@ -35,7 +35,7 @@ Status vocabulary: **LIVE** means operating in a connected environment; **VERIFI
 | Component | Status | Current reality |
 | --- | --- | --- |
 | Native iOS / SwiftUI | VERIFIED | Shipping architecture; Firebase Auth/Firestore, durable local records, GPS, revisions, App Attest in Release |
-| Native Android / Jetpack Compose | VERIFIED | Native collector kept healthy by unit, lint, build and emulator instrumentation CI |
+| Native Android / Jetpack Compose | DEFERRED | Source and tests kept intact; product and release work resumes after the iOS 1.0 milestone. CI runs on demand via `android-deferred.yml` (see `docs/ROADMAP.md`) |
 | Firebase Authentication | VERIFIED | Native and QC authentication integration present |
 | Firestore private staging | VERIFIED | Security Rules and persistence contracts are emulator-tested |
 | Automated validation | VERIFIED / LIVE | Engine, persistence and trigger integration are tested; the development validation trigger is active |
@@ -93,7 +93,7 @@ npm run typecheck
 npm run build
 ```
 
-Android and iOS are verified in `.github/workflows/mobile-ci.yml`; platform-specific setup is documented beside each native project. Do not commit credentials, private keys, local build state, DerivedData, Gradle outputs or App Store Connect keys.
+iOS is verified in `.github/workflows/mobile-ci.yml` on every pull request; Android native CI is deferred to the manual `.github/workflows/android-deferred.yml` for the iOS 1.0 cycle; platform-specific setup is documented beside each native project. Do not commit credentials, private keys, local build state, DerivedData, Gradle outputs or App Store Connect keys.
 
 ## Documentation
 

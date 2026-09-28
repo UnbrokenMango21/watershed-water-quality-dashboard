@@ -31,8 +31,7 @@ export function SiteRow({
     >
       <span className="site-row-copy">
         <strong>{site.name}</strong>
-        <span>{site.code} · {site.county}</span>
-        <span>{site.watershed}</span>
+        <span>{[site.watershed, site.county].filter(Boolean).join(", ")}</span>
       </span>
       <span className={`sample-state ${completeness}`}>
         <span className="sample-state-dot" aria-hidden="true" />

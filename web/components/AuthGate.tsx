@@ -15,7 +15,8 @@ import { onAuthStateChanged, sendPasswordResetEmail, signInWithEmailAndPassword,
 
 import { Icon } from '@/components/icons';
 import { Notice } from '@/components/ui';
-import { clientAuth, isFirebaseConfigured } from '@/lib/firebase-client';
+import { doc, getDoc } from 'firebase/firestore';
+import { clientAuth, clientDb, isFirebaseConfigured } from '@/lib/firebase-client';
 
 const REVIEWER_ROLES = new Set(['QC_REVIEWER', 'ADMIN']);
 
@@ -74,12 +75,14 @@ function AppBar({ session }: { session: ReviewerSession | null }) {
   return (
     <header className="appbar">
       <a className="brand" href="/review">
-        <span className="brand-mark" aria-hidden="true">
-          <Icon name="waves" size={17} strokeWidth={2} />
-        </span>
+        <picture className="brand-mark">
+          <source srcSet="/brand/pww-mark-on-dark.svg" media="(prefers-color-scheme: dark)" />
+          {/* eslint-disable-next-line @next/next/no-img-element -- static SVG mark, no optimisation needed */}
+          <img src="/brand/pww-mark-master.svg" alt="" width={22} height={26} />
+        </picture>
         <span className="brand-text">
           <strong>PA Watershed Watch</strong>
-          <span>Quality Review · Private workspace</span>
+          <span>Quality review</span>
         </span>
       </a>
 
@@ -87,14 +90,7 @@ function AppBar({ session }: { session: ReviewerSession | null }) {
 
       {session ? (
         <div className="appbar-actions">
-          <a
-            className="icon-btn"
-            href="https://docs.firebase.google.com"
-            target="_blank"
-            rel="noreferrer"
-            aria-label="Help and documentation"
-            title="Help and documentation"
-          >
+          <a className="icon-btn" href="/help" aria-label="Reviewer help" data-tooltip="Reviewer help">
             <Icon name="help" size={17} />
           </a>
           <div className="user-chip">
@@ -105,13 +101,13 @@ function AppBar({ session }: { session: ReviewerSession | null }) {
               <strong>{session.user.email ?? session.user.uid}</strong>
               <span>
                 <span className="sr-only">Role: </span>
-                {session.role.replace(/_/g, ' ')}
+                {session.role === 'ADMIN' ? 'Administrator' : session.role === 'QC_REVIEWER' ? 'QC reviewer' : session.role}
               </span>
             </span>
           </div>
-          <button type="button" className="signout" onClick={() => void signOut(clientAuth())}>
+          <button type="button" className="signout" onClick={() => void signOut(clientAuth())} title="Sign out">
             <Icon name="logOut" size={14} />
-            Sign out
+            <span className="signout-label">Sign out</span>
           </button>
         </div>
       ) : null}
@@ -155,12 +151,16 @@ export default function AuthGate({ children }: { children: ReactNode }) {
         setState({ kind: 'signed-out' });
         return;
       }
-      // The role lives on the ID token's custom claims, not in the app.
+      // The role lives on the ID token's custom claims, and the administrator-managed profile must
+      // be active. This only shapes the screen; the review API enforces the same rule server-side.
       user
         .getIdTokenResult()
-        .then((token) => {
+        .then(async (token) => {
           const role = typeof token.claims.role === 'string' ? token.claims.role : 'COLLECTOR';
-          setState(REVIEWER_ROLES.has(role) ? { kind: 'ready', user, role } : { kind: 'unauthorized', user, role });
+          if (!REVIEWER_ROLES.has(role)) return setState({ kind: 'unauthorized', user, role });
+          const profile = await getDoc(doc(clientDb(), 'users', user.uid));
+          const active = profile.exists() && profile.get('active') === true && REVIEWER_ROLES.has(profile.get('role'));
+          setState(active ? { kind: 'ready', user, role } : { kind: 'unauthorized', user, role });
         })
         .catch(() => setState({ kind: 'unauthorized', user, role: 'UNKNOWN' }));
     });
@@ -265,7 +265,9 @@ export default function AuthGate({ children }: { children: ReactNode }) {
 
             <p className="auth-foot">
               <Icon name="info" size={14} />
-              <span>No public sign-up. Credentials are managed by the watershed program.</span>
+              <span>
+                Accounts are created by the program administrator. <a href="/help">How reviewing works</a>
+              </span>
             </p>
           </div>
         </div>

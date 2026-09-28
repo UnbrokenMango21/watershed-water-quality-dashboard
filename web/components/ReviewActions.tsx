@@ -22,7 +22,8 @@ import type { User } from 'firebase/auth';
 
 import { Icon, type IconName } from '@/components/icons';
 import { useQueue } from '@/components/QueueProvider';
-import { Badge, Notice, Uuid } from '@/components/ui';
+import { Badge, Notice } from '@/components/ui';
+import { humanizeCode } from '@/lib/format';
 import type { ReviewDecision, ReviewResult } from '@/lib/types';
 
 const DECISIONS: {
@@ -39,7 +40,7 @@ const DECISIONS: {
     label: 'Approve',
     icon: 'checkCircle',
     reasonRequired: false,
-    hint: 'Accept this revision as valid science. It leaves the queue and continues to publication.',
+    hint: 'Accept this revision. It leaves the queue and moves on toward publication.',
     buttonClass: 'btn-approve',
     verb: 'Approve submission',
   },
@@ -48,7 +49,7 @@ const DECISIONS: {
     label: 'Request correction',
     icon: 'history',
     reasonRequired: true,
-    hint: 'Send back to the collector for a correction revision. Your reason is shown to them.',
+    hint: 'Send it back to the collector for a new revision. They will see your reason.',
     buttonClass: 'btn-caution',
     verb: 'Request correction',
   },
@@ -57,7 +58,7 @@ const DECISIONS: {
     label: 'Reject',
     icon: 'ban',
     reasonRequired: true,
-    hint: 'Reject this submission outright. This is permanent and is recorded in the audit trail.',
+    hint: 'Reject this submission. This is permanent and recorded in the audit trail.',
     buttonClass: 'btn-danger',
     verb: 'Reject submission',
   },
@@ -73,12 +74,14 @@ export default function ReviewActions({
   user,
   submissionId,
   expectedRevisionId,
+  revisionNo,
   reviewable,
   currentStatus,
 }: {
   user: User;
   submissionId: string;
   expectedRevisionId: string | null;
+  revisionNo: number | null;
   reviewable: boolean;
   currentStatus: string;
 }) {
@@ -157,10 +160,7 @@ export default function ReviewActions({
   return (
     <section className="panel panel-emphasis" id="review-decision">
       <div className="panel-head">
-        <h2 className="panel-title">
-          <Icon name="shield" size={15} />
-          Review decision
-        </h2>
+        <h2 className="panel-title">Review decision</h2>
         <div className="panel-note">
           {blocked ? <Badge tone="neutral">Unavailable</Badge> : <Badge tone="brand">Awaiting you</Badge>}
         </div>
@@ -170,11 +170,11 @@ export default function ReviewActions({
         <div className="decision-target">
           <Icon name="layers" size={14} />
           <span>
-            <strong style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>Acting on revision</strong>{' '}
-            <Uuid value={expectedRevisionId} label="Revision ID" chars={10} />
+            <strong style={{ fontWeight: 600, color: 'var(--text-secondary)' }} title={expectedRevisionId ? `Revision ID ${expectedRevisionId}` : undefined}>
+              {revisionNo == null ? 'Deciding on the current revision' : `Deciding on revision ${revisionNo}`}
+            </strong>
             <br />
-            If the collector files a newer revision first, the decision is refused rather than applied to the wrong
-            record.
+            If a newer revision arrives first, this decision will not be applied.
           </span>
         </div>
 
@@ -207,9 +207,8 @@ export default function ReviewActions({
 
         {outcome.kind === 'done' ? (
           <Notice kind="ok">
-            Recorded <strong>{outcome.result.decision}</strong> — this submission is now {outcome.result.status}
-            {outcome.result.idempotent ? ' (already applied; no duplicate audit event written)' : ''}. Returning to the
-            queue…
+            Decision recorded. This submission is now <strong>{humanizeCode(outcome.result.status)}</strong>
+            {outcome.result.idempotent ? ' (it was already recorded)' : ''}. Returning to the queue…
           </Notice>
         ) : null}
 

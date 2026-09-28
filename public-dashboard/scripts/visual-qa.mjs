@@ -182,7 +182,7 @@ for (const viewport of viewports) {
 
   const initialMetrics = await collectLayoutMetrics(page);
   assertNoDocumentOverflow(viewport.name, initialMetrics, "initial");
-  if (!initialMetrics.fontFamily.toLowerCase().includes("avenir")) failures.push(`${viewport.name}: app typography is not using the Calcite-aligned Avenir family`);
+  if (!/public[ _]?sans/i.test(initialMetrics.fontFamily)) failures.push(`${viewport.name}: app typography is not using the brand Public Sans family`);
 
   if (mode === "demo") {
     const warning = await page.locator(".demo-banner span").evaluate((label) => {
@@ -224,7 +224,7 @@ for (const viewport of viewports) {
     }
 
     await page.getByRole("heading", { name: "Demo Bald Eagle Creek Site" }).waitFor({ state: "visible" });
-    if (!/^\d+ of \d+ displayed parameters were recorded in the latest sample/.test(await page.locator(".missing-summary").innerText())) failures.push(`${viewport.name}: partial-sample summary is missing`);
+    if (!/^\d+ of \d+ parameters recorded in this sample/.test(await page.locator(".missing-summary").innerText())) failures.push(`${viewport.name}: partial-sample summary is missing`);
     if (compact) {
       await assertCompactSurfaceFillsWorkspace(page, viewport.name, ".site-detail", "readings");
       await page.screenshot({ path: `${outDir}/${viewport.name}-readings.png`, fullPage: false });
@@ -236,8 +236,11 @@ for (const viewport of viewports) {
       await parameterSelect.waitFor({ state: "visible" });
       await parameterSelect.selectOption("ph");
       if ((await page.locator(".parameter-tabs:visible").count()) !== 0) failures.push(`${viewport.name}: compact layout still shows desktop parameter tabs`);
-    } else {
+    } else if (await page.locator(".parameter-tabs").isVisible()) {
       await page.getByRole("button", { name: /pH/ }).click();
+    } else {
+      // Short desktop screens use the full parameter select instead of the tab shortcuts.
+      await page.locator('.parameter-select-wrap select[aria-label="Water quality parameter"]').selectOption("ph");
     }
     try {
       await page.locator(".export-button").waitFor({ state: "visible", timeout: 30000 });

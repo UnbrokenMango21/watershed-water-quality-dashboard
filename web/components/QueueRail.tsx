@@ -16,7 +16,6 @@ import { Icon } from '@/components/icons';
 import { useQueue } from '@/components/QueueProvider';
 import { FlagSummary, QualityInline, StatusBadge, splitCounts } from '@/components/ui';
 import {
-  EMPTY,
   formatEasternDate,
   formatEasternTime,
   formatElapsed,
@@ -43,7 +42,7 @@ function siteName(row: QueueRow): string {
 function siteContext(row: QueueRow): string {
   return [row.site?.county ? `${row.site.county} County` : null, row.site?.watershed_name ?? null]
     .filter((part): part is string => Boolean(part && String(part).trim().length > 0))
-    .join(' · ');
+    .join(', ');
 }
 
 function rowCounts(row: QueueRow) {
@@ -166,7 +165,7 @@ export default function QueueRail({ selectedId }: { selectedId: string | null })
             onChange={(event) => setQuery(event.target.value)}
           />
           {query ? (
-            <button type="button" className="search-clear" onClick={() => setQuery('')} aria-label="Clear search">
+            <button type="button" className="search-clear" onClick={() => setQuery('')} aria-label="Clear search" title="Clear search">
               <Icon name="xCircle" size={14} />
             </button>
           ) : null}
@@ -243,7 +242,7 @@ export default function QueueRail({ selectedId }: { selectedId: string | null })
               <p>
                 {filtered
                   ? 'Adjust the search or clear the filters to see the rest of the queue.'
-                  : 'Submissions appear here as soon as validation finishes and they enter pending review.'}
+                  : 'New submissions appear here after validation.'}
               </p>
             </div>
           </div>
@@ -278,11 +277,11 @@ export default function QueueRail({ selectedId }: { selectedId: string | null })
                 <span className="queue-row">
                   <Icon name="calendar" size={13} />
                   <span>
-                    {formatEasternDate(row.currentRevision?.collected_at)} ·{' '}
+                    {formatEasternDate(row.currentRevision?.collected_at)},{' '}
                     {formatEasternTime(row.currentRevision?.collected_at)}
                   </span>
                   <span className="queue-row-end">
-                    {now === null ? EMPTY : `${formatElapsed(row.submission.updated_at, now)} waiting`}
+                    {now === null ? '' : `${formatElapsed(row.submission.updated_at, now)} waiting`}
                   </span>
                 </span>
                 <span className="queue-row">
@@ -293,7 +292,7 @@ export default function QueueRail({ selectedId }: { selectedId: string | null })
                   <Icon name="flask" size={13} />
                   <span>{formatText(row.currentRevision?.test_type)}</span>
                   <span className="queue-row-end">
-                    Rev {row.submission.current_revision_no ?? EMPTY}
+                    {row.submission.current_revision_no == null ? '' : `Rev ${row.submission.current_revision_no}`}
                   </span>
                 </span>
               </span>

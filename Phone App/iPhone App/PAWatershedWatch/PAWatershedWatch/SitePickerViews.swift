@@ -101,10 +101,10 @@ struct SelectSiteView: View {
                                 ) { select(item.site) }
                                 .id(item.site.id)
                                 .accessibilityIdentifier("site.\(item.site.id)")
-                                if index < results.count - 1 { Divider().padding(.leading, FieldTheme.m) }
+                                if index < results.count - 1 { CardDivider().padding(.leading, 60) }
                             }
                         }
-                        .background(Color(uiColor: .systemBackground), in: RoundedRectangle(cornerRadius: FieldTheme.radiusM, style: .continuous))
+                        .fieldCard(padding: 0)
                     }
                 }
                 .padding(.horizontal, FieldTheme.m)
@@ -171,7 +171,7 @@ private struct SiteSearchField: View {
 
     var body: some View {
         HStack(spacing: FieldTheme.s) {
-            Image(systemName: "magnifyingglass").foregroundStyle(.secondary).accessibilityHidden(true)
+            Image(systemName: "magnifyingglass").foregroundStyle(FieldTheme.inkMuted).accessibilityHidden(true)
             TextField("Name, code, county, or watershed", text: $text)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
@@ -184,19 +184,14 @@ private struct SiteSearchField: View {
                 Button {
                     text = ""
                 } label: {
-                    Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
+                    Image(systemName: "xmark.circle.fill").foregroundStyle(FieldTheme.inkMuted)
                 }
                 .frame(minWidth: 44, minHeight: 44)
                 .accessibilityLabel("Clear search")
             }
         }
         .padding(.horizontal, 12)
-        .frame(minHeight: 44)
-        .background(Color(uiColor: .systemBackground), in: RoundedRectangle(cornerRadius: FieldTheme.radiusS, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: FieldTheme.radiusS, style: .continuous)
-                .stroke(focused.wrappedValue ? FieldTheme.hemlock : Color(uiColor: .separator), lineWidth: focused.wrappedValue ? 1.5 : 0.5)
-        }
+        .fieldInput(focused: focused.wrappedValue, minHeight: 44)
     }
 }
 
@@ -209,7 +204,7 @@ private struct SiteCatalogStatus: View {
         } else if model.sitesLoading && !model.sitesVerified {
             HStack(spacing: FieldTheme.s) {
                 ProgressView()
-                Text("Loading sites").font(.subheadline).foregroundStyle(.secondary)
+                Text("Loading sites").font(.subheadline).foregroundStyle(FieldTheme.inkMuted)
             }
             .frame(minHeight: 44)
         }
@@ -225,7 +220,7 @@ private struct SiteListHeader: View {
             FieldSectionHeader(title: sortedByDistance ? "Sites by distance" : "Sites A–Z", isRequired: true)
             Text("\(count)")
                 .font(.subheadline.weight(.semibold))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(FieldTheme.inkMuted)
                 .accessibilityLabel(Text("^[\(count) site](inflect: true)"))
         }
         .padding(.top, FieldTheme.xs)
@@ -254,6 +249,10 @@ private struct SiteMap: View {
         }
         .frame(height: 260)
         .clipShape(RoundedRectangle(cornerRadius: FieldTheme.radiusM, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: FieldTheme.radiusM, style: .continuous)
+                .strokeBorder(FieldTheme.line, lineWidth: FieldTheme.hairline)
+        }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Map of sampling sites. The list below contains the same sites.")
     }
@@ -282,12 +281,12 @@ private struct SiteRow: View {
                     }
                     Text(site.name)
                         .font(.body.weight(.semibold))
-                        .foregroundStyle(.primary)
+                        .foregroundStyle(FieldTheme.ink)
                         .multilineTextAlignment(.leading)
                     if !site.subtitle.isEmpty || !site.code.isEmpty {
-                        Text([site.code, site.subtitle].filter { !$0.isEmpty }.joined(separator: " · "))
+                        Text([site.code, site.subtitle].filter { !$0.isEmpty }.joined(separator: ", "))
                             .font(.subheadline)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(FieldTheme.inkMuted)
                             .multilineTextAlignment(.leading)
                     }
                 }
@@ -295,13 +294,13 @@ private struct SiteRow: View {
                 if let distance {
                     Text(Site.distanceText(distance))
                         .font(.subheadline.monospacedDigit())
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(FieldTheme.inkMuted)
                 }
             }
             .padding(.horizontal, FieldTheme.m)
             .padding(.vertical, 14)
             .frame(minHeight: 60)
-            .background(isSelected ? FieldTheme.hemlock.opacity(0.08) : Color.clear)
+            .background(isSelected ? FieldTheme.primarySoft : Color.clear)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -315,37 +314,62 @@ private struct SelectedSiteFooter: View {
     let site: Site?
     let distance: CLLocationDistance?
     let onContinue: () -> Void
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
-        VStack(alignment: .leading, spacing: FieldTheme.s) {
+        ActionShelf {
+            if dynamicTypeSize.isAccessibilitySize {
+                // At accessibility sizes the site name gets the full width and wraps in full; distance
+                // and step move to their own line instead of squeezing the name.
+                VStack(alignment: .leading, spacing: FieldTheme.xs) {
+                    if let site {
+                        Text(site.name)
+                            .font(.subheadline.weight(.semibold))
+                            .fixedSize(horizontal: false, vertical: true)
+                            .accessibilityLabel(Text("Selected site, \(site.name)"))
+                    } else {
+                        Text("Tap a site in the list or on the map.")
+                            .font(.subheadline)
+                            .foregroundStyle(FieldTheme.inkMuted)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    HStack {
+                        if let distance, site != nil {
+                            Text(Site.distanceText(distance)).font(.caption.monospacedDigit())
+                        }
+                        Spacer(minLength: FieldTheme.s)
+                        Text("Step 1 of 6").font(.footnote.weight(.semibold)).monospacedDigit()
+                    }
+                    .foregroundStyle(FieldTheme.inkMuted)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
             HStack {
                 if let site {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("Selected site").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                        Eyebrow("Selected site")
                         Text(site.name).font(.subheadline.weight(.semibold)).lineLimit(2)
                     }
                     .accessibilityElement(children: .combine)
                     Spacer(minLength: FieldTheme.s)
                     if let distance {
-                        Text(Site.distanceText(distance)).font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+                        Text(Site.distanceText(distance)).font(.caption.monospacedDigit()).foregroundStyle(FieldTheme.inkMuted)
                     }
                 } else {
                     Text("Tap a site in the list or on the map.")
                         .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(FieldTheme.inkMuted)
                     Spacer()
                 }
                 Text("Step 1 of 6")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
+                    .font(.footnote.weight(.semibold))
+                    .monospacedDigit()
+                    .foregroundStyle(FieldTheme.inkMuted)
             }
+            }
+            StepProgressBar(step: 1, total: 6)
             PrimaryActionButton(title: "Continue with This Site", isEnabled: site != nil, action: onContinue)
                 .accessibilityIdentifier("site.continue")
         }
-        .padding(.horizontal, FieldTheme.m)
-        .padding(.top, 12)
-        .padding(.bottom, 8)
-        .background(.bar)
-        .overlay(alignment: .top) { Divider() }
     }
 }

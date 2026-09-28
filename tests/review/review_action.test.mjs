@@ -296,3 +296,16 @@ test('an unauthorized role cannot apply a review decision', async () => {
   const submissionSnap = await seeded.submissionRef.get();
   assert.equal(submissionSnap.data().status, 'PENDING_REVIEW');
 });
+
+test('reviewer access needs an enabled account, a reviewer claim and an active reviewer profile', async () => {
+  const { reviewerAccessProblem } = await import('../../web/lib/reviewSubmission.mjs');
+  const profile = { active: true, role: 'QC_REVIEWER' };
+  assert.equal(reviewerAccessProblem({ disabled: false, claimRole: 'QC_REVIEWER', profile }), null);
+  assert.equal(reviewerAccessProblem({ disabled: false, claimRole: 'ADMIN', profile: { active: true, role: 'ADMIN' } }), null);
+  assert.ok(reviewerAccessProblem({ disabled: true, claimRole: 'QC_REVIEWER', profile }));
+  assert.ok(reviewerAccessProblem({ disabled: false, claimRole: 'COLLECTOR', profile }));
+  assert.ok(reviewerAccessProblem({ disabled: false, claimRole: undefined, profile }));
+  assert.ok(reviewerAccessProblem({ disabled: false, claimRole: 'QC_REVIEWER', profile: null }));
+  assert.ok(reviewerAccessProblem({ disabled: false, claimRole: 'QC_REVIEWER', profile: { active: false, role: 'QC_REVIEWER' } }));
+  assert.ok(reviewerAccessProblem({ disabled: false, claimRole: 'QC_REVIEWER', profile: { active: true, role: 'COLLECTOR' } }));
+});
