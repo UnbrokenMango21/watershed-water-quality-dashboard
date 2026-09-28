@@ -1,6 +1,6 @@
 # Portfolio summary
 
-Use these descriptions with the [metric ledger](PROJECT_METRICS.md). They describe the system at tested PR #42 source `b9580c9`, PR #44 reviewed head `8d1c4f5`, and integration merge `8ef5684` on 2026-09-28. Integration checks were incomplete at the evidence cutoff, so system claims remain provisional pending verification at that SHA. The iOS release and first non-test scientific publication remain pending. No institutional endorsement, public monitoring result, or completed semester-hour total is implied.
+Use these descriptions with the [metric ledger](PROJECT_METRICS.md). The exact current integration head is `8ef568421f9d74ce7ef6aeb73244742bfebb3522` (PR #44 merge); PR #42 tested source `b9580c9` and PR #44 reviewed head `8d1c4f5` are separately identified where their evidence applies. Combined integration checks were incomplete at the 2026-09-28 12:16 UTC cutoff, so system claims remain provisional pending verification at `8ef5684`. **Live Firebase readiness for the iPhone test: NO.** The iOS release and first non-test scientific publication remain pending. No institutional endorsement, public monitoring result, or completed semester-hour total is implied.
 
 ## 50 words
 
@@ -28,7 +28,7 @@ The architecture, contracts, and interface have automated verification, but the 
 
 ## LinkedIn draft
 
-I’m developing PA Watershed Watch, a watershed field-data system that links a native iPhone app to private validation and human QC, then to controlled ArcGIS publication and a public dashboard. The design preserves submitted revisions and original units, and keeps reviewer identities and workflow details out of public views. PR #42 source `b9580c9` merged as `1da94e0`; PR #44 merged as `8ef5684`. Integration checks at the latter SHA were still running at the evidence cutoff, so the release remains provisional. Physical-device review, live reviewer access, and the first provenance-cleared non-test publication remain open. Android release work follows the iOS submission and publication milestone. Project architecture and evidence: [repository README](../README.md).
+I’m developing PA Watershed Watch, a watershed field-data system that links a native iPhone app to private validation and human QC, then to controlled ArcGIS publication and a public dashboard. The design preserves submitted revisions and original units, and keeps reviewer identities and workflow details out of public views. PR #42 tested source `b9580c9` merged as `1da94e0`; PR #44 merged as integration `8ef5684`. Combined checks at that exact head were incomplete at the 2026-09-28 12:16 UTC evidence cutoff. Live Firebase readiness for the iPhone test is **NO**. Physical-device review, live reviewer access, and the first provenance-cleared non-test publication remain open. Android release work follows the iOS submission and publication milestone. Project architecture and evidence: [repository README](../README.md).
 
 ## Technical explanation
 
