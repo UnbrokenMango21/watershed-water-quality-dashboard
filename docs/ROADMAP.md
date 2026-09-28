@@ -38,3 +38,18 @@ The responsive Next.js dashboard is implemented and deployed against the verifie
 - ArcGIS Workflow Manager as a required QC system.
 - Historical 117-record/5-site migration until provenance is documented.
 - Public App Store release until internal TestFlight and release-lock evidence are complete.
+
+## Post-1.0: accessibility polish (iOS)
+
+Release 1.0 keeps native Dynamic Type and VoiceOver support and fixes simple clipping; it does not add a
+separate accessibility-mode layout or an in-app text-size setting. Follow-up work at the largest
+accessibility text sizes (AX3 to AX5):
+
+- Site picker: the search field and list header crowd the top of the list; consider collapsing the map
+  and moving search into the navigation area. The selected-site footer now wraps the full name, which
+  makes the footer tall; consider a scrolling footer or a compact confirmation sheet.
+- Measurement entry: large numeric fields and stacked unit fractions take most of the screen width;
+  consider a vertical label/value/unit layout.
+- Review and status screens: very long site names and multi-line status details push the primary action
+  low; audit each screen for scroll position after submit.
+- Run the UI suite at AX5 (currently AX-L) and add screenshots for each screen to release evidence.

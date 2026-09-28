@@ -30,8 +30,12 @@ workflow meaning.
   Sync status (where the data is) is a bare circle glyph with text. The two never share a shape, and a
   label always carries the meaning.
 - Native apps use system type (SwiftUI text styles with Dynamic Type) with tabular figures for values.
-  The web surfaces use Public Sans with IBM Plex Mono for eyebrows, identifiers and metadata, both
-  self-hosted under the SIL OFL 1.1 (licences beside the font files).
+  The web surfaces use Public Sans for everything people normally read, labels included, in sentence
+  case. IBM Plex Mono is reserved for technical identifiers in the QC console's collapsed technical
+  sections; the public dashboard does not load it. Fonts are self-hosted under the SIL OFL 1.1.
+- Copy is plain and short: no em dashes or decorative bullet separators, no backend vocabulary in the
+  main interface. Icons appear where they carry meaning or replace a label; icon-only web controls
+  have an accessible name and a hover tooltip.
 - Values keep their unit in the same run, separated by a non-breaking space.
 - The QC console follows the viewer's light/dark preference. The public dashboard stays light so the
   basemap and page read as one surface; demo mode is a Goldenrod band that is never subtle.

@@ -75,7 +75,8 @@
     "webMono": "\"IBM Plex Mono\", ui-monospace, SFMono-Regular, Menlo, monospace",
     "webScale": { "caption": 12, "label": 13, "small": 14, "body": 15, "lead": 17, "h3": 20, "h2": 24, "h1": 32, "display": 48 },
     "bodyLineHeight": 1.55,
-    "eyebrow": { "family": "mono", "weight": 500, "size": 12, "letterSpacing": "0.04em", "transform": "uppercase" },
+    "eyebrow": { "family": "sans", "weight": 500, "size": 12.5, "transform": "none" },
+    "mono": "Reserved for technical identifiers (IDs, rule codes) in collapsed technical sections; normal reviewers and visitors should rarely see it.",
     "native": "Apps use system type only (SwiftUI text styles with Dynamic Type; Material 3 roles). Values use tabular figures with units in the same run."
   },
   "contrastPairs": [
