@@ -8,10 +8,19 @@ This runbook guides a human operator through the complete end-to-end lifecycle o
 
 1. **Revisions are immutable**: Submitted scientific revisions cannot be modified. If correction is needed, the collector submits Revision N+1, which preserves Revision N in the record unchanged.
 2. **Client trust boundary**: Collector clients author only raw submissions and revisions. Validation flags, review decisions, confidence scores, publication leases, and publication status are strictly server-authored.
-3. **Mandatory measurement**: Water Temperature is the only mandatory measurement. All entered values and units are preserved alongside canonical values.
+3. **Mandatory measurement**: Water Temperature is the only confirmed mandatory measurement. All entered values and units are preserved alongside canonical values (`config/production_measurement_catalog.json`).
 4. **Active reviewer profile gate**: Reviewer reads and review decisions require an active, administrator-provisioned reviewer profile in Firestore (`users/{uid}` with `role: "QC_REVIEWER"` or `"ADMIN"` and `active: true`).
 5. **Approved-only publication**: Only the current human-approved revision (`reviewed_revision_id == current_revision_id == revision.revision_id`) is eligible to publish. Approval is distinct from publication success.
 6. **Privacy fail-closed**: Collector identities, reviewer identities, field notes, GPS accuracy, and internal workflow IDs are never published to public views or public dashboards.
+
+---
+
+## Evidence discipline & privacy protocol
+
+To maintain scientific integrity without compromising participant privacy or operational security:
+* **Do NOT commit private operational evidence to the Git repository**: Never record or publish collector emails, reviewer emails, Firebase Auth UIDs, precise GPS coordinates of private sampling sites, raw field notes, internal Firestore document IDs, cryptographic record hashes, or private scientific records in public documentation.
+* **Keep sensitive proof in restricted release verification records**: Store unredacted verification artifacts (device identifiers, full-screen captures, internal audit IDs, and high-precision coordinates) in restricted, untracked release archives outside Git.
+* **Public repository records must remain anonymous**: Only commit non-sensitive verification results: PASS/FAIL/BLOCKED verdicts, verification timestamps, public site codes, public observation IDs, canonical parameter names/units, and anonymous REST query feature counts.
 
 ---
 
@@ -21,13 +30,12 @@ This runbook guides a human operator through the complete end-to-end lifecycle o
 * **Operator action**:
   1. Open Apple TestFlight on the designated physical iPhone.
   2. Locate **PA Watershed Watch**.
-  3. Verify build metadata: Marketing Version `1.0.0`, Build `17`, Bundle Identifier `org.centralpawatershed.mobile`.
+  3. Verify build metadata against current release authorization records. The current reference configuration is Marketing Version `1.0.0`, Build `17` (provisional pending final release SHA selection), Bundle Identifier `org.centralpawatershed.mobile`.
   4. Tap **Install** or **Update**. Launch the application.
 * **Stop gate**: The app must launch without crashing. On first launch, the Welcome screen ("Welcome to PA Watershed Watch") must appear.
 * **Evidence to record**:
-  * iPhone device model and iOS version
-  * Installed build number and timestamp
-  * Screenshot of the Welcome screen
+  * **Public repository log**: Confirm app installed and launched cleanly; Welcome screen appeared on first launch.
+  * **Restricted release records (outside Git)**: Device model, iOS version, exact installed build number, and installation timestamp.
 
 ### Action 1.2: Sign in & confirm collector identity
 * **Operator action**:
@@ -37,9 +45,8 @@ This runbook guides a human operator through the complete end-to-end lifecycle o
   4. Tap **Confirm Name & Continue** to enter the Home view.
 * **Stop gate**: The confirmed name must be a real person name (used as `data_collected_by` on submitted revisions). Email-fragment fallback is prohibited.
 * **Evidence to record**:
-  * Collector email and confirmed full name
-  * Firestore collector UID (`users/{uid}`)
-  * Screenshot of the Home view showing the account control
+  * **Public repository log**: Confirm collector identity was verified and confirmed per protocol; account control rendered on Home.
+  * **Restricted release records (outside Git)**: Collector email, confirmed name, Firebase Auth UID (`users/{uid}`), and account panel screenshot.
 
 ---
 
@@ -54,20 +61,19 @@ This runbook guides a human operator through the complete end-to-end lifecycle o
   5. Tap **Continue with This Site**.
 * **Stop gate**: The selected site must exist in `siteCatalog` with `active == true`. Collectors cannot create, edit, or relocate sites.
 * **Evidence to record**:
-  * Selected `site_id`, `site_code`, and `site_name`
-  * County and watershed display names
+  * **Public repository log**: Selected public `site_code` and watershed name; confirm site is active.
+  * **Restricted release records (outside Git)**: Selected `site_id`, catalog document ID, and site catalog attributes.
 
 ### Action 2.2: Capture visit details & GPS fix
 * **Operator action**:
   1. On **Step 2: Visit Details**, verify the date and time in Eastern Time (`America/New_York`).
   2. Tap **Acquire GPS** (or allow automatic acquisition).
-  3. Check the reported GPS accuracy (good ≤ 20 m) and distance from the cataloged site location.
+  3. Check the reported GPS accuracy (good ≤ 20 m per `config/validation_rules.json`) and distance from the cataloged site location (default tolerance 30 m).
   4. Tap **Continue to Method**.
 * **Stop gate**: Continuing requires a valid GPS coordinate fix. Distance beyond site tolerance produces a non-blocking warning, not a hard stop.
 * **Evidence to record**:
-  * Observation timestamp (Eastern)
-  * GPS coordinates (`latitude`, `longitude`)
-  * GPS accuracy in meters and distance to site in meters
+  * **Public repository log**: Confirm Eastern timestamp was captured; confirm GPS fix acquired meeting tolerance criteria (accuracy ≤ 20 m).
+  * **Restricted release records (outside Git)**: Exact coordinates, GPS accuracy in meters, and distance to site in meters.
 
 ---
 
@@ -76,24 +82,29 @@ This runbook guides a human operator through the complete end-to-end lifecycle o
 ### Action 3.1: Specify measurement method & equipment
 * **Operator action**:
   1. On **Step 3: Method**, answer "How was this observation measured?".
-  2. Select the appropriate method choice (e.g., `Field instrument (in situ)` or `Field test kit / colorimetric`).
+  2. Select the appropriate method choice: `Field instrument (in situ)`, `Field test kit / colorimetric`, `Penn State laboratory`, `External laboratory`, or `Other method`.
   3. Enter the specific method details: Instrument / Kit name (maps to `instrument_name`) and Procedure / Sample collection (maps to `method_name`).
   4. Tap **Continue to Measurements**.
-* **Stop gate**: Selected test type must map to an approved protocol value.
+* **Stop gate**: Selected test type must map to an approved protocol value from `config/validation_rules.json`.
 * **Evidence to record**:
-  * Selected `test_type`
-  * Stored `instrument_name` and `method_name`
+  * **Public repository log**: Selected test type and parameter protocol references.
+  * **Restricted release records (outside Git)**: Exact `instrument_name` and `method_name` strings.
 
 ### Action 3.2: Enter water quality measurements
 * **Operator action**:
   1. On **Step 4: Measurements**, enter the mandatory **Water Temperature** value and select unit (`°C` or `°F`).
-  2. Enter any additional supported parameters measured (e.g., pH, Dissolved Oxygen, Specific Conductivity).
-  3. Verify values satisfy hard scientific plausibility boundaries (e.g., temp −5 to 60 °C, pH 0 to 14).
+  2. Enter any additional supported parameters measured (pH, Dissolved Oxygen, Specific Conductivity, Nitrate, etc.).
+  3. Verify values satisfy hard scientific plausibility boundaries from `config/validation_rules.json`:
+     * Temperature: hard range −5 to 60 °C (context range 0 to 35 °C)
+     * pH: hard range 0 to 14 (aquatic range 6.0 to 9.0)
+     * Dissolved Oxygen: hard range 0 to 50 mg/L (environmental alert below 5 mg/L)
+     * Dissolved Oxygen Saturation: hard range 0 to 300 %
+     * Specific Conductivity, TDS, Chloride, Sulfate, Nitrate, Phosphate, Discharge: non-negative (≥ 0)
   4. Tap **Continue to Notes**.
-* **Stop gate**: Water Temperature is mandatory. The app must block continuation if temperature is missing or outside hard boundaries.
+* **Stop gate**: Water Temperature is the only mandatory measurement. The app must block continuation if temperature is missing or outside hard boundaries.
 * **Evidence to record**:
-  * Entered temperature value and unit (`temp_c` or `temp_f`)
-  * All additional entered parameter codes, values, and units
+  * **Public repository log**: List of measured parameter codes and canonical units entered.
+  * **Restricted release records (outside Git)**: Raw entered measurement values and units.
 
 ### Action 3.3: Enter field notes & review draft
 * **Operator action**:
@@ -103,20 +114,18 @@ This runbook guides a human operator through the complete end-to-end lifecycle o
   4. Check every card: Site, Date/Time, Location, Method, Measurements, Field Notes, and Collector name.
 * **Stop gate**: If the card shows **Must fix before submitting** (octagon icon), resolve the blocking issue before proceeding.
 * **Evidence to record**:
-  * Review screen status (`Ready to submit`)
-  * Field notes text (if any)
-  * Screenshot of the Review screen
+  * **Public repository log**: Confirm review screen displayed "Ready to submit" readiness state.
+  * **Restricted release records (outside Git)**: Field notes text and Review screen capture.
 
 ### Action 3.4: Submit observation
 * **Operator action**:
   1. Tap **Submit Observation**.
   2. When prompted with the confirmation dialog ("Submit observation? Revision 1 will be locked"), confirm submission.
   3. Observe the transition: Submission status changes from `Waiting to sync` to `Syncing` to `Synced`.
-* **Stop gate**: Local draft is locked. Submission document created in Firestore with initial revision (`rev-001` or revision 1) in status `SUBMITTED`.
+* **Stop gate**: Local draft is locked. Submission document created in Firestore with initial revision (`revision_no: 1`) in status `SUBMITTED`.
 * **Evidence to record**:
-  * Assigned `submission_id` and `revision_id`
-  * Submission timestamp
-  * SHA-256 `record_hash` from Firestore revision document
+  * **Public repository log**: Confirm submission succeeded, draft locked, and status transitioned to `SUBMITTED`.
+  * **Restricted release records (outside Git)**: Firestore `submission_id`, initial `revision_id`, submission timestamp, and SHA-256 `record_hash`.
 
 ---
 
@@ -124,18 +133,15 @@ This runbook guides a human operator through the complete end-to-end lifecycle o
 
 ### Action 4.1: Inspect server validation result
 * **Operator action**:
-  1. Via administrative read-only query, inspect `submissions/{submissionId}` and `submissions/{submissionId}/revisions/{revisionId}`.
-  2. Verify the Firebase Cloud Function `validateSubmittedObservation` processed the document.
-  3. Check the resulting submission status:
+  1. Via administrative read-only inspection, check that the Firebase Cloud Function `validateSubmittedObservation` processed the document.
+  2. Verify the resulting submission status:
      * Clean observation: advances to `PENDING_REVIEW`.
      * Plausibility warning: advances to `PENDING_REVIEW` with warning flags.
      * Hard violation: advances to `NEEDS_CORRECTION` with error flags.
 * **Stop gate**: Submission must NOT be authored into `APPROVED` or `PUBLISHED` by validation. Collector clients cannot bypass validation.
 * **Evidence to record**:
-  * Validation rules version (`validation_rules_version`)
-  * Quality confidence score (`quality_score`)
-  * Resulting status (`PENDING_REVIEW` or `NEEDS_CORRECTION`)
-  * List of generated validation flag codes (if any)
+  * **Public repository log**: Confirm validation completed under rules version `1.1.0`; record resulting status (`PENDING_REVIEW` or `NEEDS_CORRECTION`) and quality score band.
+  * **Restricted release records (outside Git)**: Full validation output document, exact score value, and flag codes.
 
 ---
 
@@ -148,8 +154,8 @@ This runbook guides a human operator through the complete end-to-end lifecycle o
   3. Verify that the reviewer account holds an active profile (`users/{uid}` with role `QC_REVIEWER` or `ADMIN` and `active: true`).
 * **Stop gate**: The console must refuse access or throw an authorization error if the user lacks an active reviewer profile.
 * **Evidence to record**:
-  * Reviewer email and Auth UID
-  * Reviewer role confirmation
+  * **Public repository log**: Confirm reviewer authenticated with verified active reviewer profile.
+  * **Restricted release records (outside Git)**: Reviewer email and Auth UID.
 
 ### Action 5.2 (Conditional): Request correction & submit Revision N+1
 * **Operator action (only if correction is required)**:
@@ -161,9 +167,8 @@ This runbook guides a human operator through the complete end-to-end lifecycle o
   6. Tap **Resubmit as Revision N+1** (Revision 2).
 * **Stop gate**: Revision 1 remains completely unchanged in Firestore. Revision 2 is created with `revision_no: 2` and `parent_revision_id: <rev-1-id>`. Automated validation executes on Revision 2.
 * **Evidence to record**:
-  * Reviewer correction request comment
-  * Immutable Revision 1 record hash
-  * New Revision 2 ID and submission timestamp
+  * **Public repository log**: Confirm Revision 1 remained immutable; confirm Revision 2 created with parent linkage and resubmitted.
+  * **Restricted release records (outside Git)**: Reviewer correction comment, Revision 1 hash, Revision 2 ID, and resubmission timestamp.
 
 ### Action 5.3: Authorized human approval
 * **Operator action**:
@@ -176,9 +181,8 @@ This runbook guides a human operator through the complete end-to-end lifecycle o
   * `review_decision == "APPROVE"`
   * Revision document content is unchanged.
 * **Evidence to record**:
-  * Approval timestamp
-  * Reviewer UID recorded on the review decision
-  * Immutable review audit event document ID (`review-{revision_id}`)
+  * **Public repository log**: Confirm approval submitted via QC Console; status transitioned to `APPROVED`; reviewed revision matches current revision.
+  * **Restricted release records (outside Git)**: Reviewer UID, approval timestamp, and review audit document ID (`review-{revision_id}`).
 
 ---
 
@@ -193,14 +197,12 @@ This runbook guides a human operator through the complete end-to-end lifecycle o
   3. Inspect private authoritative ArcGIS service `Central_PA_Watershed_Approved_Authoritative`:
      * Layer 0 (`SamplingSites`): site record updated with latest sample timestamp.
      * Layer 1 (`ApprovedObservations`): exactly one new feature created with public `observation_id` and collection geometry.
-     * Layer 3 (`Measurements`): normalized measurement rows inserted, including `WATER_TEMP_C`.
+     * Layer 3 (`Measurements`): normalized measurement rows inserted, including canonical `WATER_TEMP_C`.
      * Layer 2 (`LatestSiteConditions`): materialized row updated with newest approved observation.
 * **Stop gate**: Publication must fail closed if the revision is unapproved, rejected, or non-current. Duplicate deliveries must be fenced by the lease token.
 * **Evidence to record**:
-  * Publication lease token and attempt count
-  * Authoritative observation `GlobalID` and `OBJECTID`
-  * Generated opaque public `observation_id`
-  * Publication audit event ID (`publish-{revision_id}`)
+  * **Public repository log**: Confirm publication completed to authoritative service; confirm public `observation_id` is opaque.
+  * **Restricted release records (outside Git)**: Publication lease token, attempt count, authoritative `OBJECTID`/`GlobalID`, and publication audit ID (`publish-{revision_id}`).
 
 ---
 
@@ -225,9 +227,8 @@ This runbook guides a human operator through the complete end-to-end lifecycle o
   6. **Time Series Graph**:
      * Switch to Time Series view.
      * Verify the newly published point appears on the trend line at the exact collection instant.
-     * Click **CSV** export and verify the downloaded file contains public fields only.
+     * Click **CSV** export and verify the downloaded file contains public allowlist fields only.
 * **Stop gate**: Fails closed if any private field (collector name, reviewer UID, submission ID, internal notes) is visible in the UI, network payloads, or exported CSV. Fails if demo mode or synthetic records appear.
 * **Evidence to record**:
-  * Screenshot of the public dashboard showing the selected site, map marker, and latest readings
-  * Downloaded CSV export file
-  * Anonymous REST query verification of the 4 public ArcGIS views showing the published record count
+  * **Public repository log**: Confirm hosted dashboard displays approved observation with canonical units; confirm 4 public ArcGIS views report 1 approved feature with zero private fields; confirm exported CSV contains only allowlisted fields.
+  * **Restricted release records (outside Git)**: Verification screenshots and downloaded CSV file.
