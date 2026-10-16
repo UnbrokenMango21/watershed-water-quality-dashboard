@@ -101,8 +101,9 @@ try {
     await admin.getByRole('status').filter({ hasText: 'Access decision saved' }).waitFor();
     assert.equal((await auth.getUser(collectorUid)).customClaims.role, 'QC_REVIEWER');
     await admin.screenshot({ path: `${out}/admin-access.png`, fullPage: true });
-    await collector.getByRole('button', { name: 'Refresh access' }).click();
-    await collector.getByRole('heading', { name: 'Review queue', exact: true }).waitFor();
+    // No manual refresh: the pending screen fetches a fresh ID token once the decision settles.
+    await collector.getByRole('heading', { name: 'Review queue', exact: true }).waitFor({ timeout: 20_000 });
+    await collector.screenshot({ path: `${out}/approved-queue.png`, fullPage: true });
   });
   await check('administrator revocation closes the previously authorized session', async () => {
     const card = admin.locator('section').filter({ has: admin.getByRole('heading', { name: 'Emulator QA Collector', exact: true }) });
@@ -113,6 +114,24 @@ try {
     await collector.reload();
     await collector.getByRole('heading', { name: 'Reviewer access revoked' }).waitFor();
     assert.equal(await collector.getByRole('navigation', { name: 'Review queue' }).count(), 0);
+  });
+  await check('a revoked applicant can ask again and sees a decline with its reason', async () => {
+    await collector.getByLabel('Why do you need supervisor access?').fill('Reassigned to the isolated emulator review roster.');
+    await collector.getByRole('button', { name: 'Request supervisor access again', exact: true }).click();
+    await collector.getByRole('heading', { name: 'Pending supervisor approval' }).waitFor();
+    const card = admin.locator('section').filter({ has: admin.getByRole('heading', { name: 'Emulator QA Collector', exact: true }) });
+    await card.getByText('pending', { exact: false }).first().waitFor();
+    await card.getByRole('button', { name: 'Review access', exact: true }).click();
+    await card.getByLabel('Decision reason', { exact: true }).fill('The emulator review roster is already complete.');
+    await card.getByRole('button', { name: 'Decline request', exact: true }).click();
+    await admin.getByRole('status').filter({ hasText: 'Access decision saved' }).waitFor();
+    await collector.getByRole('heading', { name: 'Reviewer access request declined' }).waitFor();
+    await collector.getByText('The emulator review roster is already complete.', { exact: false }).waitFor();
+    await collector.getByRole('button', { name: 'Request supervisor access again', exact: true }).waitFor();
+    assert.equal((await auth.getUser(collectorUid)).customClaims.role, 'COLLECTOR');
+    const events = (await db.collection('reviewerAccessRequests').doc(collectorUid).collection('audit').get()).docs.map(doc => doc.data());
+    assert.equal(events.filter(event => event.event === 'REQUEST_RESUBMITTED').length, 1);
+    await collector.screenshot({ path: `${out}/declined-${suffix}.png`, fullPage: true });
   });
 } finally {
   await writeFile(`${out}/identity-results.json`, JSON.stringify({ base, environment: 'local emulators only', results }, null, 2));
