@@ -299,6 +299,9 @@ test('v0.2 analysis provenance: lab results later than collection, field excepti
   assert.equal(clean.blocking, false, JSON.stringify(clean.flags));
   const codes = (measurements) => validateObservation({ revision: record, measurements, site, now: NOW }).flags.map((flag) => flag.rule_code);
   assert.ok(codes([{ ...lab, analysis_stage: undefined }]).includes('ANALYSIS_PROVENANCE_MISSING'));
+  // A non-laboratory value may leave provenance unrecorded, but never half-recorded.
+  assert.equal(codes([{ ...field('PH', 7.2, 'pH'), analysis_stage: null, analyzed_at: null }]).includes('ANALYSIS_PROVENANCE_MISSING'), false);
+  assert.ok(codes([{ ...field('PH', 7.2, 'pH'), analyzed_at: null }]).includes('ANALYSIS_PROVENANCE_MISSING'));
   assert.ok(codes([{ ...lab, analyzed_at: null }]).includes('ANALYSIS_PROVENANCE_MISSING'));
   assert.ok(codes([{ ...lab, analyzed_at: '2026-08-08T12:00:00-04:00' }]).includes('ANALYSIS_BEFORE_COLLECTION'));
   assert.ok(codes([{ ...lab, analyzed_at: '2026-08-10T12:00:00-04:00' }]).includes('ANALYSIS_AFTER_SUBMISSION'));

@@ -719,6 +719,10 @@ function validateAnalysisProvenance(revision, measurements, rules, flags) {
   for (const m of measurements || []) {
     const code = m.parameter_code || null;
     const analyzed = parseDate(m.analyzed_at);
+    // Non-laboratory values may leave provenance unrecorded (all null) when the method does not
+    // establish it; laboratory parameters, and any partially recorded provenance, must be complete.
+    const unrecorded = m.analysis_stage == null && m.analyzed_at == null;
+    if (unrecorded && !labParameters.has(code)) continue;
     if (!['FIELD', 'LAB'].includes(m.analysis_stage) || !analyzed) {
       flags.push(createFlag('ANALYSIS_PROVENANCE_MISSING', 'ERROR', 'COMPLETENESS', 'Record whether the value was analyzed in the field or laboratory, and when.', code, { affectsQualityComponent: 'method' }));
       continue;

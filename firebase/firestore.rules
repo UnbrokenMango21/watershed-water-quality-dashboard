@@ -332,18 +332,21 @@ service cloud.firestore {
       return parameterCode in ["CHLORIDE_MG_L", "SULFATE_MG_L", "NITRATE_MG_L", "PHOSPHATE_MG_L"];
     }
 
-    // 0.2.0 measurements record where and when each value was analyzed. Legacy 0.1.0
+    // 0.2.0 laboratory parameters always record where and when they were analyzed. Other
+    // parameters record it only when the method makes it known (a field method); otherwise all
+    // three fields stay null rather than asserting provenance nobody entered. Legacy 0.1.0
     // measurements predate the fields and must not carry them.
     function validAnalysisProvenance(data, schemaVersion) {
       let stage = data.get("analysis_stage", null);
       let analyzedAt = data.get("analyzed_at", null);
       let reason = data.get("field_exception_reason", null);
       return schemaVersion == "0.2.0"
-        ? stage in ["FIELD", "LAB"]
-          && analyzedAt is timestamp
-          && (reason == null || (reason is string && reason.size() <= 1000))
-          && (stage == "LAB" ? reason == null
-            : (labDependentParameter(data.parameter_code) ? reason is string && reason.trim().size() > 0 : reason == null))
+        ? (stage == null && analyzedAt == null && reason == null && !labDependentParameter(data.parameter_code))
+          || (stage in ["FIELD", "LAB"]
+            && analyzedAt is timestamp
+            && (reason == null || (reason is string && reason.size() <= 1000))
+            && (stage == "LAB" ? reason == null
+              : (labDependentParameter(data.parameter_code) ? reason is string && reason.trim().size() > 0 : reason == null)))
         : stage == null && analyzedAt == null && reason == null;
     }
 

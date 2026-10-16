@@ -658,16 +658,25 @@ test('water depth is a nonnegative length measurement and cannot use discharge u
   await assertFails(setDoc(ref, { ...depth, value: -0.3, entered_value: -30 }));
 });
 
-test('v0.2 measurements must record where and when each value was analyzed', async () => {
+test('v0.2 provenance: laboratory parameters always record it; other parameters record it completely or not at all', async () => {
   await seed(`submissions/${submissionId}`, draftSubmission());
   await seed(`submissions/${submissionId}/revisions/${revisionId}`, draftRevision());
   const db = env.authenticatedContext('collector-a').firestore();
   const ref = doc(db, `submissions/${submissionId}/revisions/${revisionId}/measurements/m-1`);
   const { analysis_stage, analyzed_at, ...withoutProvenance } = measurement();
-  await assertFails(setDoc(ref, withoutProvenance));
+  // A non-laboratory value from a laboratory or mixed method leaves provenance unrecorded.
+  await assertSucceeds(setDoc(ref, withoutProvenance));
+  await assertSucceeds(setDoc(ref, { ...measurement(), analysis_stage: null, analyzed_at: null }));
+  await assertFails(setDoc(ref, { ...measurement(), analysis_stage: 'FIELD', analyzed_at: null }));
+  await assertFails(setDoc(ref, { ...measurement(), analysis_stage: null }));
   await assertFails(setDoc(ref, { ...measurement(), analysis_stage: 'OFFSITE' }));
   await assertFails(setDoc(ref, { ...measurement(), analyzed_at: '2026-08-08T20:00:00Z' }));
   await assertSucceeds(setDoc(ref, measurement('m-1', { analysis_stage: 'LAB' })));
+  const nitrate = doc(db, `submissions/${submissionId}/revisions/${revisionId}/measurements/nitrate`);
+  const nitrateValue = measurement('nitrate', { parameter_code: 'NITRATE_MG_L', display_name: 'Nitrate', value: 1.2, unit_code: 'mg/L as N', entered_value: 1.2, entered_unit_code: 'mg-n-l', instrument_name: null });
+  const { analysis_stage: s2, analyzed_at: a2, ...nitrateWithoutProvenance } = nitrateValue;
+  await assertFails(setDoc(nitrate, nitrateWithoutProvenance));
+  await assertSucceeds(setDoc(nitrate, { ...nitrateValue, analysis_stage: 'LAB' }));
 });
 
 test('lab-dependent parameters analyzed in the field require a documented exception', async () => {

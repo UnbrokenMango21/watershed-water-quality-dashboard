@@ -1,6 +1,6 @@
 {
   "fixtureVersion": "1.1.0",
-  "schemaVersion": "0.1.0",
+  "schemaVersion": "0.2.0",
   "idAlgorithm": "measurement_id = UUID-shaped first 128 bits of SHA-256(revision_id + '|' + parameter_code), with RFC 4122 version/variant bits",
   "testTypes": [
     "In-situ / Field Instrument",
