@@ -14,10 +14,10 @@
     "@arcgis/core": "^5.1.0",
     "@arcgis/map-components": "^5.1.0",
     "@esri/calcite-components": "^5.1.0",
-    "next": "15.5.26",
+    "next": "15.5.28",
     "react": "19.2.0",
     "react-dom": "19.2.0",
-    "sharp": "0.35.4"
+    "sharp": "0.35.5"
   },
   "devDependencies": {
     "@types/node": "24.10.1",
