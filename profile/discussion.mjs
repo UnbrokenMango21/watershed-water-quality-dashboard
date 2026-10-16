@@ -6,6 +6,9 @@ export async function postSubmissionMessage({ db, auth, uid, data, serverTimesta
   for (const key of ['submissionId', 'revisionId', 'messageId']) {
     if (typeof data[key] !== 'string' || !data[key] || data[key].length > 128 || /[\/\u0000-\u001f]/.test(data[key])) invalid('Invalid message context.');
   }
+  // Client message IDs are UUIDs, so they can never collide with the review transaction's
+  // deterministic decision-message IDs (review-<revision>-<decision>).
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(data.messageId)) invalid('Use a UUID message ID.');
   if (typeof data.text !== 'string' || !data.text.trim() || data.text.length > 4000 || /[\u0000-\u0008\u000b\u000c\u000e-\u001f]/.test(data.text)) invalid('Messages must contain 1 to 4000 characters.');
   if (!['COLLECTOR_COMMENT', 'REVIEWER_QUESTION', 'ADMINISTRATIVE_NOTE'].includes(data.kind)) invalid('This message type is reserved for trusted review decisions.');
   const account = await currentAccount(auth, uid);
@@ -27,7 +30,8 @@ export async function postSubmissionMessage({ db, auth, uid, data, serverTimesta
     if (data.kind === 'ADMINISTRATIVE_NOTE' && claimRole !== 'ADMIN') throw new AccessError('permission-denied', 'Administrative notes require administrator authorization.');
     const message = {
       message_id: data.messageId, submission_id: data.submissionId, revision_id: data.revisionId,
-      sender_uid: uid, sender_display_name: profile.display_name, sender_role: reviewer ? claimRole : 'COLLECTOR',
+      sender_uid: uid, sender_display_name: profile.display_name,
+      sender_role: data.kind === 'COLLECTOR_COMMENT' || !reviewer ? 'COLLECTOR' : claimRole,
       kind: data.kind, text: data.text.trim(), created_at: serverTimestamp(),
     };
     if (existing.exists) {

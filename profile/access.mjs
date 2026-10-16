@@ -118,14 +118,18 @@ export async function decideReviewerAccess({ db, auth, uid, data, serverTimestam
     if (!request || request.request_id !== requestId) fail('aborted', 'This access request has changed. Refresh before deciding.');
     if (!profile || profile.role === 'ADMIN') fail('permission-denied', 'This membership cannot be changed here.');
     if (request.operation_expires_at_ms > now()) fail('aborted', 'An access decision is already in progress.');
-    if (request.status === data.status && request.decision_reason === reason && request.provisioning_state === 'COMPLETE') return false;
+    // An identical settled decision is a no-op only while the Auth claims still carry the profile's
+    // access version; otherwise it re-applies, repairing claims left behind by an aborted worker.
+    if (request.status === data.status && request.decision_reason === reason && request.provisioning_state === 'COMPLETE'
+      && profile.access_version && target.customClaims?.access_version === profile.access_version) return false;
     if (data.status === 'APPROVED' && !['PENDING', 'SUSPENDED', 'REVOKED', 'APPROVED'].includes(request.status)) {
       fail('failed-precondition', 'A rejected request cannot be approved without a new authorization review.');
     }
     // Both systems deny review while the cross-service update is in progress. A crash leaves it closed.
     tx.update(targetRef, { role: 'COLLECTOR', access_version: operation, updated_at: serverTimestamp() });
     tx.update(requestRef, {
-      provisioning_state: 'APPLYING', operation_id: operation, operation_expires_at_ms: now() + 60000,
+      // Twice the callable's 60 s timeout: a worker can never outlive its lease.
+      provisioning_state: 'APPLYING', operation_id: operation, operation_expires_at_ms: now() + 120000,
       updated_at: serverTimestamp(),
     });
     return true;
@@ -134,6 +138,9 @@ export async function decideReviewerAccess({ db, auth, uid, data, serverTimestam
   const role = data.status === 'APPROVED' ? 'QC_REVIEWER' : 'COLLECTOR';
   // Preserve unrelated custom claims. Version fencing prevents an expired worker's claims from granting access.
   const freshTarget = await currentAccount(auth, targetUid, { verified: data.status === 'APPROVED' });
+  // Never write claims for a decision another operation has already superseded.
+  const stillOwned = await db.runTransaction(async tx => (await tx.get(requestRef)).data()?.operation_id === operation);
+  if (!stillOwned) fail('aborted', 'Another access decision replaced this one. Access remains closed.');
   await auth.setCustomUserClaims(targetUid, { ...freshTarget.customClaims, role, access_version: operation });
   const freshActor = await currentAccount(auth, uid);
   if (freshActor.customClaims?.role !== 'ADMIN') fail('permission-denied', 'Administrator authorization changed during this decision.');

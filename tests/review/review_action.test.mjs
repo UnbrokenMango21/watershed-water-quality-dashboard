@@ -309,3 +309,18 @@ test('reviewer access needs an enabled account, a reviewer claim and an active r
   assert.ok(reviewerAccessProblem({ disabled: false, claimRole: 'QC_REVIEWER', profile: { active: false, role: 'QC_REVIEWER' } }));
   assert.ok(reviewerAccessProblem({ disabled: false, claimRole: 'QC_REVIEWER', profile: { active: true, role: 'COLLECTOR' } }));
 });
+
+test('a reviewer cannot decide an observation they collected, and nothing is written', async () => {
+  const seeded = await seedPendingReview();
+  await assert.rejects(
+    () => applyReviewDecision({
+      db, Timestamp, submissionId: seeded.submissionId, expectedRevisionId: seeded.revisionId,
+      decision: 'APPROVE', reviewerUid: 'collector-review-test', reviewerRole: 'QC_REVIEWER', now: NOW,
+    }),
+    (error) => error instanceof ReviewConflictError && /Another reviewer must decide/.test(error.message),
+  );
+  const submission = (await db.collection('submissions').doc(seeded.submissionId).get()).data();
+  assert.equal(submission.status, 'PENDING_REVIEW');
+  assert.equal((await db.collection('submissions').doc(seeded.submissionId).collection('audit').get()).size, 0);
+  assert.equal((await db.collection('submissions').doc(seeded.submissionId).collection('messages').get()).size, 0);
+});

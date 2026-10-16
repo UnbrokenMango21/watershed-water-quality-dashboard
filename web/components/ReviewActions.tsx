@@ -75,8 +75,9 @@ export default function ReviewActions({
   submissionId,
   expectedRevisionId,
   revisionNo,
-  reviewable,
+  reviewable: pendingReview,
   currentStatus,
+  ownSubmission = false,
 }: {
   user: User;
   submissionId: string;
@@ -84,7 +85,10 @@ export default function ReviewActions({
   revisionNo: number | null;
   reviewable: boolean;
   currentStatus: string;
+  /** The signed-in reviewer collected this observation; the server refuses their decision. */
+  ownSubmission?: boolean;
 }) {
+  const reviewable = pendingReview && !ownSubmission;
   const router = useRouter();
   const { reload } = useQueue();
   const [decision, setDecision] = useState<ReviewDecision>('APPROVE');
@@ -178,7 +182,11 @@ export default function ReviewActions({
           </span>
         </div>
 
-        {!reviewable ? (
+        {ownSubmission && pendingReview ? (
+          <Notice kind="warning">
+            You collected this observation, so another reviewer must decide it.
+          </Notice>
+        ) : !pendingReview ? (
           <Notice kind="warning">
             This submission is <strong>{currentStatus}</strong>, not pending review, so no decision can be applied.
           </Notice>

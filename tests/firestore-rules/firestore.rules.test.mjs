@@ -711,3 +711,30 @@ test('a revision cannot change schema version to escape its contract', async () 
   await assertFails(updateDoc(revision, { schema_version: '0.1.0', revision_status: 'SUBMITTED', submitted_at: serverTimestamp() }));
   await assertFails(updateDoc(revision, { schema_version: '0.1.0' }));
 });
+
+test('a correction follows its observation contract: no downgrade to 0.1.0, legacy may move forward', async () => {
+  const db = env.authenticatedContext('collector-a').firestore();
+  const correction = doc(db, `submissions/${submissionId}/revisions/${correctionRevisionId}`);
+  const { water_color, flow_condition, collection_stage, ...legacyShape } = draftRevision({ revision_id: correctionRevisionId, revision_no: 2, schema_version: '0.1.0' });
+  await seed(`submissions/${submissionId}`, draftSubmission({ status: 'NEEDS_CORRECTION' }));
+  await assertFails(setDoc(correction, legacyShape));
+  await seed(`submissions/${submissionId}`, draftSubmission({ status: 'NEEDS_CORRECTION', schema_version: '0.1.0' }));
+  await assertSucceeds(setDoc(correction, legacyShape));
+  await env.clearFirestore();
+  await seed(`siteCatalog/${siteId}`, { site_id: siteId, active: true });
+  await seed(`submissions/${submissionId}`, draftSubmission({ status: 'NEEDS_CORRECTION', schema_version: '0.1.0' }));
+  await assertSucceeds(setDoc(correction, draftRevision({ revision_id: correctionRevisionId, revision_no: 2 })));
+});
+
+test('legacy 0.1.0 measurements still require an instrument; 0.2.0 measurements do not', async () => {
+  const db = env.authenticatedContext('collector-a').firestore();
+  const path = `submissions/${submissionId}/revisions/${revisionId}/measurements/m-1`;
+  const { analysis_stage, analyzed_at, field_exception_reason, ...legacyValue } = measurement();
+  await seed(`submissions/${submissionId}`, draftSubmission({ schema_version: '0.1.0' }));
+  await seed(`submissions/${submissionId}/revisions/${revisionId}`, draftRevision({ schema_version: '0.1.0' }));
+  await assertFails(setDoc(doc(db, path), { ...legacyValue, instrument_name: null }));
+  await assertFails(setDoc(doc(db, path), { ...legacyValue, instrument_name: '' }));
+  await assertSucceeds(setDoc(doc(db, path), legacyValue));
+  await seed(`submissions/${submissionId}/revisions/${revisionId}`, draftRevision());
+  await assertSucceeds(setDoc(doc(db, path), measurement('m-1', { instrument_name: null })));
+});

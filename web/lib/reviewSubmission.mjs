@@ -121,6 +121,10 @@ export async function applyReviewDecision({
     if (submission.status !== REVIEWABLE_STATUS) {
       throw new ReviewConflictError(`Submission '${submissionId}' is not reviewable from status '${submission.status}'`);
     }
+    // Separation of duties: whoever collected an observation cannot also decide it.
+    if (submission.collector_user_id === reviewerUid) {
+      throw new ReviewConflictError('You collected this observation. Another reviewer must decide it.');
+    }
 
     const previousStatus = submission.status;
 

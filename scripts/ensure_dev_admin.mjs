@@ -45,6 +45,19 @@ async function main() {
   await db.collection('identityAudit').add({ event_type: 'DESIGNATED_ROLE_BOOTSTRAP', subject_uid: user.uid, role,
     access_version: accessVersion, verification_reference: value('--verification-reference'), occurred_at: FieldValue.serverTimestamp() });
   await ref.set({ active: true, updated_at: FieldValue.serverTimestamp() }, { merge: true });
+  if (role === 'QC_REVIEWER') {
+    // A settled request record lets an administrator later suspend or revoke this reviewer from the
+    // QC access page, exactly like a reviewer approved through a self-service request.
+    const requestRef = db.collection('reviewerAccessRequests').doc(user.uid);
+    await requestRef.set({
+      uid: user.uid, request_id: accessVersion, status: 'APPROVED', provisioning_state: 'COMPLETE', operation_expires_at_ms: 0,
+      reason: 'Designated QC reviewer provisioned by a trusted operator.', display_name: (await ref.get()).get('display_name') ?? email,
+      verified_email: email, decision_reason: 'Designated identity verified by a trusted operator.', decided_by: 'trusted-bootstrap',
+      created_at: FieldValue.serverTimestamp(), decided_at: FieldValue.serverTimestamp(), updated_at: FieldValue.serverTimestamp(),
+    });
+    await requestRef.collection('audit').doc(accessVersion).set({ event: 'DESIGNATED_ROLE_BOOTSTRAP', actor_uid: 'trusted-bootstrap',
+      target_uid: user.uid, request_id: accessVersion, status: 'APPROVED', access_version: accessVersion, occurred_at: FieldValue.serverTimestamp() });
+  }
   const current = await auth.getUser(user.uid);
   const profile = await ref.get();
   verifiedDesignatedIdentity(current, email, expectedUid);

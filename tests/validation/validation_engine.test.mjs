@@ -285,7 +285,7 @@ test('v0.2 visual-only record accepts explicit Unknown and preserves absent nume
 });
 
 test('water depth uses length units without inventing discharge or an upper scientific threshold', () => {
-  const depth = measurement('WATER_DEPTH_M', 0.3048, 'm', { entered_value: 1, entered_unit_code: 'ft', instrument_name: null });
+  const depth = measurement('WATER_DEPTH_M', 0.3048, 'm', { entered_value: 1, entered_unit_code: 'ft' });
   assert.equal(validateObservation({ revision: revision(), measurements: [depth], site, now: NOW }).blocking, false);
   assert.ok(validateObservation({ revision: revision(), measurements: [{ ...depth, value: -0.3048, entered_value: -1 }], site, now: NOW }).flags.some((flag) => flag.rule_code === 'DEPTH_NEGATIVE'));
   assert.ok(validateObservation({ revision: revision(), measurements: [{ ...depth, value: 1 }], site, now: NOW }).flags.some((flag) => flag.rule_code === 'MEAS_CONVERSION_MISMATCH'));
@@ -310,4 +310,13 @@ test('v0.2 analysis provenance: lab results later than collection, field excepti
   assert.equal(documented.scores.overall_quality_score, clean.scores.overall_quality_score, 'a documented exception is visible but not penalized');
   // Legacy 0.1.0 records predate analysis provenance and are not retroactively flagged.
   assert.equal(validateObservation({ revision: revision(), measurements: core(), site, now: NOW }).flags.some((flag) => flag.rule_code.startsWith('ANALYSIS_')), false);
+});
+
+test('instrument stays required on legacy measurements and optional on v0.2 measurements', () => {
+  const legacy = validateObservation({ revision: revision(), measurements: core([measurement('ORP_MV', 120, 'mV', { instrument_name: null })]), site, now: NOW });
+  assert.ok(legacy.flags.some((flag) => flag.rule_code === 'MEAS_INSTRUMENT_MISSING' && flag.severity === 'ERROR'));
+  const v2 = revision({ schema_version: '0.2.0', weather_condition: 'Clear', water_color: 'Clear', flow_condition: 'Low', collection_stage: 'READY_FOR_REVIEW' });
+  const field = { analysis_stage: 'FIELD', analyzed_at: '2026-08-08T16:30:00-04:00', field_exception_reason: null };
+  const result = validateObservation({ revision: v2, measurements: [measurement('PH', 7.2, 'pH', { ...field, instrument_name: null })], site, now: NOW });
+  assert.equal(result.flags.some((flag) => flag.rule_code === 'MEAS_INSTRUMENT_MISSING'), false);
 });

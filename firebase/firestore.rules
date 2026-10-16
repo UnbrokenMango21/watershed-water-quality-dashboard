@@ -271,6 +271,10 @@ service cloud.firestore {
         && (request.resource.data.instrument_name == null || request.resource.data.instrument_name is string)
         && validOptionalTemperature(request.resource.data)
         && (request.resource.data.schema_version == "0.2.0" || validLegacyScience(request.resource.data))
+        // A revision follows its observation's contract; a legacy observation may only be corrected
+        // forward to 0.2.0, never a 0.2.0 observation back to the legacy contract.
+        && (request.resource.data.schema_version == get(submissionPath(submissionId)).data.schema_version
+          || (get(submissionPath(submissionId)).data.schema_version == "0.1.0" && request.resource.data.schema_version == "0.2.0"))
         && nonEmptyString(request.resource.data.mobile_app_version)
         && (
           (get(submissionPath(submissionId)).data.status == "DRAFT" && request.resource.data.revision_no == 1)
@@ -372,6 +376,7 @@ service cloud.firestore {
     }
 
     function validMeasurement(submissionId, revisionId, measurementId) {
+      let schemaVersion = get(revisionPath(submissionId, revisionId)).data.get("schema_version", null);
       return request.resource.data.keys().hasOnly(measurementAllowedKeys())
         && request.resource.data.keys().hasAll([
           "measurement_id",
@@ -392,11 +397,13 @@ service cloud.firestore {
         && request.resource.data.entered_value is number
         && validEnteredUnit(request.resource.data.parameter_code, request.resource.data.entered_unit_code)
         && nonEmptyString(request.resource.data.method_name)
-        && (request.resource.data.instrument_name == null || request.resource.data.instrument_name is string)
+        // Instrument became optional in 0.2.0; legacy 0.1.0 measurements keep requiring it.
+        && (schemaVersion == "0.2.0"
+          ? (request.resource.data.instrument_name == null || request.resource.data.instrument_name is string)
+          : nonEmptyString(request.resource.data.instrument_name))
         && (request.resource.data.parameter_code != "WATER_DEPTH_M" || request.resource.data.value >= 0)
         && request.resource.data.entered_at is timestamp
-        && validAnalysisProvenance(request.resource.data,
-          get(revisionPath(submissionId, revisionId)).data.get("schema_version", null));
+        && validAnalysisProvenance(request.resource.data, schemaVersion);
     }
 
     function attachmentAllowedKeys() {

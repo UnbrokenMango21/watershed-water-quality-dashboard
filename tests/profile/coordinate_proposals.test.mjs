@@ -51,7 +51,7 @@ test('private coordinate workflow is atomic, revision checked, idempotent and ke
     }
     const original = { site_id: siteId, active: true, latitude: 40.7934, longitude: -77.8600,
       location: new GeoPoint(40.7934, -77.86), site_name_display: 'Private field site', site_code: 'COORD-TEST',
-      site_tolerance_m: 30, publication_approved: false, updated_at: Timestamp.fromMillis(1000) };
+      site_tolerance_m: 30, publication_approved: true, updated_at: Timestamp.fromMillis(1000) };
     await siteRef.set(original);
     const historical = db.collection('submissions').doc(`coord-history-${suffix}`);
     await historical.set({ site_id: siteId, collector_user_id: collector, status: 'APPROVED' });
@@ -73,6 +73,9 @@ test('private coordinate workflow is atomic, revision checked, idempotent and ke
     assert.equal(updated.latitude, proposal.latitude);
     assert.equal(updated.coordinate_version, 1);
     assert.equal(updated.site_name_display, original.site_name_display);
+    // Moved coordinates were never cleared for public release; an administrator must re-clear the site.
+    assert.equal(updated.publication_approved, false);
+    assert.equal((await db.collection('siteCoordinateProposals').doc(proposal.proposalId).collection('audit').doc('decision').get()).data().publication_clearance_reset, true);
     assert.equal((await historical.collection('revisions').doc('immutable-r1').get()).data().latitude, original.latitude);
     assert.equal((await decideCoordinates({ ...input, uid: reviewer, data: approval(proposal.proposalId) })).idempotent, true);
     await assert.rejects(decideCoordinates({ ...input, uid: otherReviewer, data: approval(proposal.proposalId) }), error => error.code === 'aborted');

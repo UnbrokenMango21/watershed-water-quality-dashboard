@@ -251,8 +251,10 @@ function validateCompleteness(revision, measurements, rules, flags) {
     if (!nonBlank(m.method_name)) {
       flags.push(createFlag('MEAS_METHOD_MISSING', 'ERROR', 'COMPLETENESS', 'Method is required for each collected measurement.', m.parameter_code || null, { affectsQualityComponent: 'method' }));
     }
-    if (m.instrument_name != null && typeof m.instrument_name !== 'string') {
-      flags.push(createFlag('MEAS_INSTRUMENT_MISSING', 'ERROR', 'COMPLETENESS', 'Instrument provenance must be text when supplied.', m.parameter_code || null, { affectsQualityComponent: 'method' }));
+    // Instrument is optional from schema 0.2.0; legacy records keep their original requirement.
+    const legacy = revision?.schema_version !== '0.2.0';
+    if (legacy ? !nonBlank(m.instrument_name) : (m.instrument_name != null && typeof m.instrument_name !== 'string')) {
+      flags.push(createFlag('MEAS_INSTRUMENT_MISSING', 'ERROR', 'COMPLETENESS', legacy ? 'Instrument or laboratory source is required for each collected measurement.' : 'Instrument provenance must be text when supplied.', m.parameter_code || null, { affectsQualityComponent: 'method' }));
     }
   }
 

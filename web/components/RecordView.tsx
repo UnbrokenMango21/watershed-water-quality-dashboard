@@ -780,6 +780,7 @@ export default function RecordView({ detail, user }: { detail: SubmissionDetail;
             expectedRevisionId={submission.current_revision_id ?? null}
             revisionNo={submission.current_revision_no ?? null}
             reviewable={submission.status === 'PENDING_REVIEW'}
+            ownSubmission={submission.collector_user_id === user.uid}
             currentStatus={submission.status}
           />
           <DiscussionPanel submissionId={submission.submission_id} revisionId={submission.current_revision_id} collectorUid={submission.collector_user_id} />

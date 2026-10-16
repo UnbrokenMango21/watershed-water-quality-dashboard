@@ -148,6 +148,7 @@ export async function decideCoordinates({ db, auth, uid, data, serverTimestamp }
       }
       fail('aborted', 'Another coordinate decision is already recorded. Refresh the proposal.');
     }
+    let publicationClearanceReset = false;
     if (data.status === 'APPROVED') {
       const coordinates = coordinatePair(proposal.proposed_coordinates?.latitude, proposal.proposed_coordinates?.longitude);
       if (proposal.kind === 'COORDINATE_CORRECTION') {
@@ -157,8 +158,11 @@ export async function decideCoordinates({ db, auth, uid, data, serverTimestamp }
           || timestampKey(site.updated_at) !== proposal.original_site_updated_at_key) {
           fail('aborted', 'The approved site catalog changed after this proposal. Submit a fresh coordinate proposal.');
         }
+        // Moved coordinates were never cleared for public release: a public site must be re-cleared
+        // by an administrator before the next approved observation can move its public point.
+        publicationClearanceReset = site.publication_approved === true;
         tx.update(siteRef, { ...coordinates, location: new GeoPoint(coordinates.latitude, coordinates.longitude),
-          coordinate_version: version(site) + 1, updated_at: serverTimestamp() });
+          coordinate_version: version(site) + 1, publication_approved: false, updated_at: serverTimestamp() });
       } else if (proposal.kind === 'NEW_SITE') {
         if (siteSnapshot.exists) fail('aborted', 'The monitoring site already exists. Submit a fresh proposal.');
         tx.create(siteRef, { site_id: proposal.site_id, ...approvedMetadata, ...coordinates,
@@ -174,7 +178,7 @@ export async function decideCoordinates({ db, auth, uid, data, serverTimestamp }
       event_type: data.status === 'APPROVED' ? 'COORDINATES_APPROVED' : 'COORDINATES_REJECTED',
       actor_uid: uid, actor_role: reviewerRole, proposal_id: id, site_id: proposal.site_id,
       original_coordinates: proposal.original_coordinates, proposed_coordinates: proposal.proposed_coordinates,
-      reason, occurred_at: serverTimestamp(),
+      publication_clearance_reset: publicationClearanceReset, reason, occurred_at: serverTimestamp(),
     });
     return { proposalId: id, siteId: proposal.site_id, status: data.status, idempotent: false };
   });
