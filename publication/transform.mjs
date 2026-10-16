@@ -135,6 +135,14 @@ export function buildPublicationBundle({ submission, revision, measurements, sit
     if (m.qualifier != null && m.qualifier !== '') throw new PublicationEligibilityError('Qualified measurements require a verified public interpretation before publication');
   }
   if (collectedAt == null || toEpochMillis(submission.reviewed_at, 'reviewed_at') == null) throw new PublicationEligibilityError('Collection and approval timestamps are required');
+  const temp = ['temp_entered_value', 'temp_entered_unit', 'temp_c', 'temp_f'].map((key) => revision[key]);
+  const hasTemperature = temp.some((value) => value != null);
+  if (hasTemperature) {
+    [temp[0], temp[2], temp[3]].forEach((value) => finiteNumber(value, 'temperature'));
+    if (!['C', 'F'].includes(temp[1])) throw new PublicationEligibilityError('Temperature unit must be C or F');
+    const c = temp[1] === 'F' ? (temp[0] - 32) * 5 / 9 : temp[0];
+    if (Math.abs(c - temp[2]) > 0.2 || Math.abs((c * 9 / 5 + 32) - temp[3]) > 0.36) throw new PublicationEligibilityError('Temperature conversion mismatch');
+  }
   const observationAttributes = {
     publication_key: `approved:${revisionId}`,
     event_id: requiredString(submission.event_id, 'submission.event_id'),
@@ -150,7 +158,7 @@ export function buildPublicationBundle({ submission, revision, measurements, sit
     method_name: revision.method_name ?? null, instrument_name: revision.instrument_name ?? null, weather_condition: revision.weather_condition ?? null,
     latitude: finiteNumber(revision.latitude, 'revision.latitude'), longitude: finiteNumber(revision.longitude, 'revision.longitude'),
     gps_accuracy_m: revision.gps_accuracy_m ?? null, site_distance_m: revision.site_distance_m ?? null,
-    temp_c: finiteNumber(revision.temp_c, 'revision.temp_c'), temp_f: finiteNumber(revision.temp_f, 'revision.temp_f'),
+    temp_c: hasTemperature ? revision.temp_c : null, temp_f: hasTemperature ? revision.temp_f : null,
     ...buildWideMeasurements(measurementList),
     quality_score: typeof submission.overall_quality_score === 'number' ? submission.overall_quality_score : null,
     quality_context: qualityContext(submission),
@@ -177,6 +185,7 @@ export function buildPublicationBundle({ submission, revision, measurements, sit
     return { attributes };
   });
 
+  if (hasTemperature) {
   const temperatureAttributes = {
     publication_key: `${revisionId}:WATER_TEMP_C`, measurement_id: `temp:${revisionId}`, event_id: observationAttributes.event_id,
     source_revision_id: revisionId, observation_id: publicObservationId, site_id: siteAttrs.site_id, collected_at: collectedAt, parameter_code: 'WATER_TEMP_C', display_name: 'Water Temperature (°C)',
@@ -186,6 +195,7 @@ export function buildPublicationBundle({ submission, revision, measurements, sit
   };
   temperatureAttributes.record_hash = recordHash(temperatureAttributes);
   normalizedMeasurements.push({ attributes: temperatureAttributes });
+  }
   normalizedMeasurements.sort((a, b) => a.attributes.publication_key.localeCompare(b.attributes.publication_key));
   return { revisionId, siteFeature, observationFeature, measurements: normalizedMeasurements };
 }

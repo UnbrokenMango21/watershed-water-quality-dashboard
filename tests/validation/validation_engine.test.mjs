@@ -269,3 +269,24 @@ test('DO percent/mgL mismatch is a plausibility warning, not an error', () => {
   assert.ok(result.flags.some((f) => f.rule_code === 'DO_PERCENT_MGL_INCONSISTENT'));
   assert.ok(result.scores.validation_quality_score < 100);
 });
+
+test('v0.2 visual-only record accepts explicit Unknown and preserves absent numerical measurements', () => {
+  const record = revision({ schema_version: '0.2.0', weather_condition: 'Unknown', water_color: 'Unknown', flow_condition: 'Unknown', collection_stage: 'READY_FOR_REVIEW', temp_entered_value: null, temp_entered_unit: null, temp_c: null, temp_f: null, instrument_name: null });
+  const result = validateObservation({ revision: record, measurements: [], site, now: NOW });
+  assert.equal(result.blocking, false);
+  for (const field of ['weather_condition', 'water_color', 'flow_condition']) {
+    const absent = validateObservation({ revision: { ...record, [field]: '' }, measurements: [], site, now: NOW });
+    assert.ok(absent.flags.some((flag) => flag.rule_code === `VISUAL_INVALID_${field}`));
+  }
+  assert.ok(validateObservation({ revision: { ...record, collection_stage: 'LAB_PENDING' }, measurements: [], site, now: NOW }).blocking);
+  for (const invalid of [{ temp_c: 0 }, { temp_entered_value: NaN, temp_entered_unit: 'C', temp_c: 0, temp_f: 32 }]) {
+    assert.ok(validateObservation({ revision: { ...record, ...invalid }, measurements: [], site, now: NOW }).flags.some((flag) => flag.rule_code === 'TEMP_GROUP_INVALID'));
+  }
+});
+
+test('water depth uses length units without inventing discharge or an upper scientific threshold', () => {
+  const depth = measurement('WATER_DEPTH_M', 0.3048, 'm', { entered_value: 1, entered_unit_code: 'ft', instrument_name: null });
+  assert.equal(validateObservation({ revision: revision(), measurements: [depth], site, now: NOW }).blocking, false);
+  assert.ok(validateObservation({ revision: revision(), measurements: [{ ...depth, value: -0.3048, entered_value: -1 }], site, now: NOW }).flags.some((flag) => flag.rule_code === 'DEPTH_NEGATIVE'));
+  assert.ok(validateObservation({ revision: revision(), measurements: [{ ...depth, value: 1 }], site, now: NOW }).flags.some((flag) => flag.rule_code === 'MEAS_CONVERSION_MISMATCH'));
+});

@@ -59,3 +59,22 @@ test('public release clearance fails closed for unknown, private and test sites'
     assert.throws(() => buildPublicationBundle({ submission, site, measurements, revision: { ...revision, collected_at } }), /valid timestamp/);
   }
 });
+
+test('approved observations without numerical readings publish nulls and no fabricated temperature measurement', () => {
+  const empty = { ...revision, temp_entered_value: null, temp_entered_unit: null, temp_c: null, temp_f: null };
+  const bundle = buildPublicationBundle({ submission, revision: empty, site, measurements: [] });
+  assert.equal(bundle.observationFeature.attributes.temp_c, null);
+  assert.equal(bundle.observationFeature.attributes.temp_f, null);
+  assert.equal(bundle.observationFeature.attributes.ph, null);
+  assert.equal(bundle.measurements.length, 0);
+  assert.throws(() => buildPublicationBundle({ submission, revision: { ...empty, temp_c: 0 }, site, measurements: [] }), /finite number/);
+  assert.throws(() => buildPublicationBundle({ submission, revision: { ...revision, temp_f: 0 }, site, measurements: [] }), /conversion mismatch/);
+});
+
+test('water depth publishes as a normalized length measurement without expanding ArcGIS wide schemas', () => {
+  const depth = { measurement_id: 'depth', parameter_code: 'WATER_DEPTH_M', value: 0.3, unit_code: 'm', entered_value: 30, entered_unit_code: 'cm' };
+  const bundle = buildPublicationBundle({ submission, revision, site, measurements: [depth] });
+  assert.equal(bundle.measurements.find((row) => row.attributes.parameter_code === 'WATER_DEPTH_M').attributes.unit_code, 'm');
+  assert.equal(Object.hasOwn(bundle.observationFeature.attributes, 'water_depth_m'), false);
+  assert.equal(Object.hasOwn(bundle.observationFeature.attributes, 'water_color'), false);
+});

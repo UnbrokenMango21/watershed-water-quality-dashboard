@@ -51,7 +51,7 @@ test('production measurement catalog classifies every approved UI measurement ex
   const keys = production.measurements.map(({ uiKey }) => uiKey);
   const expectedKeys = [
     'temperature', 'ph', 'dissolvedOxygen', 'dissolvedOxygenSaturation', 'conductivity', 'tds',
-    'orp', 'chloride', 'sulfate', 'nitrate', 'phosphate', 'flow', 'turbidity', 'salinity',
+    'orp', 'chloride', 'sulfate', 'nitrate', 'phosphate', 'flow', 'waterDepth', 'turbidity', 'salinity',
     'totalSuspendedSolids', 'alkalinity', 'hardness', 'ammoniaNitrogen', 'nitriteNitrogen',
     'totalPhosphorus', 'chlorophyllA', 'eColi',
   ];

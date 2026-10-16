@@ -152,6 +152,9 @@ service cloud.firestore {
         "gps_accuracy_m",
         "site_distance_m",
         "weather_condition",
+        "water_color",
+        "flow_condition",
+        "collection_stage",
         "data_collected_by",
         "test_type",
         "test_type_other",
@@ -195,6 +198,36 @@ service cloud.firestore {
       ];
     }
 
+    function validOptionalTemperature(data) {
+      let entered = data.get("temp_entered_value", null);
+      let unit = data.get("temp_entered_unit", null);
+      let c = data.get("temp_c", null);
+      let f = data.get("temp_f", null);
+      return (entered == null && unit == null && c == null && f == null)
+        || (entered is number && c is number && f is number && unit in ["C", "F"]
+          && c >= -5 && c <= 60
+          && ((unit == "C" && c >= entered - 0.2 && c <= entered + 0.2)
+            || (unit == "F" && c >= (entered - 32) * 5 / 9 - 0.2 && c <= (entered - 32) * 5 / 9 + 0.2))
+          && f >= c * 9 / 5 + 32 - 0.36 && f <= c * 9 / 5 + 32 + 0.36);
+    }
+
+    function validVisualObservations(data) {
+      return data.get("weather_condition", "") in ["Clear", "Partly Cloudy", "Cloudy", "Overcast", "Light Rain", "Heavy Rain", "Snow", "Windy", "Other", "Unknown"]
+        && data.get("water_color", "") in ["Clear", "Light Brown", "Dark Brown", "Greenish", "Turbid/Murky", "Other", "Unknown"]
+        && data.get("flow_condition", "") in ["No Visible Flow", "Low", "Moderate", "High", "Unknown"];
+    }
+
+    function validSubmittedScience(data) {
+      return data.schema_version == "0.2.0"
+        && validVisualObservations(data)
+        && data.get("collection_stage", "") in ["LAB_COMPLETED", "READY_FOR_REVIEW"]
+        && validTestType(data.test_type)
+        && (data.test_type != "Other" || nonEmptyString(data.test_type_other))
+        && nonEmptyString(data.method_name)
+        && (data.instrument_name == null || data.instrument_name is string)
+        && validOptionalTemperature(data);
+    }
+
     function validCollectorRevisionCreate(submissionId, revisionId) {
       return request.resource.data.keys().hasOnly(collectorRevisionAllowedKeys())
         && request.resource.data.keys().hasAll(collectorRevisionRequiredKeys())
@@ -224,12 +257,9 @@ service cloud.firestore {
         && validTestType(request.resource.data.test_type)
         && (request.resource.data.test_type != "Other" || nonEmptyString(request.resource.data.test_type_other))
         && nonEmptyString(request.resource.data.method_name)
-        && nonEmptyString(request.resource.data.instrument_name)
-        && request.resource.data.temp_entered_value is number
-        && request.resource.data.temp_c is number
-        && request.resource.data.temp_f is number
-        && request.resource.data.temp_entered_unit in ["C", "F"]
-        && request.resource.data.schema_version == "0.1.0"
+        && (request.resource.data.instrument_name == null || request.resource.data.instrument_name is string)
+        && validOptionalTemperature(request.resource.data)
+        && request.resource.data.schema_version == "0.2.0"
         && nonEmptyString(request.resource.data.mobile_app_version)
         && (
           (get(submissionPath(submissionId)).data.status == "DRAFT" && request.resource.data.revision_no == 1)
@@ -250,14 +280,13 @@ service cloud.firestore {
         && request.resource.data.site_id == resource.data.site_id
         && request.resource.data.created_at == resource.data.created_at
         && request.resource.data.revision_status in ["DRAFT", "SUBMITTED"]
-        && request.resource.data.submitted_at == request.time
-        && request.resource.data.temp_entered_unit in ["C", "F"]
+        && (request.resource.data.revision_status == "DRAFT"
+          ? request.resource.data.submitted_at == null
+          : request.resource.data.submitted_at == request.time && validSubmittedScience(request.resource.data))
         && request.resource.data.latitude is number
         && request.resource.data.longitude is number
         && request.resource.data.gps_accuracy_m is number
-        && request.resource.data.temp_entered_value is number
-        && request.resource.data.temp_c is number
-        && request.resource.data.temp_f is number;
+        && validOptionalTemperature(request.resource.data);
     }
 
     function measurementAllowedKeys() {
@@ -287,6 +316,7 @@ service cloud.firestore {
         || (parameterCode in ["CHLORIDE_MG_L", "SULFATE_MG_L"] && unitCode == "mg/L")
         || (parameterCode == "NITRATE_MG_L" && unitCode == "mg/L as N")
         || (parameterCode == "PHOSPHATE_MG_L" && unitCode == "mg/L as P")
+        || (parameterCode == "WATER_DEPTH_M" && unitCode == "m")
         || (parameterCode == "DISCHARGE_M3_S" && unitCode == "m3/s");
     }
 
@@ -300,6 +330,7 @@ service cloud.firestore {
         || (parameterCode in ["CHLORIDE_MG_L", "SULFATE_MG_L"] && enteredUnitCode in ["mg-l", "ug-l"])
         || (parameterCode == "NITRATE_MG_L" && enteredUnitCode in ["mg-n-l", "ug-n-l", "mg-no3-l", "ug-no3-l"])
         || (parameterCode == "PHOSPHATE_MG_L" && enteredUnitCode in ["mg-p-l", "ug-p-l", "mg-po4-l", "ug-po4-l"])
+        || (parameterCode == "WATER_DEPTH_M" && enteredUnitCode in ["m", "cm", "ft"])
         || (parameterCode == "DISCHARGE_M3_S" && enteredUnitCode in ["m3-s", "l-s", "ft3-s", "gal-min"]);
     }
 
@@ -324,7 +355,8 @@ service cloud.firestore {
         && request.resource.data.entered_value is number
         && validEnteredUnit(request.resource.data.parameter_code, request.resource.data.entered_unit_code)
         && nonEmptyString(request.resource.data.method_name)
-        && nonEmptyString(request.resource.data.instrument_name)
+        && (request.resource.data.instrument_name == null || request.resource.data.instrument_name is string)
+        && (request.resource.data.parameter_code != "WATER_DEPTH_M" || request.resource.data.value >= 0)
         && request.resource.data.entered_at is timestamp;
     }
 
@@ -419,7 +451,7 @@ service cloud.firestore {
         && request.resource.data.created_at is timestamp
         && request.resource.data.updated_at is timestamp
         && request.resource.data.submitted_at == null
-        && request.resource.data.schema_version == "0.1.0"
+        && request.resource.data.schema_version == "0.2.0"
         && nonEmptyString(request.resource.data.mobile_app_version)
         && request.resource.data.keys().hasOnly([
           "submission_id",

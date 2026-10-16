@@ -29,6 +29,7 @@ const enteredUnitScale = {
   SULFATE_MG_L: { 'mg-l': 1, 'ug-l': 0.001 },
   NITRATE_MG_L: { 'mg-n-l': 1, 'ug-n-l': 0.001, 'mg-no3-l': 14 / 62, 'ug-no3-l': 0.014 / 62 },
   PHOSPHATE_MG_L: { 'mg-p-l': 1, 'ug-p-l': 0.001, 'mg-po4-l': 0.326315789, 'ug-po4-l': 0.000326315789 },
+  WATER_DEPTH_M: { m: 1, cm: 0.01, ft: 0.3048 },
   DISCHARGE_M3_S: { 'm3-s': 1, 'l-s': 0.001, 'ft3-s': 0.028316846592, 'gal-min': 0.0000630901964 },
 };
 
@@ -161,6 +162,18 @@ function validateCompleteness(revision, measurements, rules, flags) {
     }
   }
 
+  // Submitted legacy revisions remain readable; the new protocol applies to new v0.2 records.
+  if (revision?.schema_version === '0.2.0') {
+    for (const [field, choices] of Object.entries(rules.visualObservations || {})) {
+      if (!choices.includes(revision[field])) flags.push(createFlag(`VISUAL_INVALID_${field}`, 'ERROR', 'COMPLETENESS', `Choose ${field.replaceAll('_', ' ')}; Unknown is allowed.`, null, { affectsQualityComponent: 'completeness' }));
+    }
+    if (revision.collection_stage === 'LAB_PENDING') flags.push(createFlag('LAB_PENDING', 'ERROR', 'COMPLETENESS', 'Complete laboratory work before final review submission.'));
+  }
+  const temperature = ['temp_entered_value', 'temp_entered_unit', 'temp_c', 'temp_f'].map((key) => revision?.[key]);
+  if (temperature.some((value) => value != null) && !(temperature.slice(0, 1).concat(temperature.slice(2)).every(isFiniteNumber) && ['C', 'F'].includes(temperature[1]))) {
+    flags.push(createFlag('TEMP_GROUP_INVALID', 'ERROR', 'COMPLETENESS', 'Temperature must be absent or include a finite entered value, unit, Celsius and Fahrenheit values.', 'WATER_TEMP_C'));
+  }
+
   if (revision?.temp_entered_unit && !['C', 'F'].includes(revision.temp_entered_unit)) {
     flags.push(createFlag(
       'TEMP_UNIT_INVALID',
@@ -238,8 +251,8 @@ function validateCompleteness(revision, measurements, rules, flags) {
     if (!nonBlank(m.method_name)) {
       flags.push(createFlag('MEAS_METHOD_MISSING', 'ERROR', 'COMPLETENESS', 'Method is required for each collected measurement.', m.parameter_code || null, { affectsQualityComponent: 'method' }));
     }
-    if (!nonBlank(m.instrument_name)) {
-      flags.push(createFlag('MEAS_INSTRUMENT_MISSING', 'ERROR', 'COMPLETENESS', 'Instrument or laboratory source is required for each collected measurement.', m.parameter_code || null, { affectsQualityComponent: 'method' }));
+    if (m.instrument_name != null && typeof m.instrument_name !== 'string') {
+      flags.push(createFlag('MEAS_INSTRUMENT_MISSING', 'ERROR', 'COMPLETENESS', 'Instrument provenance must be text when supplied.', m.parameter_code || null, { affectsQualityComponent: 'method' }));
     }
   }
 
@@ -293,6 +306,7 @@ function validateTemperature(revision, rules, flags) {
 function validateMeasurements(measurements, rules, flags) {
   for (const m of measurements || []) {
     const code = m.parameter_code;
+    if (code === 'WATER_DEPTH_M' && isFiniteNumber(m.value) && m.value < 0) flags.push(createFlag('DEPTH_NEGATIVE', 'ERROR', 'VALUE_VALIDITY', 'Water depth cannot be negative.', code));
     if (isFiniteNumber(m.entered_value) && nonBlank(m.entered_unit_code) && isFiniteNumber(m.value)) {
       const scale = enteredUnitScale[code]?.[m.entered_unit_code];
       if (scale == null) {

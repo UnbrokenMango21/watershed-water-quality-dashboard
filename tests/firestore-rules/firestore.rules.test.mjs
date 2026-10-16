@@ -18,7 +18,7 @@ import {
   Timestamp
 } from 'firebase/firestore';
 
-const PROJECT_ID = 'central-pa-watershed-dev';
+const PROJECT_ID = process.env.GCLOUD_PROJECT || 'central-pa-watershed-dev';
 const TEST_DIR = path.dirname(fileURLToPath(import.meta.url));
 const RULES_PATH = path.resolve(TEST_DIR, '../../firebase/firestore.rules');
 
@@ -61,7 +61,7 @@ function draftSubmission(overrides = {}) {
     created_at: nowString(),
     updated_at: nowString(),
     submitted_at: null,
-    schema_version: '0.1.0',
+    schema_version: '0.2.0',
     mobile_app_version: '0.1.0-test',
     ...overrides
   };
@@ -86,6 +86,9 @@ function draftRevision(overrides = {}) {
     gps_accuracy_m: 4.2,
     site_distance_m: 3.1,
     weather_condition: 'Clear',
+    water_color: 'Unknown',
+    flow_condition: 'Unknown',
+    collection_stage: 'READY_FOR_REVIEW',
     data_collected_by: 'Student/researcher',
     test_type: 'In-situ / Field Instrument',
     test_type_other: null,
@@ -97,7 +100,7 @@ function draftRevision(overrides = {}) {
     temp_c: 20,
     temp_f: 68,
     field_notes_original: null,
-    schema_version: '0.1.0',
+    schema_version: '0.2.0',
     mobile_app_version: '0.1.0-test',
     ...overrides
   };
@@ -615,4 +618,38 @@ test('default-deny blocks unknown top-level collection writes', async () => {
 
 test('test suite sanity check', () => {
   assert.ok(true);
+});
+
+test('field collection stays a mutable same-ID cloud draft until laboratory completion and explicit submission', async () => {
+  const db = env.authenticatedContext('collector-a').firestore();
+  const parent = doc(db, `submissions/${submissionId}`);
+  const revision = doc(db, `submissions/${submissionId}/revisions/${revisionId}`);
+  await assertSucceeds(setDoc(parent, draftSubmission()));
+  const emptyScience = { temp_entered_value: null, temp_entered_unit: null, temp_c: null, temp_f: null, instrument_name: null, weather_condition: 'Unknown', water_color: 'Unknown', flow_condition: 'Unknown', collection_stage: 'LAB_PENDING' };
+  await assertSucceeds(setDoc(revision, draftRevision(emptyScience)));
+  await assertSucceeds(updateDoc(revision, { field_notes_original: 'Field collection completed; analysis pending.' }));
+  await assertFails(updateDoc(revision, { revision_status: 'SUBMITTED', submitted_at: serverTimestamp() }));
+  await assertFails(updateDoc(revision, { collection_stage: 'READY_FOR_REVIEW', water_color: '', revision_status: 'SUBMITTED', submitted_at: serverTimestamp() }));
+  await assertFails(updateDoc(revision, { temp_c: 0 }));
+  await assertSucceeds(updateDoc(revision, { collection_stage: 'LAB_COMPLETED' }));
+  const nitrate = doc(db, `submissions/${submissionId}/revisions/${revisionId}/measurements/lab-nitrate`);
+  await assertSucceeds(setDoc(nitrate, measurement('lab-nitrate', { parameter_code: 'NITRATE_MG_L', display_name: 'Nitrate', value: 1.2, unit_code: 'mg/L as N', entered_value: 1.2, entered_unit_code: 'mg-n-l', method_name: 'Penn State Lab', instrument_name: null })));
+  await assertSucceeds(updateDoc(revision, { revision_status: 'SUBMITTED', submitted_at: serverTimestamp() }));
+  await assertSucceeds(updateDoc(parent, { status: 'SUBMITTED', submitted_at: serverTimestamp(), updated_at: serverTimestamp() }));
+  await assertFails(updateDoc(revision, { temp_c: 10 }));
+  await assertFails(updateDoc(nitrate, { value: 9 }));
+  const saved = (await getDoc(parent)).data();
+  assert.equal(saved.current_revision_id, revisionId);
+  assert.equal(saved.current_revision_no, 1);
+});
+
+test('water depth is a nonnegative length measurement and cannot use discharge units', async () => {
+  await seed(`submissions/${submissionId}`, draftSubmission());
+  await seed(`submissions/${submissionId}/revisions/${revisionId}`, draftRevision());
+  const db = env.authenticatedContext('collector-a').firestore();
+  const ref = doc(db, `submissions/${submissionId}/revisions/${revisionId}/measurements/depth`);
+  const depth = measurement('depth', { parameter_code: 'WATER_DEPTH_M', display_name: 'Water Depth', value: 0.3, unit_code: 'm', entered_value: 30, entered_unit_code: 'cm', instrument_name: null });
+  await assertSucceeds(setDoc(ref, depth));
+  await assertFails(setDoc(ref, { ...depth, unit_code: 'm3/s' }));
+  await assertFails(setDoc(ref, { ...depth, value: -0.3, entered_value: -30 }));
 });

@@ -1,5 +1,5 @@
 {
-  "catalogVersion": "0.1.2",
+  "catalogVersion": "0.2.0",
   "namingPolicy": {
     "displayLabelsUseUnitsInParentheses": true,
     "backendNamesAreMachineSafe": true,
@@ -24,7 +24,8 @@
     {"code":"SULFATE_MG_L","backendName":"sulfate_mg_l","displayLabel":"Sulphate (mg/L)","canonicalUnit":"mg/L","storageType":"double","uiDecimals":2,"mvpStatus":"core"},
     {"code":"NITRATE_MG_L","backendName":"nitrate_mg_l","displayLabel":"Nitrate (mg/L)","canonicalUnit":"mg/L","storageType":"double","uiDecimals":2,"mvpStatus":"core"},
     {"code":"PHOSPHATE_MG_L","backendName":"phosphate_mg_l","displayLabel":"Phosphate (mg/L)","canonicalUnit":"mg/L","storageType":"double","uiDecimals":2,"mvpStatus":"core"},
-    {"code":"DISCHARGE_M3_S","backendName":"discharge_m3_s","displayLabel":"Q (m³/s)","canonicalUnit":"m3/s","storageType":"double","uiDecimals":4,"mvpStatus":"core"}
+    {"code":"DISCHARGE_M3_S","backendName":"discharge_m3_s","displayLabel":"Q (m³/s)","canonicalUnit":"m3/s","storageType":"double","uiDecimals":4,"mvpStatus":"core"},
+    {"code":"WATER_DEPTH_M","backendName":"water_depth_m","displayLabel":"Water Depth (m)","canonicalUnit":"m","storageType":"double","uiDecimals":3,"mvpStatus":"optional","note":"Separate from discharge. Current production units come from production_measurement_catalog.json."}
   ],
   "notes": [
     "Requiredness is defined by sampling protocol and remains a Step-4 decision.",

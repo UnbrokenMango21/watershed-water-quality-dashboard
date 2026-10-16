@@ -1,5 +1,5 @@
 {
-  "catalogVersion": "1.0.0",
+  "catalogVersion": "1.1.0",
   "canonicalValuePolicy": "Firestore stores finite canonical numeric values; local drafts also retain the entered value and unit.",
   "measurements": [
     {"uiKey":"temperature","displayName":"Water Temperature","support":"FULLY_SUPPORTED","parameterCode":"WATER_TEMP_C","canonicalUnit":"degC","serializationTarget":"revision_temperature"},
@@ -14,6 +14,7 @@
     {"uiKey":"nitrate","displayName":"Nitrate","support":"FULLY_SUPPORTED","parameterCode":"NITRATE_MG_L","canonicalUnit":"mg/L as N","serializationTarget":"measurement"},
     {"uiKey":"phosphate","displayName":"Phosphate","support":"FULLY_SUPPORTED","parameterCode":"PHOSPHATE_MG_L","canonicalUnit":"mg/L as P","serializationTarget":"measurement"},
     {"uiKey":"flow","displayName":"Discharge / Flow","support":"FULLY_SUPPORTED","parameterCode":"DISCHARGE_M3_S","canonicalUnit":"m3/s","serializationTarget":"measurement"},
+    {"uiKey":"waterDepth","displayName":"Water Depth","support":"FULLY_SUPPORTED","parameterCode":"WATER_DEPTH_M","canonicalUnit":"m","serializationTarget":"measurement"},
     {"uiKey":"turbidity","displayName":"Turbidity","support":"FEATURE_GATED","reason":"No Phase 10 parameter code, validation rule, Firestore unit contract, or publishing mapping."},
     {"uiKey":"salinity","displayName":"Salinity","support":"FEATURE_GATED","reason":"No Phase 10 parameter code, validation rule, Firestore unit contract, or publishing mapping."},
     {"uiKey":"totalSuspendedSolids","displayName":"Total Suspended Solids","support":"FEATURE_GATED","reason":"No Phase 10 parameter code, validation rule, Firestore unit contract, or publishing mapping."},
