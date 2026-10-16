@@ -90,4 +90,20 @@ class ModelTest {
         assertEquals("9.1", history.last().measurements.single().value)
         assertTrue(history.map(Revision::number) == listOf(1, 2))
     }
+    @Test
+    fun reviewIssueFocusScrollsToTheMeasurementRowItself() {
+        // Intro, site observations and the lab workflow card precede the first measurement row.
+        assertEquals(listOf("intro", "site-observations", "lab-workflow"), MeasurementListKeys.leading)
+        val required = listOf(MeasurementKind.Temperature)
+        val optional = listOf(MeasurementKind.Ph, MeasurementKind.Nitrate)
+        val keys = MeasurementListKeys.ordered(required, optional)
+        assertEquals(keys.size, keys.toSet().size)
+        assertEquals(3, measurementItemIndex(MeasurementKind.Temperature, required, optional))
+        assertEquals("optional-heading", keys[4])
+        assertEquals(5, measurementItemIndex(MeasurementKind.Ph, required, optional))
+        assertEquals("optional-Nitrate", keys[measurementItemIndex(MeasurementKind.Nitrate, required, optional)!!])
+        assertNull(measurementItemIndex(MeasurementKind.Turbidity, required, optional))
+        // With no required rows the first optional row follows the heading directly.
+        assertEquals(4, measurementItemIndex(MeasurementKind.Ph, emptyList(), optional))
+    }
 }

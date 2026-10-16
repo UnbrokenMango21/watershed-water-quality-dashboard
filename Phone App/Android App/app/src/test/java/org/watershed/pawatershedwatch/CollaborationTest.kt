@@ -74,4 +74,30 @@ class CollaborationTest {
         assertEquals(listOf("Enter a proposed site name of 2 to 160 characters."), coordinateProposalProblems(ProposalKind.NewSite, null, 40.8, -77.8, null, "Needed site", " x "))
         assertEquals(listOf("GPS accuracy must be a nonnegative number of meters, or unknown."), coordinateProposalProblems(ProposalKind.NewSite, null, 40.8, -77.8, -1.0, "Needed site", "Slab Cabin"))
     }
+    @Test
+    fun multiLineProposalTextIsNormalizedLikeTheServerAndKeepsItsRetryFingerprint() {
+        val reason = "  Bridge was rebuilt\n\nupstream;\tnew\r\naccess\u00a0point  "
+        val request = CoordinateProposalRequest("0b8f0b6e-1f7e-4a3a-9a52-0c1e2f3a4b5c", ProposalKind.NewSite, null, 40.8, -77.8, null, reason, " Slab\nCabin  Run ")
+        val payload = request.payload()
+        assertEquals("Bridge was rebuilt upstream; new access point", payload["reason"])
+        assertEquals("Slab Cabin Run", payload["proposedSiteName"])
+        assertFalse("no raw control characters reach the callable", ProposalText.hasControlCharacters(payload["reason"] as String))
+        // NFC: a decomposed e + combining acute becomes one code point.
+        assertEquals("Caf\u00e9 Run", ProposalText.normalized("Cafe\u0301 Run"))
+        assertEquals(8, ProposalText.length(ProposalText.normalized("Cafe\u0301 Run")))
+        // A retry that differs only in spacing or line breaks is the same proposal.
+        val retry = request.copy(proposalId = CoordinateProposalRequest.newId(), reason = "Bridge was rebuilt upstream; new access point", proposedSiteName = "Slab Cabin Run")
+        assertTrue(retry.sameContent(request))
+        assertTrue(coordinateProposalProblems(ProposalKind.NewSite, null, 40.8, -77.8, null, reason, " Slab\nCabin  Run ").isEmpty())
+        // Line breaks never count toward the minimum length.
+        assertEquals(listOf("Explain the proposal in 5 to 1000 characters."), coordinateProposalProblems(ProposalKind.CoordinateCorrection, "SITE-1", 40.8, -77.8, null, "ab\n\n\nc", ""))
+        // Other control characters cannot be normalized away and are reported, as on iOS.
+        assertEquals(listOf("Remove unsupported characters from the reason."), coordinateProposalProblems(ProposalKind.CoordinateCorrection, "SITE-1", 40.8, -77.8, null, "Moved\u0001bridge", ""))
+    }
+
+    @Test
+    fun discussionMessagesKeepTheirLineBreaks() {
+        // sendSubmissionMessage accepts tabs and line breaks, so message text is only trimmed.
+        assertEquals("First line\nSecond line", OutgoingMessage.next(null, "s1", "  First line\nSecond line  ").text)
+    }
 }

@@ -283,12 +283,7 @@ fun MeasurementsScreen(model: AppViewModel, onBack: () -> Unit, onNext: () -> Un
     fun nextFocus(kind: MeasurementKind): FocusRequester? =
         ordered.drop(ordered.indexOf(kind) + 1).firstOrNull(::supported)?.let(focusChain::get)
 
-    val headerCount = 4
-    fun itemIndex(kind: MeasurementKind): Int? = when {
-        required.contains(kind) -> headerCount + required.indexOf(kind)
-        optional.contains(kind) -> headerCount + required.size + 1 + optional.indexOf(kind)
-        else -> null
-    }
+    fun itemIndex(kind: MeasurementKind): Int? = measurementItemIndex(kind, required, optional)
 
     val focusTarget = model.measurementFocusTarget
     LaunchedEffect(focusTarget) {
@@ -309,14 +304,14 @@ fun MeasurementsScreen(model: AppViewModel, onBack: () -> Unit, onNext: () -> Un
             contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 16.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            item {
+            item(key = MeasurementListKeys.INTRO) {
                 ScreenIntro(
                     "Step 4",
                     "Enter readings",
                     "Record the site observations. Numerical measurements are optional.",
                 )
             }
-            item {
+            item(key = MeasurementListKeys.OBSERVATIONS) {
                 FieldSurface {
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         FieldLabel("Site observations", required = true, style = MaterialTheme.typography.titleMedium)
@@ -327,7 +322,7 @@ fun MeasurementsScreen(model: AppViewModel, onBack: () -> Unit, onNext: () -> Un
                     }
                 }
             }
-            item {
+            item(key = MeasurementListKeys.LAB_WORKFLOW) {
                 FieldSurface {
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         Text("Field collection and laboratory work", style = MaterialTheme.typography.titleMedium)
@@ -341,7 +336,7 @@ fun MeasurementsScreen(model: AppViewModel, onBack: () -> Unit, onNext: () -> Un
                     }
                 }
             }
-            items(required, key = { "required-${it.name}" }) { kind ->
+            items(required, key = MeasurementListKeys::required) { kind ->
                 MeasurementEntry(
                     draft,
                     kind,
@@ -352,8 +347,8 @@ fun MeasurementsScreen(model: AppViewModel, onBack: () -> Unit, onNext: () -> Un
                     onUnitChange = { unit, clear -> model.changeUnit(kind, unit, clear) },
                 )
             }
-            item { SectionHeading("Optional Measurements", "Always available when the field protocol calls for them") }
-            items(optional, key = { "optional-${it.name}" }) { kind ->
+            item(key = MeasurementListKeys.OPTIONAL_HEADING) { SectionHeading("Optional Measurements", "Always available when the field protocol calls for them") }
+            items(optional, key = MeasurementListKeys::optional) { kind ->
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     MeasurementEntry(
                         draft,
@@ -373,6 +368,31 @@ fun MeasurementsScreen(model: AppViewModel, onBack: () -> Unit, onNext: () -> Un
             item { Spacer(Modifier.height(16.dp)) }
         }
     }
+}
+
+/** Item keys of the Measurements list. Review-issue focus derives scroll positions from this same order. */
+internal object MeasurementListKeys {
+    const val INTRO = "intro"
+    const val OBSERVATIONS = "site-observations"
+    const val LAB_WORKFLOW = "lab-workflow"
+    const val OPTIONAL_HEADING = "optional-heading"
+    val leading = listOf(INTRO, OBSERVATIONS, LAB_WORKFLOW)
+    fun required(kind: MeasurementKind) = "required-${kind.name}"
+    fun optional(kind: MeasurementKind) = "optional-${kind.name}"
+
+    /** Keys in the order MeasurementsScreen emits its items, up to the last measurement row. */
+    fun ordered(requiredKinds: List<MeasurementKind>, optionalKinds: List<MeasurementKind>): List<String> =
+        leading + requiredKinds.map(::required) + OPTIONAL_HEADING + optionalKinds.map(::optional)
+}
+
+/** The LazyColumn index of a measurement row, or null when the kind is not shown. */
+internal fun measurementItemIndex(kind: MeasurementKind, required: List<MeasurementKind>, optional: List<MeasurementKind>): Int? {
+    val key = when (kind) {
+        in required -> MeasurementListKeys.required(kind)
+        in optional -> MeasurementListKeys.optional(kind)
+        else -> return null
+    }
+    return MeasurementListKeys.ordered(required, optional).indexOf(key).takeIf { it >= 0 }
 }
 
 @Composable

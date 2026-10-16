@@ -127,6 +127,11 @@ data class CanonicalObservationSnapshot(
     val waterColor: String = "",
     val flowCondition: String = "",
     val collectionStage: String = "READY_FOR_REVIEW",
+    /**
+     * The contract this revision was recorded under. New revisions use the current contract; a revision
+     * queued by an installed 0.1.0 build before upgrade keeps 0.1.0 so its replay still satisfies the rules.
+     */
+    val schemaVersion: String = FirestoreObservationMapper.SCHEMA_VERSION,
 )
 
 object CanonicalIds {
@@ -228,6 +233,12 @@ fun ObservationDraft.toCanonicalSnapshot(ownerUid: String, appVersion: String, s
 
 object FirestoreObservationMapper {
     const val SCHEMA_VERSION = "0.2.0"
+    /** Original contract of installed 0.1.0 builds; only replayed for revisions they queued offline. */
+    const val LEGACY_SCHEMA_VERSION = "0.1.0"
+
+    private fun schemaVersion(snapshot: CanonicalObservationSnapshot): String = snapshot.schemaVersion.also {
+        require(it == SCHEMA_VERSION || it == LEGACY_SCHEMA_VERSION) { "Unsupported schema version $it" }
+    }
 
     /**
      * firebase/firestore.rules requires `submitted_at == request.time` on every collector-authored
@@ -248,7 +259,7 @@ object FirestoreObservationMapper {
         "created_at" to Timestamp(Date(snapshot.createdAt)),
         "updated_at" to Timestamp(Date(snapshot.submittedAt)),
         "submitted_at" to submittedAt(status),
-        "schema_version" to SCHEMA_VERSION,
+        "schema_version" to schemaVersion(snapshot),
         "mobile_app_version" to snapshot.appVersion,
     )
 
@@ -285,11 +296,12 @@ object FirestoreObservationMapper {
         "temp_c" to snapshot.tempC,
         "temp_f" to snapshot.tempF,
         "field_notes_original" to snapshot.fieldNotes,
-        "schema_version" to SCHEMA_VERSION,
+        "schema_version" to schemaVersion(snapshot),
         "mobile_app_version" to snapshot.appVersion,
     )
 
-    fun measurement(snapshot: CanonicalObservationSnapshot, value: CanonicalMeasurement): Map<String, Any?> = mapOf(
+    fun measurement(snapshot: CanonicalObservationSnapshot, value: CanonicalMeasurement): Map<String, Any?> =
+        if (schemaVersion(snapshot) == LEGACY_SCHEMA_VERSION) legacyMeasurement(snapshot, value) else mapOf(
         "measurement_id" to value.id.value,
         "parameter_code" to value.parameterCode,
         "display_name" to value.displayName,
@@ -306,6 +318,23 @@ object FirestoreObservationMapper {
         "analysis_stage" to value.analysisStage,
         "analyzed_at" to Timestamp(Date(value.analyzedAt)),
         "field_exception_reason" to value.fieldExceptionReason,
+    )
+
+    // The 0.1.0 measurement shape: the revision's recorded method and (required) instrument, and none of
+    // the analysis provenance fields, which the rules reject on a 0.1.0 revision.
+    private fun legacyMeasurement(snapshot: CanonicalObservationSnapshot, value: CanonicalMeasurement): Map<String, Any?> = mapOf(
+        "measurement_id" to value.id.value,
+        "parameter_code" to value.parameterCode,
+        "display_name" to value.displayName,
+        "value" to value.value,
+        "unit_code" to value.unitCode,
+        "entered_value" to value.enteredValue,
+        "entered_unit_code" to value.enteredUnitId,
+        "method_name" to snapshot.methodName,
+        "instrument_name" to snapshot.instrumentName,
+        "qualifier" to null,
+        "notes" to null,
+        "entered_at" to Timestamp(Date(snapshot.collectedAt)),
     )
 
     fun attachment(snapshot: CanonicalObservationSnapshot, value: ObservationAttachment, storagePath: String): Map<String, Any?> = mapOf(

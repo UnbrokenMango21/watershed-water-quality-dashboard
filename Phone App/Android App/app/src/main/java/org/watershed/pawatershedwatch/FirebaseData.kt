@@ -278,7 +278,7 @@ class ObservationSyncWorker(application: android.content.Context, params: Worker
     }
 }
 
-private fun RevisionEntity.snapshot(measurements: List<LocalMeasurementEntity>): CanonicalObservationSnapshot {
+internal fun RevisionEntity.snapshot(measurements: List<LocalMeasurementEntity>): CanonicalObservationSnapshot {
     val canonicalMeasurements = measurements.mapNotNull { entity ->
         val kind = MeasurementKind.entries.firstOrNull { it.name == entity.kind } ?: return@mapNotNull null
         if (kind == MeasurementKind.Temperature || entity.parameterCode == null || entity.canonicalValue == null || entity.canonicalUnit == null) return@mapNotNull null
@@ -299,6 +299,6 @@ private fun RevisionEntity.snapshot(measurements: List<LocalMeasurementEntity>):
         SubmissionId(submissionId), EventId(eventId), RevisionId(revisionId), revisionNo, ownerUid, SiteId(siteId), createdAt,
         collectedAt, submittedAt, latitude, longitude, accuracyM, collector, testType, testTypeOther, method, instrument, notes,
         tempEnteredValue, tempEnteredUnit, tempC, tempF, canonicalMeasurements, emptyList(), appVersion, revisionNo > 1,
-        weatherCondition, waterColor, flowCondition, collectionStage,
+        weatherCondition, waterColor, flowCondition, collectionStage, schemaVersion,
     )
 }

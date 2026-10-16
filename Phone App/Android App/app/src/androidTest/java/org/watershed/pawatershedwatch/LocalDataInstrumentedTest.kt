@@ -41,6 +41,7 @@ class LocalDataInstrumentedTest {
         assertEquals(original.revisionId, submitted.currentRevisionId)
         assertEquals(CanonicalIds.measurement(original.revisionId, "DO_MG_L").value, db.dao().measurements("owner-a", original.revisionId.value).first { it.parameterCode == "DO_MG_L" }.measurementId)
         assertEquals(original.revisionId.value, db.dao().queue("owner-a", original.submissionId.value)?.revisionId)
+        assertEquals("0.2.0", db.dao().revision("owner-a", original.revisionId.value)?.schemaVersion)
         assertEquals(0, repository.loadRecords("owner-b").size)
 
         repository.updateRemoteState("owner-a", original.submissionId, WorkflowState.NeedsCorrection, SyncState.Synced, "Verify dissolved oxygen transcription")
@@ -56,6 +57,7 @@ class LocalDataInstrumentedTest {
         assertEquals(original.eventId, corrected.eventId)
         assertEquals(2, corrected.revision)
         assertEquals(listOf(1, 2), db.dao().revisions("owner-a", original.submissionId.value).map(RevisionEntity::revisionNo))
+        assertEquals("corrections use the current contract", "0.2.0", db.dao().revision("owner-a", revision2.revisionId.value)?.schemaVersion)
         assertEquals(9.0, db.dao().measurements("owner-a", original.revisionId.value).first { it.parameterCode == "DO_MG_L" }.rawValue.toDouble(), 0.0)
         assertEquals(9.1, db.dao().measurements("owner-a", revision2.revisionId.value).first { it.parameterCode == "DO_MG_L" }.rawValue.toDouble(), 0.0)
     }
@@ -89,8 +91,10 @@ class LocalDataInstrumentedTest {
             close()
         }
         migration.runMigrationsAndValidate(name, 5, true, WatershedDatabase.MIGRATION_4_5).use { migrated ->
-            migrated.query("SELECT collector, temp_c, weather_condition FROM revisions WHERE revision_id='r1'").use { cursor ->
+            migrated.query("SELECT collector, temp_c, weather_condition, schema_version FROM revisions WHERE revision_id='r1'").use { cursor ->
                 assertTrue(cursor.moveToFirst()); assertEquals("Historical Collector", cursor.getString(0)); assertEquals(20.0, cursor.getDouble(1), 0.0); assertEquals("", cursor.getString(2))
+                // Queued by an installed 0.1.0 build, so it replays under the original contract.
+                assertEquals("0.1.0", cursor.getString(3))
             }
             migrated.execSQL("UPDATE revisions SET temp_entered_value=NULL,temp_entered_unit=NULL,temp_c=NULL,temp_f=NULL WHERE revision_id='r1'")
             migrated.query("SELECT temp_c FROM revisions WHERE revision_id='r1'").use { cursor -> cursor.moveToFirst(); assertTrue(cursor.isNull(0)) }

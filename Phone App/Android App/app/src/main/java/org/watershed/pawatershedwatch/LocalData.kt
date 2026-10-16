@@ -103,6 +103,8 @@ data class RevisionEntity(
     @ColumnInfo(name = "water_color", defaultValue = "''") val waterColor: String = "",
     @ColumnInfo(name = "flow_condition", defaultValue = "''") val flowCondition: String = "",
     @ColumnInfo(name = "collection_stage", defaultValue = "'DRAFT'") val collectionStage: String = "DRAFT",
+    // Rows that predate version 5 were queued by a 0.1.0 build and must replay under that contract.
+    @ColumnInfo(name = "schema_version", defaultValue = "'0.1.0'") val schemaVersion: String,
 )
 
 @Entity(tableName = "measurements", primaryKeys = ["revision_id", "kind"], indices = [Index("owner_uid")])
@@ -264,9 +266,10 @@ abstract class WatershedDatabase : RoomDatabase() {
 
         // Rebuild only the local revision table to allow genuine missing temperature. Copy every
         // historical column unchanged; this migration never deletes observations or attribution.
+        // Every existing revision was recorded by a 0.1.0 build, so it keeps schema_version 0.1.0.
         val MIGRATION_4_5 = object : Migration(4, 5) {
             override fun migrate(db: SupportSQLiteDatabase) {
-                db.execSQL("CREATE TABLE revisions_v5 (revision_id TEXT NOT NULL PRIMARY KEY, submission_id TEXT NOT NULL, event_id TEXT NOT NULL, revision_no INTEGER NOT NULL, owner_uid TEXT NOT NULL, site_id TEXT NOT NULL, created_at INTEGER NOT NULL, collected_at INTEGER NOT NULL, submitted_at INTEGER NOT NULL, collector TEXT NOT NULL, latitude REAL NOT NULL, longitude REAL NOT NULL, accuracy_m REAL NOT NULL, test_type TEXT NOT NULL, test_type_other TEXT, method TEXT NOT NULL, instrument TEXT NOT NULL, notes TEXT, temp_entered_value REAL, temp_entered_unit TEXT, temp_c REAL, temp_f REAL, workflow_state TEXT NOT NULL, revision_note TEXT NOT NULL, app_version TEXT NOT NULL, weather_condition TEXT NOT NULL DEFAULT '', water_color TEXT NOT NULL DEFAULT '', flow_condition TEXT NOT NULL DEFAULT '', collection_stage TEXT NOT NULL DEFAULT 'DRAFT')")
+                db.execSQL("CREATE TABLE revisions_v5 (revision_id TEXT NOT NULL PRIMARY KEY, submission_id TEXT NOT NULL, event_id TEXT NOT NULL, revision_no INTEGER NOT NULL, owner_uid TEXT NOT NULL, site_id TEXT NOT NULL, created_at INTEGER NOT NULL, collected_at INTEGER NOT NULL, submitted_at INTEGER NOT NULL, collector TEXT NOT NULL, latitude REAL NOT NULL, longitude REAL NOT NULL, accuracy_m REAL NOT NULL, test_type TEXT NOT NULL, test_type_other TEXT, method TEXT NOT NULL, instrument TEXT NOT NULL, notes TEXT, temp_entered_value REAL, temp_entered_unit TEXT, temp_c REAL, temp_f REAL, workflow_state TEXT NOT NULL, revision_note TEXT NOT NULL, app_version TEXT NOT NULL, weather_condition TEXT NOT NULL DEFAULT '', water_color TEXT NOT NULL DEFAULT '', flow_condition TEXT NOT NULL DEFAULT '', collection_stage TEXT NOT NULL DEFAULT 'DRAFT', schema_version TEXT NOT NULL DEFAULT '0.1.0')")
                 db.execSQL("INSERT INTO revisions_v5 (revision_id, submission_id, event_id, revision_no, owner_uid, site_id, created_at, collected_at, submitted_at, collector, latitude, longitude, accuracy_m, test_type, test_type_other, method, instrument, notes, temp_entered_value, temp_entered_unit, temp_c, temp_f, workflow_state, revision_note, app_version) SELECT revision_id, submission_id, event_id, revision_no, owner_uid, site_id, created_at, collected_at, submitted_at, collector, latitude, longitude, accuracy_m, test_type, test_type_other, method, instrument, notes, temp_entered_value, temp_entered_unit, temp_c, temp_f, workflow_state, revision_note, app_version FROM revisions")
                 db.execSQL("DROP TABLE revisions")
                 db.execSQL("ALTER TABLE revisions_v5 RENAME TO revisions")
@@ -476,7 +479,7 @@ private fun CanonicalObservationSnapshot.toEntity(workflow: WorkflowState, note:
     revisionId.value, submissionId.value, eventId.value, revisionNo, ownerUid, siteId.value, createdAt, collectedAt,
     submittedAt, collectorDisplayName, latitude, longitude, gpsAccuracyM, testType, testTypeOther, methodName,
     instrumentName, fieldNotes, temperatureEnteredValue, temperatureEnteredUnit, tempC, tempF, workflow.name, note, appVersion,
-    weatherCondition, waterColor, flowCondition, collectionStage,
+    weatherCondition, waterColor, flowCondition, collectionStage, schemaVersion,
 )
 
 private fun CanonicalMeasurement.toEntity(snapshot: CanonicalObservationSnapshot) = LocalMeasurementEntity(

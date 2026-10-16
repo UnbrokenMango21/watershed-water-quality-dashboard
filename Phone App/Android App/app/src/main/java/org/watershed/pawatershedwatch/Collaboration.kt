@@ -9,6 +9,7 @@ import com.google.firebase.firestore.Query
 import com.google.firebase.functions.FirebaseFunctions
 import com.google.firebase.functions.FirebaseFunctionsException
 import kotlinx.coroutines.suspendCancellableCoroutine
+import java.text.Normalizer
 import java.util.Locale
 import java.util.UUID
 import kotlin.coroutines.resume
@@ -126,16 +127,37 @@ data class CoordinateProposalRequest(
         put("latitude", latitude)
         put("longitude", longitude)
         put("gpsAccuracyM", gpsAccuracyM)
-        put("reason", reason.trim())
-        if (kind == ProposalKind.NewSite) put("proposedSiteName", proposedSiteName?.trim())
+        put("reason", ProposalText.normalized(reason))
+        if (kind == ProposalKind.NewSite) put("proposedSiteName", proposedSiteName?.let(ProposalText::normalized))
     }
 
-    /** Same content (ignoring the ID) means a retry, which must reuse the same proposal ID. */
+    /**
+     * Same content (ignoring the ID) means a retry, which must reuse the same proposal ID. Compared on the
+     * normalized payload, so a retry that differs only in line breaks or spacing keeps its fingerprint.
+     */
     fun sameContent(other: CoordinateProposalRequest?): Boolean = other != null && copy(proposalId = other.proposalId).payload() == other.payload()
 
     companion object {
         fun newId(): String = UUID.randomUUID().toString().lowercase(Locale.US)
     }
+}
+
+/**
+ * Text rules mirrored from `profile/coordinate_proposals.mjs` (and iOS SiteProposalText): Unicode NFC,
+ * whitespace runs (including line breaks) collapsed to one space, trimmed, lengths counted in code points.
+ * The server rejects raw control characters, so line breaks typed in the multi-line reason are sent as spaces.
+ */
+object ProposalText {
+    // JavaScript's \s: ASCII whitespace, Unicode space separators, line/paragraph separators and U+FEFF.
+    private val whitespace = Regex("[\\s\\p{Z}\\uFEFF]+")
+    private val control = Regex("[\\u0000-\\u001f\\u007f]")
+
+    fun normalized(raw: String): String =
+        Normalizer.normalize(raw, Normalizer.Form.NFC).replace(whitespace, " ").trim(' ')
+
+    fun length(value: String): Int = value.codePointCount(0, value.length)
+
+    fun hasControlCharacters(value: String): Boolean = control.containsMatchIn(value)
 }
 
 /** Every reason the proposal cannot be sent yet, in form order. Empty means ready. */
@@ -150,16 +172,18 @@ fun coordinateProposalProblems(
 ): List<String> = buildList {
     if (kind == ProposalKind.CoordinateCorrection && siteId.isNullOrBlank()) add("Choose the monitoring site to correct.")
     if (kind == ProposalKind.NewSite) {
-        val name = proposedSiteName.trim().replace(Regex("\\s+"), " ")
-        if (name.length !in 2..160) add("Enter a proposed site name of 2 to 160 characters.")
+        val name = ProposalText.normalized(proposedSiteName)
+        if (ProposalText.hasControlCharacters(name)) add("Remove unsupported characters from the proposed site name.")
+        else if (ProposalText.length(name) !in 2..160) add("Enter a proposed site name of 2 to 160 characters.")
     }
     if (latitude == null || longitude == null) add("Capture the current GPS position.")
     else if (!latitude.isFinite() || !longitude.isFinite() || latitude !in -90.0..90.0 || longitude !in -180.0..180.0 || (latitude == 0.0 && longitude == 0.0)) {
         add("The GPS position is not valid. Capture it again.")
     }
     if (gpsAccuracyM != null && (!gpsAccuracyM.isFinite() || gpsAccuracyM < 0)) add("GPS accuracy must be a nonnegative number of meters, or unknown.")
-    val trimmedReason = reason.trim().replace(Regex("\\s+"), " ")
-    if (trimmedReason.length !in 5..1000) add("Explain the proposal in 5 to 1000 characters.")
+    val normalizedReason = ProposalText.normalized(reason)
+    if (ProposalText.hasControlCharacters(normalizedReason)) add("Remove unsupported characters from the reason.")
+    else if (ProposalText.length(normalizedReason) !in 5..1000) add("Explain the proposal in 5 to 1000 characters.")
 }
 
 class CollaborationException(message: String) : Exception(message)

@@ -86,6 +86,62 @@ class ProductionDomainTest {
             snapshot.measurements.map { FirestoreObservationMapper.measurement(snapshot, it).normalized() },
         )
         assertEquals(expected.getJSONArray("attachments").toValue(), snapshot.attachments.map { FirestoreObservationMapper.attachment(snapshot, it, path).normalized() })
+        // New revisions are recorded under the current contract, and the golden case pins it.
+        assertEquals("0.2.0", snapshot.schemaVersion)
+        assertEquals("0.2.0", expected.getJSONObject("revision").getString("schema_version"))
+    }
+
+    @Test
+    fun revisionQueuedByAnInstalledLegacyBuildReplaysUnderTheOriginalContract() {
+        // A row migrated from Room v4: schema_version defaults to 0.1.0 and its measurements carry no provenance.
+        val revision = RevisionEntity(
+            "r1", "s1", "e1", 1, "owner-a", "SITE-1", 1_000, 2_000, 3_000, "Historical Collector", 40.8, -77.8, 4.0,
+            "In-situ / Field Instrument", null, "Calibrated meter", "YSI ProDSS", null, 20.0, "C", 20.0, 68.0,
+            "Submitted", "Original", "1.0.0", schemaVersion = "0.1.0",
+        )
+        val rows = listOf(
+            LocalMeasurementEntity("r1", "Ph", CanonicalIds.measurement(RevisionId("r1"), "PH").value, "owner-a", "PH", "7.2", Units.Ph.id, 7.2, "pH"),
+            LocalMeasurementEntity("r1", "Nitrate", CanonicalIds.measurement(RevisionId("r1"), "NITRATE_MG_L").value, "owner-a", "NITRATE_MG_L", "1.2", Units.MgNL.id, 1.2, "mg/L as N"),
+        )
+        val snapshot = revision.snapshot(rows)
+        assertEquals("0.1.0", snapshot.schemaVersion)
+        assertEquals("0.1.0", FirestoreObservationMapper.submission(snapshot, "DRAFT")["schema_version"])
+        val revisionDocument = FirestoreObservationMapper.revision(snapshot, "SUBMITTED")
+        assertEquals("0.1.0", revisionDocument["schema_version"])
+        assertEquals("YSI ProDSS", revisionDocument["instrument_name"])
+        assertEquals(20.0, revisionDocument["temp_c"])
+        assertEquals("C", revisionDocument["temp_entered_unit"])
+
+        val legacyKeys = setOf(
+            "measurement_id", "parameter_code", "display_name", "value", "unit_code", "entered_value", "entered_unit_code",
+            "method_name", "instrument_name", "qualifier", "notes", "entered_at",
+        )
+        assertEquals(2, snapshot.measurements.size)
+        snapshot.measurements.forEach { value ->
+            val document = FirestoreObservationMapper.measurement(snapshot, value)
+            assertEquals("0.1.0 measurements never carry analysis provenance", legacyKeys, document.keys)
+            assertEquals("Calibrated meter", document["method_name"])
+            assertEquals("YSI ProDSS", document["instrument_name"])
+            assertEquals(Timestamp(java.util.Date(2_000)), document["entered_at"])
+        }
+
+        // The same row under the current contract keeps the 0.2.0 shape.
+        val current = revision.copy(schemaVersion = "0.2.0").snapshot(rows)
+        assertEquals("0.2.0", FirestoreObservationMapper.revision(current, "SUBMITTED")["schema_version"])
+        current.measurements.forEach { value ->
+            val document = FirestoreObservationMapper.measurement(current, value)
+            assertEquals("FIELD", document["analysis_stage"])
+            assertTrue(document.containsKey("field_exception_reason"))
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            FirestoreObservationMapper.revision(revision.copy(schemaVersion = "9.9.9").snapshot(rows), "SUBMITTED")
+        }
+    }
+
+    @Test
+    fun correctionDraftsAreRecordedUnderTheCurrentContract() {
+        val correction = validDraft().copy(revisionNo = 2, isCorrection = true, revisionNote = "Checked export")
+        assertEquals("0.2.0", correction.toCanonicalSnapshot("owner-a", "1.0.0").schemaVersion)
     }
 
     @Test

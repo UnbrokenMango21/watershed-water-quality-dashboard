@@ -2,7 +2,7 @@
   "formatVersion": 1,
   "database": {
     "version": 5,
-    "identityHash": "663ea005a5f58be4b667690eb995c1cd",
+    "identityHash": "1afa0c786afcd44edad6dd5b50fa70ab",
     "entities": [
       {
         "tableName": "drafts",
@@ -332,7 +332,7 @@
       },
       {
         "tableName": "revisions",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`revision_id` TEXT NOT NULL, `submission_id` TEXT NOT NULL, `event_id` TEXT NOT NULL, `revision_no` INTEGER NOT NULL, `owner_uid` TEXT NOT NULL, `site_id` TEXT NOT NULL, `created_at` INTEGER NOT NULL, `collected_at` INTEGER NOT NULL, `submitted_at` INTEGER NOT NULL, `collector` TEXT NOT NULL, `latitude` REAL NOT NULL, `longitude` REAL NOT NULL, `accuracy_m` REAL NOT NULL, `test_type` TEXT NOT NULL, `test_type_other` TEXT, `method` TEXT NOT NULL, `instrument` TEXT NOT NULL, `notes` TEXT, `temp_entered_value` REAL, `temp_entered_unit` TEXT, `temp_c` REAL, `temp_f` REAL, `workflow_state` TEXT NOT NULL, `revision_note` TEXT NOT NULL, `app_version` TEXT NOT NULL, `weather_condition` TEXT NOT NULL DEFAULT '', `water_color` TEXT NOT NULL DEFAULT '', `flow_condition` TEXT NOT NULL DEFAULT '', `collection_stage` TEXT NOT NULL DEFAULT 'DRAFT', PRIMARY KEY(`revision_id`))",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`revision_id` TEXT NOT NULL, `submission_id` TEXT NOT NULL, `event_id` TEXT NOT NULL, `revision_no` INTEGER NOT NULL, `owner_uid` TEXT NOT NULL, `site_id` TEXT NOT NULL, `created_at` INTEGER NOT NULL, `collected_at` INTEGER NOT NULL, `submitted_at` INTEGER NOT NULL, `collector` TEXT NOT NULL, `latitude` REAL NOT NULL, `longitude` REAL NOT NULL, `accuracy_m` REAL NOT NULL, `test_type` TEXT NOT NULL, `test_type_other` TEXT, `method` TEXT NOT NULL, `instrument` TEXT NOT NULL, `notes` TEXT, `temp_entered_value` REAL, `temp_entered_unit` TEXT, `temp_c` REAL, `temp_f` REAL, `workflow_state` TEXT NOT NULL, `revision_note` TEXT NOT NULL, `app_version` TEXT NOT NULL, `weather_condition` TEXT NOT NULL DEFAULT '', `water_color` TEXT NOT NULL DEFAULT '', `flow_condition` TEXT NOT NULL DEFAULT '', `collection_stage` TEXT NOT NULL DEFAULT 'DRAFT', `schema_version` TEXT NOT NULL DEFAULT '0.1.0', PRIMARY KEY(`revision_id`))",
         "fields": [
           {
             "fieldPath": "revisionId",
@@ -505,6 +505,13 @@
             "affinity": "TEXT",
             "notNull": true,
             "defaultValue": "'DRAFT'"
+          },
+          {
+            "fieldPath": "schemaVersion",
+            "columnName": "schema_version",
+            "affinity": "TEXT",
+            "notNull": true,
+            "defaultValue": "'0.1.0'"
           }
         ],
         "primaryKey": {
@@ -947,7 +954,7 @@
     ],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '663ea005a5f58be4b667690eb995c1cd')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '1afa0c786afcd44edad6dd5b50fa70ab')"
     ]
   }
 }

@@ -372,8 +372,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         }
         val candidate = CoordinateProposalRequest(
             CoordinateProposalRequest.newId(), kind, siteId.takeIf { kind == ProposalKind.CoordinateCorrection },
-            requireNotNull(latitude), requireNotNull(longitude), gpsAccuracyM, reason.trim(),
-            proposedSiteName.trim().takeIf { kind == ProposalKind.NewSite },
+            requireNotNull(latitude), requireNotNull(longitude), gpsAccuracyM, ProposalText.normalized(reason),
+            ProposalText.normalized(proposedSiteName).takeIf { kind == ProposalKind.NewSite },
         )
         val request = pendingProposal?.takeIf { candidate.sameContent(it) } ?: candidate
         pendingProposal = request
