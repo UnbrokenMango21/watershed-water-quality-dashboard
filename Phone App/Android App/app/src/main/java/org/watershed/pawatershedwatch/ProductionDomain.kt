@@ -86,6 +86,14 @@ data class CanonicalMeasurement(
     val enteredUnit: String,
     val value: Double,
     val unitCode: String,
+    /** "FIELD" or "LAB". Field parameters are always FIELD. */
+    val analysisStage: String,
+    val analysisMethod: String,
+    val analysisInstrument: String?,
+    /** Field parameters: the sampling time. Laboratory-dependent parameters: the recorded analysis time. */
+    val analyzedAt: Long,
+    /** Only a laboratory-dependent parameter analyzed in the field carries a documented exception. */
+    val fieldExceptionReason: String?,
 )
 
 data class CanonicalObservationSnapshot(
@@ -166,22 +174,30 @@ fun ObservationDraft.toCanonicalSnapshot(ownerUid: String, appVersion: String, s
         require(attachment.sizeBytes in 1..50L * 1024 * 1024) { "Attachment size is invalid" }
         require(attachment.contentType in setOf("image/jpeg", "image/png", "image/heic", "audio/mp4", "audio/m4a", "application/pdf")) { "Attachment type is not allowed" }
     }
-    val temperatureText = values[MeasurementKind.Temperature].orEmpty().trim()
+    val now = System.currentTimeMillis()
+    val problems = MeasurementKind.entries.mapNotNull { kind -> measurementProblem(kind, now)?.let { kind to it } }
+    if (!forDraft) problems.firstOrNull()?.let { (_, message) -> throw IllegalArgumentException(message) }
+    // A cloud draft carries only values that are already complete. Anything still unusable (a lab
+    // result without its analysis time, say) stays in the local draft until it is finished, so one
+    // incomplete entry never blocks synchronizing the rest of the field record.
+    val incomplete = if (forDraft) problems.map { it.first }.toSet() else emptySet()
+    val temperatureText = if (MeasurementKind.Temperature in incomplete) "" else values[MeasurementKind.Temperature].orEmpty().trim()
     val temperatureRaw = temperatureText.takeIf { it.isNotEmpty() }?.toDoubleOrNull()
     val temperatureUnit = selectedUnit(MeasurementKind.Temperature)
-    measurementErrorMessage(MeasurementKind.Temperature, temperatureText, temperatureUnit)?.let { throw IllegalArgumentException(it) }
     val tempC = temperatureRaw?.let { temperatureUnit.convert(it, Units.Celsius) }
     val tempF = tempC?.let { Units.Celsius.convert(it, Units.Fahrenheit) }
+    val methodName = canonicalMethod
+    val instrumentName = canonicalInstrument
     val canonicalMeasurements = values.mapNotNull { (kind, raw) ->
-        if (kind == MeasurementKind.Temperature || raw.isBlank()) return@mapNotNull null
+        if (kind == MeasurementKind.Temperature || raw.isBlank() || kind in incomplete) return@mapNotNull null
         val spec = ProductionMeasurementCatalog.spec(kind)
         require(spec.support == ProductionSupport.FULLY_SUPPORTED) { "${kind.title} is not enabled by the production contract" }
         val entered = requireNotNull(raw.toDoubleOrNull()) { "${kind.title} must be numeric" }
         require(entered.isFinite()) { "${kind.title} must be finite" }
         val selected = selectedUnit(kind)
-        measurementErrorMessage(kind, raw, selected)?.let { throw IllegalArgumentException(it) }
         val canonicalUnit = kind.units.first()
         val canonical = BigDecimal.valueOf(selected.convert(entered, canonicalUnit)).setScale(12, RoundingMode.HALF_EVEN).stripTrailingZeros().toDouble()
+        val analysis = if (kind.needsAnalysisProvenance) requireNotNull(analysisDetails[kind]) { "Record the analysis method and time for ${kind.title}." } else null
         CanonicalMeasurement(
             id = CanonicalIds.measurement(revisionId, requireNotNull(spec.parameterCode)),
             kind = kind,
@@ -192,13 +208,18 @@ fun ObservationDraft.toCanonicalSnapshot(ownerUid: String, appVersion: String, s
             enteredUnit = selected.menuTitle,
             value = canonical,
             unitCode = requireNotNull(spec.canonicalUnit),
+            analysisStage = analysis?.stage?.name ?: AnalysisStage.FIELD.name,
+            analysisMethod = analysis?.method?.trim() ?: methodName,
+            analysisInstrument = (analysis?.instrument ?: instrumentName).trim().ifEmpty { null },
+            analyzedAt = analysis?.let { requireNotNull(it.analyzedAt) } ?: collectedAt,
+            fieldExceptionReason = fieldExceptionReason(kind),
         )
     }.sortedBy { it.kind.ordinal }
 
     return CanonicalObservationSnapshot(
         submissionId, eventId, revisionId, revisionNo, ownerUid, SiteId(siteId), createdAt, collectedAt,
         submittedAt, latitude, longitude, accuracy, collector.trim(), test.label, testTypeOther.trim().ifBlank { null },
-        canonicalMethod, canonicalInstrument, notes.trim().ifBlank { null }, temperatureRaw,
+        methodName, instrumentName, notes.trim().ifBlank { null }, temperatureRaw,
         if (temperatureRaw == null) null else if (temperatureUnit == Units.Celsius) "C" else "F", tempC, tempF, canonicalMeasurements,
         attachments, appVersion, isCorrection, weatherCondition, waterColor, flowCondition,
         if (forDraft) collectionStage.name else if (collectionStage == CollectionStage.LAB_COMPLETED) "LAB_COMPLETED" else "READY_FOR_REVIEW",
@@ -276,11 +297,15 @@ object FirestoreObservationMapper {
         "unit_code" to value.unitCode,
         "entered_value" to value.enteredValue,
         "entered_unit_code" to value.enteredUnitId,
-        "method_name" to snapshot.methodName,
-        "instrument_name" to snapshot.instrumentName.ifBlank { null },
+        "method_name" to value.analysisMethod,
+        "instrument_name" to value.analysisInstrument?.ifBlank { null },
         "qualifier" to null,
         "notes" to null,
+        // entered_at stays the sampling time on both platforms; analyzed_at carries the analysis time.
         "entered_at" to Timestamp(Date(snapshot.collectedAt)),
+        "analysis_stage" to value.analysisStage,
+        "analyzed_at" to Timestamp(Date(value.analyzedAt)),
+        "field_exception_reason" to value.fieldExceptionReason,
     )
 
     fun attachment(snapshot: CanonicalObservationSnapshot, value: ObservationAttachment, storagePath: String): Map<String, Any?> = mapOf(

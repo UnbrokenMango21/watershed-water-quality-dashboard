@@ -2,11 +2,25 @@ package org.watershed.pawatershedwatch
 
 import kotlinx.coroutines.flow.Flow
 
-data class AuthAccount(val uid: String, val email: String?, val displayName: String)
+data class AuthAccount(
+    val uid: String,
+    val email: String?,
+    val displayName: String,
+    val emailVerified: Boolean = false,
+    /** The name on the Firebase Auth profile, mirrored by the server; null when none was ever set. */
+    val profileName: String? = null,
+    val hasVerifiedPhone: Boolean = false,
+) {
+    /** The server requires a verified email (or phone) before it creates or updates the profile. */
+    val verified: Boolean get() = (emailVerified && !email.isNullOrBlank()) || hasVerifiedPhone
+}
 
 interface AuthRepository {
     val account: Flow<AuthAccount?>
     suspend fun signIn(email: String, password: String): Result<AuthAccount>
+    /** Reloads the signed-in account so a just-confirmed email verification is seen. */
+    suspend fun reload(): Result<AuthAccount?>
+    suspend fun sendEmailVerification(): Result<Unit>
     fun signOut()
 }
 

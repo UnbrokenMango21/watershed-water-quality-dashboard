@@ -116,6 +116,13 @@ data class LocalMeasurementEntity(
     @ColumnInfo(name = "raw_unit_id") val rawUnitId: String,
     @ColumnInfo(name = "canonical_value") val canonicalValue: Double?,
     @ColumnInfo(name = "canonical_unit") val canonicalUnit: String?,
+    // Analysis provenance (schema 0.2.0). Null on draft rows without recorded provenance and on
+    // rows written before version 5; never back-filled with invented values.
+    @ColumnInfo(name = "analysis_stage") val analysisStage: String? = null,
+    @ColumnInfo(name = "analysis_method") val analysisMethod: String? = null,
+    @ColumnInfo(name = "analysis_instrument") val analysisInstrument: String? = null,
+    @ColumnInfo(name = "analyzed_at") val analyzedAt: Long? = null,
+    @ColumnInfo(name = "field_exception_reason") val fieldExceptionReason: String? = null,
 )
 
 @Entity(tableName = "attachments", indices = [Index("revision_id"), Index("owner_uid")])
@@ -271,6 +278,13 @@ abstract class WatershedDatabase : RoomDatabase() {
                 db.execSQL("ALTER TABLE drafts ADD COLUMN collection_stage TEXT NOT NULL DEFAULT 'DRAFT'")
                 db.execSQL("ALTER TABLE drafts ADD COLUMN field_collected_at INTEGER")
                 db.execSQL("ALTER TABLE drafts ADD COLUMN lab_completed_at INTEGER")
+                // Per-measurement analysis provenance. Existing rows keep NULL: provenance that was never
+                // recorded stays missing rather than being invented.
+                db.execSQL("ALTER TABLE measurements ADD COLUMN analysis_stage TEXT")
+                db.execSQL("ALTER TABLE measurements ADD COLUMN analysis_method TEXT")
+                db.execSQL("ALTER TABLE measurements ADD COLUMN analysis_instrument TEXT")
+                db.execSQL("ALTER TABLE measurements ADD COLUMN analyzed_at INTEGER")
+                db.execSQL("ALTER TABLE measurements ADD COLUMN field_exception_reason TEXT")
             }
         }
 
@@ -338,7 +352,7 @@ class RoomMobileRepository(private val db: WatershedDatabase) : DraftRepository,
             sync = parent.syncState.enumOr(SyncState.Waiting),
             revision = parent.currentRevisionNo,
             correctionReason = parent.correctionReason,
-            revisions = revisions.map { Revision(it.revisionNo, it.submittedAt, it.workflowState.enumOr(WorkflowState.Submitted), it.revisionNote, emptyList()) },
+            revisions = revisions.map { Revision(it.revisionNo, it.submittedAt, it.workflowState.enumOr(WorkflowState.Submitted), it.revisionNote, emptyList(), it.revisionId) },
             latitude = current.latitude,
             longitude = current.longitude,
             accuracyMeters = current.accuracyM,
@@ -411,7 +425,9 @@ private fun DraftEntity.toDomain(measurements: List<LocalMeasurementEntity>, att
     collectionStage = collectionStage.enumOr(CollectionStage.DRAFT), fieldCollectedAt = fieldCollectedAt, labCompletedAt = labCompletedAt,
     requestedAnalytes = requestedAnalytes.split(',').mapNotNull { name -> MeasurementKind.entries.firstOrNull { it.name == name } }.toSet(),
     values = measurements.associate { it.kind.enumOr(MeasurementKind.Temperature) to it.rawValue },
-    unitIds = measurements.associate { it.kind.enumOr(MeasurementKind.Temperature) to it.rawUnitId }, notes = notes,
+    unitIds = measurements.associate { it.kind.enumOr(MeasurementKind.Temperature) to it.rawUnitId },
+    analysisDetails = measurements.mapNotNull { row -> row.analysisProvenance()?.let { row.kind.enumOr(MeasurementKind.Temperature) to it } }.toMap(),
+    notes = notes,
     attachments = attachments.map(LocalAttachmentEntity::toDomain), currentStep = currentStep, isCorrection = isCorrection,
     sourceRecordId = sourceSubmissionId, baseRevision = baseRevision, correctionReason = correctionReason,
     revisionNote = revisionNote, lastSavedAt = lastSavedAt,
@@ -429,10 +445,21 @@ private fun ObservationDraft.localMeasurements() = values.map { (kind, raw) ->
     val unit = selectedUnit(kind)
     val numeric = raw.toDoubleOrNull()
     val canonical = numeric?.takeIf(Double::isFinite)?.let { unit.convert(it, kind.units.first()) }
+    val analysis = analysisDetails[kind]?.takeIf { kind.needsAnalysisProvenance }
     LocalMeasurementEntity(
         revisionId.value, kind.name, CanonicalIds.measurement(revisionId, spec.parameterCode ?: "LOCAL_${kind.name}").value,
         ownerUid, spec.parameterCode, raw, unit.id, canonical, spec.canonicalUnit,
+        analysisStage = analysis?.stage?.name, analysisMethod = analysis?.method, analysisInstrument = analysis?.instrument,
+        analyzedAt = analysis?.analyzedAt, fieldExceptionReason = analysis?.fieldExceptionReason,
     )
+}
+
+/** Laboratory-dependent rows carry their recorded provenance; field parameters return null. */
+internal fun LocalMeasurementEntity.analysisProvenance(): AnalysisProvenance? {
+    val measurementKind = MeasurementKind.entries.firstOrNull { it.name == kind } ?: return null
+    if (!measurementKind.needsAnalysisProvenance) return null
+    val stage = analysisStage?.let { name -> AnalysisStage.entries.firstOrNull { it.name == name } } ?: return null
+    return AnalysisProvenance(stage, analysisMethod.orEmpty(), analysisInstrument.orEmpty(), analyzedAt, fieldExceptionReason.orEmpty())
 }
 
 private fun ObservationDraft.temperatureEntity(): LocalMeasurementEntity? {
@@ -455,6 +482,8 @@ private fun CanonicalObservationSnapshot.toEntity(workflow: WorkflowState, note:
 private fun CanonicalMeasurement.toEntity(snapshot: CanonicalObservationSnapshot) = LocalMeasurementEntity(
     snapshot.revisionId.value, kind.name, id.value, snapshot.ownerUid, parameterCode, enteredValue.toString(),
     enteredUnitId, value, unitCode,
+    analysisStage = analysisStage, analysisMethod = analysisMethod, analysisInstrument = analysisInstrument,
+    analyzedAt = analyzedAt, fieldExceptionReason = fieldExceptionReason,
 )
 
 private fun ObservationAttachment.toEntity() = LocalAttachmentEntity(
@@ -472,7 +501,7 @@ private fun LocalAttachmentEntity.toDomain() = ObservationAttachment(
 private fun LocalMeasurementEntity.toDisplayValue(): MeasurementValue? {
     val kind = MeasurementKind.entries.firstOrNull { it.name == this.kind } ?: return null
     val unit = Units.byId(rawUnitId) ?: kind.units.first()
-    return MeasurementValue(kind, rawValue, unit.id)
+    return MeasurementValue(kind, rawValue, unit.id, analysisProvenance())
 }
 
 private fun CachedSiteEntity.toDomain() = Site(siteId, name, county, watershed, latitude, longitude, true, "")

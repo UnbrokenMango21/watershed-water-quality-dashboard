@@ -2,7 +2,7 @@
   "formatVersion": 1,
   "database": {
     "version": 5,
-    "identityHash": "d412354b3952d46d6fbf879e077bc439",
+    "identityHash": "663ea005a5f58be4b667690eb995c1cd",
     "entities": [
       {
         "tableName": "drafts",
@@ -536,7 +536,7 @@
       },
       {
         "tableName": "measurements",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`revision_id` TEXT NOT NULL, `kind` TEXT NOT NULL, `measurement_id` TEXT NOT NULL, `owner_uid` TEXT NOT NULL, `parameter_code` TEXT, `raw_value` TEXT NOT NULL, `raw_unit_id` TEXT NOT NULL, `canonical_value` REAL, `canonical_unit` TEXT, PRIMARY KEY(`revision_id`, `kind`))",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`revision_id` TEXT NOT NULL, `kind` TEXT NOT NULL, `measurement_id` TEXT NOT NULL, `owner_uid` TEXT NOT NULL, `parameter_code` TEXT, `raw_value` TEXT NOT NULL, `raw_unit_id` TEXT NOT NULL, `canonical_value` REAL, `canonical_unit` TEXT, `analysis_stage` TEXT, `analysis_method` TEXT, `analysis_instrument` TEXT, `analyzed_at` INTEGER, `field_exception_reason` TEXT, PRIMARY KEY(`revision_id`, `kind`))",
         "fields": [
           {
             "fieldPath": "revisionId",
@@ -587,6 +587,31 @@
           {
             "fieldPath": "canonicalUnit",
             "columnName": "canonical_unit",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "analysisStage",
+            "columnName": "analysis_stage",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "analysisMethod",
+            "columnName": "analysis_method",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "analysisInstrument",
+            "columnName": "analysis_instrument",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "analyzedAt",
+            "columnName": "analyzed_at",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "fieldExceptionReason",
+            "columnName": "field_exception_reason",
             "affinity": "TEXT"
           }
         ],
@@ -922,7 +947,7 @@
     ],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'd412354b3952d46d6fbf879e077bc439')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '663ea005a5f58be4b667690eb995c1cd')"
     ]
   }
 }

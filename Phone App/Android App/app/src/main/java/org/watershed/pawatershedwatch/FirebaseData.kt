@@ -12,6 +12,8 @@ import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import com.google.android.gms.tasks.Task
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.auth.FirebaseUser
+import com.google.firebase.functions.FirebaseFunctions
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
@@ -43,7 +45,20 @@ class AppGraph(application: Application, val database: WatershedDatabase) {
     val sync: SyncRepository = FirebaseSyncRepository(
         application, FirebaseAuth.getInstance(), FirebaseFirestore.getInstance(), database.dao(), local,
     )
+    // Callables are deployed in us-east4 (functions/index.mjs).
+    val collaboration: CollaborationRepository = FirebaseCollaborationRepository(
+        FirebaseFirestore.getInstance(), FirebaseFunctions.getInstance("us-east4"),
+    )
 }
+
+private fun FirebaseUser.toAccount() = AuthAccount(
+    uid = uid,
+    email = email,
+    displayName = displayName?.takeIf(String::isNotBlank) ?: email?.substringBefore('@').orEmpty(),
+    emailVerified = isEmailVerified,
+    profileName = displayName?.trim()?.takeIf(String::isNotEmpty),
+    hasVerifiedPhone = !phoneNumber.isNullOrBlank(),
+)
 
 private suspend fun <T> Task<T>.awaitResult(): T = suspendCancellableCoroutine { continuation ->
     addOnSuccessListener { if (continuation.isActive) continuation.resume(it) }
@@ -55,7 +70,7 @@ class FirebaseAuthRepository(private val auth: FirebaseAuth) : AuthRepository {
     override val account: Flow<AuthAccount?> = callbackFlow {
         val listener = FirebaseAuth.AuthStateListener { current ->
             val user = current.currentUser
-            trySend(user?.let { AuthAccount(it.uid, it.email, it.displayName ?: it.email?.substringBefore('@').orEmpty()) })
+            trySend(user?.toAccount())
         }
         auth.addAuthStateListener(listener)
         awaitClose { auth.removeAuthStateListener(listener) }
@@ -64,7 +79,18 @@ class FirebaseAuthRepository(private val auth: FirebaseAuth) : AuthRepository {
     override suspend fun signIn(email: String, password: String): Result<AuthAccount> = runCatching {
         val user = auth.signInWithEmailAndPassword(email.trim(), password).awaitResult().user
             ?: error("Authentication did not return an account")
-        AuthAccount(user.uid, user.email, user.displayName ?: user.email?.substringBefore('@').orEmpty())
+        user.toAccount()
+    }
+
+    override suspend fun reload(): Result<AuthAccount?> = runCatching {
+        val user = auth.currentUser ?: return@runCatching null
+        user.reload().awaitResult()
+        auth.currentUser?.toAccount()
+    }
+
+    override suspend fun sendEmailVerification(): Result<Unit> = runCatching {
+        requireNotNull(auth.currentUser) { "Sign in first." }.sendEmailVerification().awaitResult()
+        Unit
     }
 
     override fun signOut() = auth.signOut()
@@ -256,9 +282,17 @@ private fun RevisionEntity.snapshot(measurements: List<LocalMeasurementEntity>):
     val canonicalMeasurements = measurements.mapNotNull { entity ->
         val kind = MeasurementKind.entries.firstOrNull { it.name == entity.kind } ?: return@mapNotNull null
         if (kind == MeasurementKind.Temperature || entity.parameterCode == null || entity.canonicalValue == null || entity.canonicalUnit == null) return@mapNotNull null
+        // Provenance is replayed exactly as it was persisted at submission. A row without it falls back
+        // to the field defaults; a laboratory parameter in that state is rejected by the rules rather
+        // than being given an invented analysis.
         CanonicalMeasurement(
             MeasurementId(entity.measurementId), kind, entity.parameterCode, kind.title,
             entity.rawValue.toDouble(), entity.rawUnitId, Units.byId(entity.rawUnitId)?.menuTitle.orEmpty(), entity.canonicalValue, entity.canonicalUnit,
+            analysisStage = entity.analysisStage ?: AnalysisStage.FIELD.name,
+            analysisMethod = entity.analysisMethod?.takeIf(String::isNotBlank) ?: method,
+            analysisInstrument = if (entity.analysisStage != null) entity.analysisInstrument else instrument.ifBlank { null },
+            analyzedAt = entity.analyzedAt ?: collectedAt,
+            fieldExceptionReason = entity.fieldExceptionReason,
         )
     }
     return CanonicalObservationSnapshot(

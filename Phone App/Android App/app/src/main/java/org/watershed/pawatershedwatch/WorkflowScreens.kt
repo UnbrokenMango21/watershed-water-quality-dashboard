@@ -182,7 +182,7 @@ private fun GpsPanel(draft: ObservationDraft, onReacquire: () -> Unit, onSetting
 }
 
 @Composable
-private fun DateTimeControls(epoch: Long, onChange: (Long) -> Unit) {
+internal fun DateTimeControls(epoch: Long, labelPrefix: String = "Collection", onChange: (Long) -> Unit) {
     val context = LocalContext.current
     val eastern = remember(epoch) { EasternTime.display(epoch) }
     val dateText = remember(epoch) {
@@ -192,7 +192,7 @@ private fun DateTimeControls(epoch: Long, onChange: (Long) -> Unit) {
     }
     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         OutlinedButton(
-            modifier = Modifier.weight(1f).height(56.dp),
+            modifier = Modifier.weight(1f).height(56.dp).semantics { contentDescription = "$labelPrefix date, $dateText. Change date." },
             onClick = {
                 DatePickerDialog(context, { _, year, month, day ->
                     onChange(EasternTime.replaceDate(epoch, year, month + 1, day))
@@ -203,8 +203,9 @@ private fun DateTimeControls(epoch: Long, onChange: (Long) -> Unit) {
             Spacer(Modifier.width(8.dp))
             Text(dateText)
         }
+        val timeText = eastern.format(java.time.format.DateTimeFormatter.ofPattern("h:mm a", Locale.US))
         OutlinedButton(
-            modifier = Modifier.weight(1f).height(56.dp),
+            modifier = Modifier.weight(1f).height(56.dp).semantics { contentDescription = "$labelPrefix time, $timeText Eastern. Change time." },
             onClick = {
                 TimePickerDialog(context, { _, hour, minute ->
                     onChange(EasternTime.replaceTime(epoch, hour, minute))
@@ -213,7 +214,7 @@ private fun DateTimeControls(epoch: Long, onChange: (Long) -> Unit) {
         ) {
             Icon(Icons.Rounded.Schedule, contentDescription = null)
             Spacer(Modifier.width(8.dp))
-            Text(eastern.format(java.time.format.DateTimeFormatter.ofPattern("h:mm a", Locale.US)))
+            Text(timeText)
         }
     }
 }
@@ -235,7 +236,8 @@ fun TestMethodScreen(model: AppViewModel, onBack: () -> Unit, onNext: () -> Unit
             ScreenIntro("Step 3", "How are you testing?", "Choose the method used for this visit. It can change next time.")
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 FieldLabel("Test type", required = true, style = MaterialTheme.typography.titleLarge)
-                TestType.entries.forEach { type ->
+                val choices = TestType.offeredForNewObservations + listOfNotNull(draft.testType?.takeIf { it !in TestType.offeredForNewObservations })
+                choices.forEach { type ->
                     Surface(
                         modifier = Modifier.fillMaxWidth().clickable { model.selectTestType(type) },
                         shape = RoundedCornerShape(16.dp),
@@ -352,16 +354,21 @@ fun MeasurementsScreen(model: AppViewModel, onBack: () -> Unit, onNext: () -> Un
             }
             item { SectionHeading("Optional Measurements", "Always available when the field protocol calls for them") }
             items(optional, key = { "optional-${it.name}" }) { kind ->
-                MeasurementEntry(
-                    draft,
-                    kind,
-                    required = false,
-                    enabled = supported(kind),
-                    focusRequester = focusChain[kind],
-                    nextFocusRequester = nextFocus(kind),
-                    onValueChange = { model.setMeasurement(kind, it) },
-                    onUnitChange = { unit, clear -> model.changeUnit(kind, unit, clear) },
-                )
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    MeasurementEntry(
+                        draft,
+                        kind,
+                        required = false,
+                        enabled = supported(kind),
+                        focusRequester = focusChain[kind],
+                        nextFocusRequester = nextFocus(kind),
+                        onValueChange = { model.setMeasurement(kind, it) },
+                        onUnitChange = { unit, clear -> model.changeUnit(kind, unit, clear) },
+                    )
+                    if (kind.needsAnalysisProvenance && draft.values[kind].orEmpty().isNotBlank()) {
+                        AnalysisProvenanceFields(draft, kind) { change -> model.updateAnalysis(kind, change) }
+                    }
+                }
             }
             item { Spacer(Modifier.height(16.dp)) }
         }
@@ -440,13 +447,14 @@ fun ReviewScreen(model: AppViewModel, onBack: () -> Unit, onFix: (ReviewIssue) -
             }
             ReviewSection("Test and method") {
                 KeyValueRow("Test type", draft.testType?.label ?: "Not selected")
-                KeyValueRow("Method", draft.method)
-                if (draft.instrument.isNotBlank()) KeyValueRow("Instrument or lab", draft.instrument)
+                KeyValueRow("Method", draft.canonicalMethod)
+                if (draft.testType != TestType.Other && draft.instrument.isNotBlank()) KeyValueRow("Instrument or lab", draft.instrument)
             }
             ReviewSection("Measurements") {
                 MeasurementKind.entries.forEach { kind ->
                     draft.values[kind]?.takeIf(String::isNotBlank)?.let { raw ->
                         KeyValueRow(kind.title, displayMeasurement(MeasurementValue(kind, raw, draft.selectedUnit(kind).id)))
+                        if (kind.needsAnalysisProvenance) KeyValueRow("${kind.title} analysis", analysisSummary(draft.analysis(kind)))
                     }
                 }
                 if (draft.values.values.none { it.isNotBlank() }) Text("No measurements entered", color = MaterialTheme.colorScheme.onSurfaceVariant)

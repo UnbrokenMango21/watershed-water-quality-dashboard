@@ -10,10 +10,13 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -26,6 +29,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -39,6 +43,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -173,6 +178,100 @@ fun MeasurementEntry(
             },
             dismissButton = { TextButton(onClick = { pendingUnit = null }) { Text("Keep current") } },
         )
+    }
+}
+
+/**
+ * Analysis provenance for one entered laboratory-dependent value (iOS AnalysisProvenanceFields):
+ * stage (Laboratory by default), method, optional instrument, analysis date and time, and a
+ * documented exception only when the value was analyzed in the field.
+ */
+@Composable
+fun AnalysisProvenanceFields(
+    draft: ObservationDraft,
+    kind: MeasurementKind,
+    onChange: ((AnalysisProvenance) -> AnalysisProvenance) -> Unit,
+) {
+    val analysis = draft.analysis(kind)
+    val problem = draft.analysisProblem(kind)
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = .35f),
+    ) {
+        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text("${kind.title} · analysis provenance", style = MaterialTheme.typography.titleSmall)
+            Column(Modifier.selectableGroup()) {
+                FieldLabel("Analysis location", required = true, style = MaterialTheme.typography.labelLarge)
+                AnalysisStage.entries.forEach { stage ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 48.dp)
+                            .selectable(
+                                selected = analysis.stage == stage,
+                                role = Role.RadioButton,
+                                onClick = { onChange { it.copy(stage = stage) } },
+                            ),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        RadioButton(selected = analysis.stage == stage, onClick = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text(stage.label)
+                    }
+                }
+            }
+            OutlinedTextField(
+                value = analysis.method,
+                onValueChange = { value -> onChange { it.copy(method = value) } },
+                modifier = Modifier.fillMaxWidth(),
+                label = { FieldLabel("Analysis method / protocol", required = true) },
+                singleLine = true,
+                shape = RoundedCornerShape(14.dp),
+            )
+            OutlinedTextField(
+                value = analysis.instrument,
+                onValueChange = { value -> onChange { it.copy(instrument = value) } },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("Instrument or laboratory (optional)") },
+                singleLine = true,
+                shape = RoundedCornerShape(14.dp),
+            )
+            FieldLabel("Analysis date and time (Eastern)", required = true, style = MaterialTheme.typography.labelLarge)
+            if (analysis.analyzedAt == null) {
+                Text(
+                    "Not recorded yet. The sampling time is shown; change it to when the sample was analyzed, or confirm it.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            DateTimeControls(analysis.analyzedAt ?: draft.collectedAt, labelPrefix = "${kind.title} analysis") { epoch ->
+                onChange { it.copy(analyzedAt = epoch) }
+            }
+            if (analysis.analyzedAt == null) {
+                TextButton(
+                    onClick = { onChange { it.copy(analyzedAt = draft.collectedAt) } },
+                    modifier = Modifier.heightIn(min = 48.dp),
+                ) { Text("Confirm analysis time shown") }
+            }
+            if (analysis.stage == AnalysisStage.FIELD) {
+                OutlinedTextField(
+                    value = analysis.fieldExceptionReason,
+                    onValueChange = { value -> if (value.length <= FIELD_EXCEPTION_REASON_MAX) onChange { it.copy(fieldExceptionReason = value) } },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { FieldLabel("Field protocol / exception reason", required = true) },
+                    minLines = 2,
+                    maxLines = 5,
+                    shape = RoundedCornerShape(14.dp),
+                )
+            }
+            Text(
+                "Describe the method actually used. A field exception records your protocol; it does not claim program approval.",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodySmall,
+            )
+            problem?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium) }
+        }
     }
 }
 

@@ -13,6 +13,8 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.time.Instant
 
+private const val TWO_DAYS = 2 * 86_400_000L
+
 class ProductionDomainTest {
     private val golden by lazy {
         JSONObject(requireNotNull(javaClass.classLoader?.getResource("mobile_golden.json")).readText())
@@ -168,13 +170,16 @@ class ProductionDomainTest {
             weatherCondition = "Unknown", waterColor = "Unknown", flowCondition = "Unknown", latitude = 40.0, longitude = -77.0,
             accuracyMeters = 5.0, gpsState = GpsState.Good, testType = TestType.PennStateLab,
             method = "Grab sample", instrument = "Penn State Agricultural Analytical Services Laboratory",
-            values = mapOf(MeasurementKind.Temperature to "18"),
+            values = mapOf(MeasurementKind.Temperature to "18"), collectedAt = System.currentTimeMillis() - TWO_DAYS,
         )
         val temperatureOnly = labDraft.toCanonicalSnapshot("owner-a", "1.0.0")
         assertTrue(temperatureOnly.measurements.isEmpty())
         assertEquals(18.0, temperatureOnly.tempC!!, 0.0)
 
-        val complete = labDraft.copy(values = labDraft.values + (MeasurementKind.Nitrate to "1.2"))
+        val complete = labDraft.copy(
+            values = labDraft.values + (MeasurementKind.Nitrate to "1.2"),
+            analysisDetails = mapOf(MeasurementKind.Nitrate to labAnalysis(labDraft.collectedAt + 3_600_000)),
+        )
         val snapshot = complete.toCanonicalSnapshot("owner-a", "1.0.0")
         assertEquals(listOf("NITRATE_MG_L"), snapshot.measurements.map(CanonicalMeasurement::parameterCode))
         assertEquals(18.0, snapshot.tempC!!, 0.0)
@@ -239,10 +244,13 @@ class ProductionDomainTest {
 
     @Test
     fun pendingLaboratoryWorkIsDraftOnlyAndCompletionKeepsOriginalIdentity() {
-        val pending = validDraft().copy(values = emptyMap(), labResultsPending = true, collectionStage = CollectionStage.LAB_PENDING)
+        val pending = pastDraft().copy(values = emptyMap(), labResultsPending = true, collectionStage = CollectionStage.LAB_PENDING)
         assertThrows(IllegalArgumentException::class.java) { pending.toCanonicalSnapshot("owner-a", "1.0.0") }
         assertEquals("LAB_PENDING", pending.toCanonicalSnapshot("owner-a", "1.0.0", forDraft = true).collectionStage)
-        val completed = pending.copy(labResultsPending = false, collectionStage = CollectionStage.LAB_COMPLETED, values = mapOf(MeasurementKind.Nitrate to "1.2")).toCanonicalSnapshot("owner-a", "1.0.0")
+        val completed = pending.copy(
+            labResultsPending = false, collectionStage = CollectionStage.LAB_COMPLETED, values = mapOf(MeasurementKind.Nitrate to "1.2"),
+            analysisDetails = mapOf(MeasurementKind.Nitrate to labAnalysis(pending.collectedAt + 60_000)),
+        ).toCanonicalSnapshot("owner-a", "1.0.0")
         assertEquals(pending.submissionId, completed.submissionId); assertEquals(pending.revisionId, completed.revisionId)
         assertNull(completed.tempC); assertEquals("NITRATE_MG_L", completed.measurements.single().parameterCode)
     }
@@ -255,6 +263,112 @@ class ProductionDomainTest {
         assertEquals(0.3, depth.value, 1e-12); assertEquals(30.0, depth.enteredValue, 0.0)
         assertThrows(IllegalArgumentException::class.java) { draft.copy(values = mapOf(MeasurementKind.WaterDepth to "-1")).toCanonicalSnapshot("owner-a", "1.0.0") }
     }
+
+    @Test
+    fun fieldParametersRecordFieldStageAtSamplingTime() {
+        val snapshot = validDraft().toCanonicalSnapshot("owner-a", "1.0.0")
+        snapshot.measurements.forEach { value ->
+            val document = FirestoreObservationMapper.measurement(snapshot, value)
+            assertEquals("FIELD", document["analysis_stage"])
+            assertEquals(Timestamp(java.util.Date(snapshot.collectedAt)), document["analyzed_at"])
+            assertEquals(Timestamp(java.util.Date(snapshot.collectedAt)), document["entered_at"])
+            assertNull(document["field_exception_reason"])
+            assertEquals("Meter", document["method_name"])
+            assertEquals("Instrument", document["instrument_name"])
+        }
+    }
+
+    @Test
+    fun laboratoryResultMapsItsOwnProvenanceAndKeepsSamplingTimeAsEnteredAt() {
+        val base = pastDraft()
+        val analyzedAt = base.collectedAt + 26 * 3_600_000L
+        val snapshot = base.copy(
+            values = base.values + (MeasurementKind.Chloride to "12.5"),
+            analysisDetails = mapOf(
+                MeasurementKind.Chloride to AnalysisProvenance(
+                    AnalysisStage.LAB, "  EPA 300.0 ion chromatography ", "  ", analyzedAt,
+                    fieldExceptionReason = "left over from a field attempt",
+                ),
+            ),
+        ).toCanonicalSnapshot("owner-a", "1.0.0")
+        val chloride = FirestoreObservationMapper.measurement(snapshot, snapshot.measurements.single { it.parameterCode == "CHLORIDE_MG_L" })
+
+        assertEquals("LAB", chloride["analysis_stage"])
+        assertEquals("EPA 300.0 ion chromatography", chloride["method_name"])
+        assertNull("blank instrument is written as null", chloride["instrument_name"])
+        assertEquals(Timestamp(java.util.Date(analyzedAt)), chloride["analyzed_at"])
+        assertEquals(Timestamp(java.util.Date(base.collectedAt)), chloride["entered_at"])
+        assertNull("a LAB result never carries a field exception", chloride["field_exception_reason"])
+        assertEquals(12.5, chloride["entered_value"])
+        assertEquals(12.5, chloride["value"])
+    }
+
+    @Test
+    fun laboratoryParameterAnalyzedInTheFieldNeedsADocumentedException() {
+        val base = pastDraft()
+        val fieldAnalysis = AnalysisProvenance(AnalysisStage.FIELD, "Hach colorimetric kit", "Hach DR900", base.collectedAt + 600_000)
+        val withValue = base.copy(values = base.values + (MeasurementKind.Phosphate to "0.4"), analysisDetails = mapOf(MeasurementKind.Phosphate to fieldAnalysis))
+
+        assertEquals("Describe the field-analysis protocol or exception for Phosphate.", withValue.measurementProblem(MeasurementKind.Phosphate))
+        val error = assertThrows(IllegalArgumentException::class.java) { withValue.toCanonicalSnapshot("owner-a", "1.0.0") }
+        assertEquals("Describe the field-analysis protocol or exception for Phosphate.", error.message)
+
+        val documented = withValue.copy(analysisDetails = mapOf(MeasurementKind.Phosphate to fieldAnalysis.copy(fieldExceptionReason = "  Lab courier unavailable; same-day kit per SOP 4.2 ")))
+        val snapshot = documented.toCanonicalSnapshot("owner-a", "1.0.0")
+        val phosphate = FirestoreObservationMapper.measurement(snapshot, snapshot.measurements.single { it.parameterCode == "PHOSPHATE_MG_L" })
+        assertEquals("FIELD", phosphate["analysis_stage"])
+        assertEquals("Lab courier unavailable; same-day kit per SOP 4.2", phosphate["field_exception_reason"])
+        assertEquals("Hach DR900", phosphate["instrument_name"])
+        assertEquals("Hach colorimetric kit", phosphate["method_name"])
+
+        val tooLong = withValue.copy(analysisDetails = mapOf(MeasurementKind.Phosphate to fieldAnalysis.copy(fieldExceptionReason = "x".repeat(1001))))
+        assertNotNull(tooLong.measurementProblem(MeasurementKind.Phosphate))
+    }
+
+    @Test
+    fun analysisProvenanceMessagesMatchIos() {
+        val base = pastDraft().copy(values = mapOf(MeasurementKind.Sulfate to "20"))
+        assertEquals("Record the analysis method and time for Sulfate.", base.measurementProblem(MeasurementKind.Sulfate))
+        val noTime = base.copy(analysisDetails = mapOf(MeasurementKind.Sulfate to AnalysisProvenance(method = "EPA 300.0")))
+        assertEquals("Record the analysis method and time for Sulfate.", noTime.measurementProblem(MeasurementKind.Sulfate))
+        val noMethod = base.copy(analysisDetails = mapOf(MeasurementKind.Sulfate to AnalysisProvenance(method = "  ", analyzedAt = base.collectedAt + 60_000)))
+        assertEquals("Record the analysis method and time for Sulfate.", noMethod.measurementProblem(MeasurementKind.Sulfate))
+        val before = base.copy(analysisDetails = mapOf(MeasurementKind.Sulfate to labAnalysis(base.collectedAt - 2 * 60_000)))
+        assertEquals("Analysis time must be on or after sampling and cannot be in the future.", before.measurementProblem(MeasurementKind.Sulfate))
+        val future = base.copy(analysisDetails = mapOf(MeasurementKind.Sulfate to labAnalysis(System.currentTimeMillis() + 3_600_000)))
+        assertEquals("Analysis time must be on or after sampling and cannot be in the future.", future.measurementProblem(MeasurementKind.Sulfate))
+        // A blank laboratory value needs no provenance: missing stays missing.
+        assertNull(base.copy(values = mapOf(MeasurementKind.Sulfate to "")).measurementProblem(MeasurementKind.Sulfate))
+        // Field parameters never ask for analysis provenance.
+        assertNull(validDraft().measurementProblem(MeasurementKind.Ph))
+    }
+
+    @Test
+    fun cloudDraftOmitsOnlyIncompleteValuesWhileSubmissionRejectsThem() {
+        val base = pastDraft()
+        val draft = base.copy(
+            values = base.values + (MeasurementKind.Nitrate to "1.2") + (MeasurementKind.Chloride to "8"),
+            analysisDetails = mapOf(
+                MeasurementKind.Nitrate to AnalysisProvenance(method = "EPA 353.2"),
+                MeasurementKind.Chloride to labAnalysis(base.collectedAt + 3_600_000),
+            ),
+        )
+        val cloud = draft.toCanonicalSnapshot("owner-a", "1.0.0", forDraft = true)
+        val codes = cloud.measurements.map(CanonicalMeasurement::parameterCode)
+        assertTrue("incomplete nitrate stays local", "NITRATE_MG_L" !in codes)
+        assertTrue("complete chloride synchronizes", "CHLORIDE_MG_L" in codes)
+        assertTrue("field readings still synchronize", codes.containsAll(listOf("PH", "DO_MG_L", "CONDUCTIVITY_US_CM")))
+        assertEquals(20.0, cloud.tempC!!, 0.0)
+        // The local draft itself is untouched: the value remains for the collector to finish.
+        assertEquals("1.2", draft.values[MeasurementKind.Nitrate])
+
+        val error = assertThrows(IllegalArgumentException::class.java) { draft.toCanonicalSnapshot("owner-a", "1.0.0") }
+        assertEquals("Record the analysis method and time for Nitrate.", error.message)
+    }
+
+    private fun pastDraft() = validDraft().copy(collectedAt = System.currentTimeMillis() - TWO_DAYS)
+
+    private fun labAnalysis(analyzedAt: Long) = AnalysisProvenance(AnalysisStage.LAB, "EPA 353.2 cadmium reduction", "Penn State AASL", analyzedAt)
 
     private fun validDraft() = ObservationDraft(
         ownerUid = "owner-a", siteId = "SITE-1", collector = "Collector",
