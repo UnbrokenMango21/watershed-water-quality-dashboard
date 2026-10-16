@@ -44,6 +44,7 @@ object ProductionMeasurementCatalog {
             MeasurementKind.Sulfate -> ProductionMeasurementSpec(kind, "SULFATE_MG_L", "mg/L", "measurement", ProductionSupport.FULLY_SUPPORTED)
             MeasurementKind.Nitrate -> ProductionMeasurementSpec(kind, "NITRATE_MG_L", "mg/L as N", "measurement", ProductionSupport.FULLY_SUPPORTED)
             MeasurementKind.Phosphate -> ProductionMeasurementSpec(kind, "PHOSPHATE_MG_L", "mg/L as P", "measurement", ProductionSupport.FULLY_SUPPORTED)
+            MeasurementKind.WaterDepth -> ProductionMeasurementSpec(kind, "WATER_DEPTH_M", "m", "measurement", ProductionSupport.FULLY_SUPPORTED)
             MeasurementKind.Flow -> ProductionMeasurementSpec(kind, "DISCHARGE_M3_S", "m3/s", "measurement", ProductionSupport.FULLY_SUPPORTED)
             else -> ProductionMeasurementSpec(kind, null, null, null, ProductionSupport.FEATURE_GATED)
         }
@@ -106,14 +107,18 @@ data class CanonicalObservationSnapshot(
     val methodName: String,
     val instrumentName: String,
     val fieldNotes: String?,
-    val temperatureEnteredValue: Double,
-    val temperatureEnteredUnit: String,
-    val tempC: Double,
-    val tempF: Double,
+    val temperatureEnteredValue: Double?,
+    val temperatureEnteredUnit: String?,
+    val tempC: Double?,
+    val tempF: Double?,
     val measurements: List<CanonicalMeasurement>,
     val attachments: List<ObservationAttachment>,
     val appVersion: String,
     val correction: Boolean,
+    val weatherCondition: String = "",
+    val waterColor: String = "",
+    val flowCondition: String = "",
+    val collectionStage: String = "READY_FOR_REVIEW",
 )
 
 object CanonicalIds {
@@ -140,7 +145,7 @@ object EasternTime {
     fun offsetString(epochMillis: Long): String = display(epochMillis).format(DateTimeFormatter.ISO_OFFSET_DATE_TIME)
 }
 
-fun ObservationDraft.toCanonicalSnapshot(ownerUid: String, appVersion: String, submittedAt: Long = System.currentTimeMillis()): CanonicalObservationSnapshot {
+fun ObservationDraft.toCanonicalSnapshot(ownerUid: String, appVersion: String, submittedAt: Long = System.currentTimeMillis(), forDraft: Boolean = false): CanonicalObservationSnapshot {
     require(this.ownerUid == ownerUid) { "Draft owner does not match authenticated user" }
     require(ownerUid.isNotBlank()) { "Authenticated owner is required" }
     require(revisionNo >= 1) { "Revision number must be positive" }
@@ -153,21 +158,20 @@ fun ObservationDraft.toCanonicalSnapshot(ownerUid: String, appVersion: String, s
     val test = requireNotNull(testType) { "Test type is required" }
     require(test != TestType.Other || testTypeOther.isNotBlank()) { "Other test type requires a description" }
     require(collector.isNotBlank()) { "Collector display name is required" }
-    require(method.isNotBlank()) { "Measurement method is required" }
-    require(instrument.isNotBlank()) { "Instrument or laboratory is required" }
+    require(visualObservationsComplete) { "Choose weather, water color, and flow condition. Unknown is allowed." }
+    require(forDraft || !labResultsPending) { "Complete laboratory results before submitting for review" }
     require(requiredComplete) { "Measurements do not meet the production validation profile" }
     attachments.forEach { attachment ->
         require(attachment.ownerUid == ownerUid && attachment.submissionId == submissionId && attachment.revisionId == revisionId) { "Attachment identity does not match this revision" }
         require(attachment.sizeBytes in 1..50L * 1024 * 1024) { "Attachment size is invalid" }
         require(attachment.contentType in setOf("image/jpeg", "image/png", "image/heic", "audio/mp4", "audio/m4a", "application/pdf")) { "Attachment type is not allowed" }
     }
-    val temperatureRaw = requireNotNull(values[MeasurementKind.Temperature]?.trim()?.toDoubleOrNull()) { "Water temperature is required" }
-    require(temperatureRaw.isFinite()) { "Water temperature must be finite" }
+    val temperatureText = values[MeasurementKind.Temperature].orEmpty().trim()
+    val temperatureRaw = temperatureText.takeIf { it.isNotEmpty() }?.toDoubleOrNull()
     val temperatureUnit = selectedUnit(MeasurementKind.Temperature)
-    measurementErrorMessage(MeasurementKind.Temperature, values.getValue(MeasurementKind.Temperature), temperatureUnit)
-        ?.let { throw IllegalArgumentException(it) }
-    val tempC = temperatureUnit.convert(temperatureRaw, Units.Celsius)
-    val tempF = Units.Celsius.convert(tempC, Units.Fahrenheit)
+    measurementErrorMessage(MeasurementKind.Temperature, temperatureText, temperatureUnit)?.let { throw IllegalArgumentException(it) }
+    val tempC = temperatureRaw?.let { temperatureUnit.convert(it, Units.Celsius) }
+    val tempF = tempC?.let { Units.Celsius.convert(it, Units.Fahrenheit) }
     val canonicalMeasurements = values.mapNotNull { (kind, raw) ->
         if (kind == MeasurementKind.Temperature || raw.isBlank()) return@mapNotNull null
         val spec = ProductionMeasurementCatalog.spec(kind)
@@ -194,14 +198,15 @@ fun ObservationDraft.toCanonicalSnapshot(ownerUid: String, appVersion: String, s
     return CanonicalObservationSnapshot(
         submissionId, eventId, revisionId, revisionNo, ownerUid, SiteId(siteId), createdAt, collectedAt,
         submittedAt, latitude, longitude, accuracy, collector.trim(), test.label, testTypeOther.trim().ifBlank { null },
-        method.trim(), instrument.trim(), notes.trim().ifBlank { null }, temperatureRaw,
-        if (temperatureUnit == Units.Celsius) "C" else "F", tempC, tempF, canonicalMeasurements,
-        attachments, appVersion, isCorrection,
+        canonicalMethod, canonicalInstrument, notes.trim().ifBlank { null }, temperatureRaw,
+        if (temperatureRaw == null) null else if (temperatureUnit == Units.Celsius) "C" else "F", tempC, tempF, canonicalMeasurements,
+        attachments, appVersion, isCorrection, weatherCondition, waterColor, flowCondition,
+        if (forDraft) collectionStage.name else if (collectionStage == CollectionStage.LAB_COMPLETED) "LAB_COMPLETED" else "READY_FOR_REVIEW",
     )
 }
 
 object FirestoreObservationMapper {
-    const val SCHEMA_VERSION = "0.1.0"
+    const val SCHEMA_VERSION = "0.2.0"
 
     /**
      * firebase/firestore.rules requires `submitted_at == request.time` on every collector-authored
@@ -244,12 +249,15 @@ object FirestoreObservationMapper {
         "location" to GeoPoint(snapshot.latitude, snapshot.longitude),
         "gps_accuracy_m" to snapshot.gpsAccuracyM,
         "site_distance_m" to null,
-        "weather_condition" to "",
+        "weather_condition" to snapshot.weatherCondition,
+        "water_color" to snapshot.waterColor,
+        "flow_condition" to snapshot.flowCondition,
+        "collection_stage" to snapshot.collectionStage,
         "data_collected_by" to snapshot.collectorDisplayName,
         "test_type" to snapshot.testType,
         "test_type_other" to snapshot.testTypeOther,
         "method_name" to snapshot.methodName,
-        "instrument_name" to snapshot.instrumentName,
+        "instrument_name" to snapshot.instrumentName.ifBlank { null },
         "instrument_other" to null,
         "temp_entered_value" to snapshot.temperatureEnteredValue,
         "temp_entered_unit" to snapshot.temperatureEnteredUnit,
@@ -269,7 +277,7 @@ object FirestoreObservationMapper {
         "entered_value" to value.enteredValue,
         "entered_unit_code" to value.enteredUnitId,
         "method_name" to snapshot.methodName,
-        "instrument_name" to snapshot.instrumentName,
+        "instrument_name" to snapshot.instrumentName.ifBlank { null },
         "qualifier" to null,
         "notes" to null,
         "entered_at" to Timestamp(Date(snapshot.collectedAt)),

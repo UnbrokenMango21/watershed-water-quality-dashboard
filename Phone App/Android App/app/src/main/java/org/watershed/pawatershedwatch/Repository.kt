@@ -36,6 +36,7 @@ interface ObservationRepository {
 }
 
 interface SyncRepository {
+    suspend fun saveFieldDraft(snapshot: CanonicalObservationSnapshot)
     suspend fun enqueue(ownerUid: String, submissionId: SubmissionId, revisionId: RevisionId)
     suspend fun sync(ownerUid: String, submissionId: SubmissionId): SyncAttempt
     fun observe(ownerUid: String, onChange: (RemoteSubmissionState) -> Unit): AutoCloseable

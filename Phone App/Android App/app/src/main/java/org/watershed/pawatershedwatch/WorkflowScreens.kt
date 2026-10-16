@@ -39,6 +39,8 @@ import androidx.compose.material.icons.rounded.LocationOn
 import androidx.compose.material.icons.rounded.MyLocation
 import androidx.compose.material.icons.rounded.Schedule
 import androidx.compose.material.icons.rounded.Science
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.FilterChip
@@ -220,7 +222,7 @@ private fun DateTimeControls(epoch: Long, onChange: (Long) -> Unit) {
 fun TestMethodScreen(model: AppViewModel, onBack: () -> Unit, onNext: () -> Unit) {
     val draft = model.draft ?: return
     val focus = LocalFocusManager.current
-    val canContinue = draft.testType != null && draft.method.isNotBlank() && draft.instrument.isNotBlank() &&
+    val canContinue = draft.testType != null &&
         (draft.testType != TestType.Other || draft.testTypeOther.isNotBlank())
     Scaffold(
         topBar = { FieldTopBar("Test and Method", onBack) },
@@ -230,7 +232,7 @@ fun TestMethodScreen(model: AppViewModel, onBack: () -> Unit, onNext: () -> Unit
             modifier = Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).imePadding().padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(18.dp),
         ) {
-            ScreenIntro("Step 3", "How are you testing?", "This choice shapes which measurements are required next.")
+            ScreenIntro("Step 3", "How are you testing?", "Choose the method used for this visit. It can change next time.")
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 FieldLabel("Test type", required = true, style = MaterialTheme.typography.titleLarge)
                 TestType.entries.forEach { type ->
@@ -252,61 +254,11 @@ fun TestMethodScreen(model: AppViewModel, onBack: () -> Unit, onNext: () -> Unit
                         value = draft.testTypeOther,
                         onValueChange = { value -> model.updateDraft { it.copy(testTypeOther = value) } },
                         modifier = Modifier.fillMaxWidth(),
-                        label = { FieldLabel("Describe test type", required = true) },
+                        label = { FieldLabel("Method / Instrument", required = true) },
                         singleLine = false,
                         maxLines = 3,
                         shape = RoundedCornerShape(16.dp),
                     )
-                }
-                OutlinedTextField(
-                    value = draft.method,
-                    onValueChange = { value -> model.updateDraft { it.copy(method = value) } },
-                    modifier = Modifier.fillMaxWidth(),
-                    label = { FieldLabel("Collection / measurement method", required = true) },
-                    minLines = 2,
-                    shape = RoundedCornerShape(16.dp),
-                )
-                OutlinedTextField(
-                    value = draft.instrument,
-                    onValueChange = { value -> model.updateDraft { it.copy(instrument = value) } },
-                    modifier = Modifier.fillMaxWidth(),
-                    label = { FieldLabel(if (type == TestType.PennStateLab || type == TestType.ExternalLab) "Laboratory" else "Instrument or kit", required = true) },
-                    minLines = 1,
-                    maxLines = 3,
-                    shape = RoundedCornerShape(16.dp),
-                )
-                if (type in listOf(TestType.PennStateLab, TestType.ExternalLab, TestType.Mixed)) {
-                    FieldSurface {
-                        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text("Lab results pending", style = MaterialTheme.typography.titleMedium)
-                                    Text("Record requested analyses now; add results in a later revision.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                }
-                                Switch(
-                                    checked = draft.labResultsPending,
-                                    onCheckedChange = { pending -> model.updateDraft { it.copy(labResultsPending = pending) } },
-                                )
-                            }
-                            if (draft.labResultsPending) {
-                                Text("Requested analyses", color = MaterialTheme.colorScheme.secondary, style = MaterialTheme.typography.labelLarge)
-                                listOf(MeasurementKind.Chloride, MeasurementKind.Nitrate, MeasurementKind.Phosphate, MeasurementKind.Sulfate).forEach { kind ->
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth().clickable {
-                                            model.updateDraft {
-                                                val next = if (kind in it.requestedAnalytes) it.requestedAnalytes - kind else it.requestedAnalytes + kind
-                                                it.copy(requestedAnalytes = next)
-                                            }
-                                        },
-                                        verticalAlignment = Alignment.CenterVertically,
-                                    ) {
-                                        Checkbox(checked = kind in draft.requestedAnalytes, onCheckedChange = null)
-                                        Text(kind.title)
-                                    }
-                                }
-                            }
-                        }
-                    }
                 }
             }
             Spacer(Modifier.height(120.dp))
@@ -320,7 +272,7 @@ fun MeasurementsScreen(model: AppViewModel, onBack: () -> Unit, onNext: () -> Un
     val required = draft.requiredMeasurements
     val optional = draft.optionalMeasurements
     val invalid = draft.values.any { (kind, value) -> measurementError(kind, value, draft.selectedUnit(kind)) != null }
-    val canContinue = draft.requiredComplete && !invalid
+    val canContinue = draft.visualObservationsComplete && !invalid
     val ordered = remember(required, optional) { required + optional }
     val focusChain = rememberMeasurementFocusChain(ordered)
     val listState = rememberLazyListState()
@@ -329,7 +281,7 @@ fun MeasurementsScreen(model: AppViewModel, onBack: () -> Unit, onNext: () -> Un
     fun nextFocus(kind: MeasurementKind): FocusRequester? =
         ordered.drop(ordered.indexOf(kind) + 1).firstOrNull(::supported)?.let(focusChain::get)
 
-    val headerCount = if (required.isEmpty()) 3 else 2
+    val headerCount = 4
     fun itemIndex(kind: MeasurementKind): Int? = when {
         required.contains(kind) -> headerCount + required.indexOf(kind)
         optional.contains(kind) -> headerCount + required.size + 1 + optional.indexOf(kind)
@@ -359,13 +311,32 @@ fun MeasurementsScreen(model: AppViewModel, onBack: () -> Unit, onNext: () -> Un
                 ScreenIntro(
                     "Step 4",
                     "Enter readings",
-                    "${draft.completedRequiredCount} of ${required.size} required complete · tap any unit to change it",
+                    "Record the site observations. Numerical measurements are optional.",
                 )
             }
-            item { SectionHeading("Required Measurements", "Complete these for ${draft.testType?.label ?: "this test"}") }
-            if (required.isEmpty()) {
-                item {
-                    StatusPanel("No readings required yet", "Requested lab analyses are pending. Optional field observations can still be added below.", Water, Icons.Rounded.Science)
+            item {
+                FieldSurface {
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        FieldLabel("Site observations", required = true, style = MaterialTheme.typography.titleMedium)
+                        Text("Choose Unknown for a condition that was not observed.", style = MaterialTheme.typography.bodySmall)
+                        ObservationChoice("Weather Conditions", draft.weatherCondition, FieldObservationVocabulary.weather) { value -> model.updateDraft { it.copy(weatherCondition = value) } }
+                        ObservationChoice("Water Color", draft.waterColor, FieldObservationVocabulary.waterColor) { value -> model.updateDraft { it.copy(waterColor = value) } }
+                        ObservationChoice("Flow Condition", draft.flowCondition, FieldObservationVocabulary.flow) { value -> model.updateDraft { it.copy(flowCondition = value) } }
+                    }
+                }
+            }
+            item {
+                FieldSurface {
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text("Field collection and laboratory work", style = MaterialTheme.typography.titleMedium)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("Laboratory results pending", modifier = Modifier.weight(1f))
+                            Switch(checked = draft.labResultsPending, onCheckedChange = { pending -> model.updateDraft { it.copy(labResultsPending = pending, collectionStage = if (pending) CollectionStage.LAB_PENDING else CollectionStage.LAB_COMPLETED, labCompletedAt = if (pending) null else System.currentTimeMillis()) } })
+                        }
+                        Text("Save on this phone and synchronize when online. Reopen the same draft after analysis; pending laboratory work cannot be submitted.", style = MaterialTheme.typography.bodySmall)
+                        OutlinedButton(onClick = { model.saveFieldCollection() }, enabled = draft.visualObservationsComplete) { Text("Save field collection for later") }
+                        if (draft.fieldCollectedAt != null) Text("Field collection saved on this phone", style = MaterialTheme.typography.bodySmall)
+                    }
                 }
             }
             items(required, key = { "required-${it.name}" }) { kind ->
@@ -393,6 +364,17 @@ fun MeasurementsScreen(model: AppViewModel, onBack: () -> Unit, onNext: () -> Un
                 )
             }
             item { Spacer(Modifier.height(16.dp)) }
+        }
+    }
+}
+
+@Composable
+private fun ObservationChoice(label: String, value: String, choices: List<String>, onChange: (String) -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
+    Box {
+        OutlinedButton(onClick = { expanded = true }, modifier = Modifier.fillMaxWidth()) { Text("$label: ${value.ifBlank { "Choose…" }}") }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            choices.forEach { choice -> DropdownMenuItem(text = { Text(choice) }, onClick = { onChange(choice); expanded = false }) }
         }
     }
 }

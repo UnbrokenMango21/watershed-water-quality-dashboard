@@ -27,6 +27,7 @@ class ProductionDomainTest {
         val revisionId = RevisionId(input.getString("revisionId"))
         val owner = input.getString("ownerUid")
         val draft = ObservationDraft(
+            weatherCondition = "Unknown", waterColor = "Unknown", flowCondition = "Unknown",
             submissionId = submissionId,
             eventId = EventId(input.getString("eventId")),
             revisionId = revisionId,
@@ -163,26 +164,28 @@ class ProductionDomainTest {
     @Test
     fun labProfileAcceptsTemperatureOnlySubmissionAndStillCarriesOptionalResults() {
         val labDraft = ObservationDraft(
-            ownerUid = "owner-a", siteId = "SITE-1", collector = "Collector", latitude = 40.0, longitude = -77.0,
+            ownerUid = "owner-a", siteId = "SITE-1", collector = "Collector",
+            weatherCondition = "Unknown", waterColor = "Unknown", flowCondition = "Unknown", latitude = 40.0, longitude = -77.0,
             accuracyMeters = 5.0, gpsState = GpsState.Good, testType = TestType.PennStateLab,
             method = "Grab sample", instrument = "Penn State Agricultural Analytical Services Laboratory",
             values = mapOf(MeasurementKind.Temperature to "18"),
         )
         val temperatureOnly = labDraft.toCanonicalSnapshot("owner-a", "1.0.0")
         assertTrue(temperatureOnly.measurements.isEmpty())
-        assertEquals(18.0, temperatureOnly.tempC, 0.0)
+        assertEquals(18.0, temperatureOnly.tempC!!, 0.0)
 
         val complete = labDraft.copy(values = labDraft.values + (MeasurementKind.Nitrate to "1.2"))
         val snapshot = complete.toCanonicalSnapshot("owner-a", "1.0.0")
         assertEquals(listOf("NITRATE_MG_L"), snapshot.measurements.map(CanonicalMeasurement::parameterCode))
-        assertEquals(18.0, snapshot.tempC, 0.0)
+        assertEquals(18.0, snapshot.tempC!!, 0.0)
     }
 
     @Test
     fun temperatureOnlySucceedsForEveryTestType() {
         TestType.entries.forEach { type ->
             val draft = ObservationDraft(
-                ownerUid = "owner-a", siteId = "SITE-1", collector = "Collector", latitude = 40.0, longitude = -77.0,
+                ownerUid = "owner-a", siteId = "SITE-1", collector = "Collector",
+            weatherCondition = "Unknown", waterColor = "Unknown", flowCondition = "Unknown", latitude = 40.0, longitude = -77.0,
                 accuracyMeters = 5.0, gpsState = GpsState.Good, testType = type,
                 testTypeOther = if (type == TestType.Other) "Custom protocol" else "",
                 method = "Method", instrument = "Instrument",
@@ -190,14 +193,15 @@ class ProductionDomainTest {
             )
             val snapshot = draft.toCanonicalSnapshot("owner-a", "1.0.0")
             assertTrue("$type should not require any measurement beyond temperature", snapshot.measurements.isEmpty())
-            assertEquals(20.0, snapshot.tempC, 0.0)
+            assertEquals(20.0, snapshot.tempC!!, 0.0)
         }
     }
 
     @Test
     fun optionalMeasurementsAreValidatedWhenPresentButNeverBlockWhenBlank() {
         val base = ObservationDraft(
-            ownerUid = "owner-a", siteId = "SITE-1", collector = "Collector", latitude = 40.0, longitude = -77.0,
+            ownerUid = "owner-a", siteId = "SITE-1", collector = "Collector",
+            weatherCondition = "Unknown", waterColor = "Unknown", flowCondition = "Unknown", latitude = 40.0, longitude = -77.0,
             accuracyMeters = 5.0, gpsState = GpsState.Good, testType = TestType.FieldInstrument,
             method = "Method", instrument = "Instrument",
             values = mapOf(MeasurementKind.Temperature to "20"),
@@ -219,11 +223,42 @@ class ProductionDomainTest {
         assertThrows(IllegalArgumentException::class.java) {
             valid.copy(values = valid.values + (MeasurementKind.DissolvedOxygen to "51")).toCanonicalSnapshot("owner-a", "1.0.0")
         }
-        assertEquals(-5.0, valid.copy(values = valid.values + (MeasurementKind.Temperature to "-5")).toCanonicalSnapshot("owner-a", "1.0.0").tempC, 0.0)
+        assertEquals(-5.0, valid.copy(values = valid.values + (MeasurementKind.Temperature to "-5")).toCanonicalSnapshot("owner-a", "1.0.0").tempC!!, 0.0)
+    }
+
+    @Test
+    fun visualOnlyDraftPreservesNullNumericsAndDoesNotInventAnInstrument() {
+        val draft = validDraft().copy(values = emptyMap(), method = "", instrument = "")
+        val snapshot = draft.toCanonicalSnapshot("owner-a", "1.0.0")
+        assertNull(snapshot.tempC); assertNull(snapshot.tempF); assertNull(snapshot.temperatureEnteredValue)
+        assertTrue(snapshot.measurements.isEmpty())
+        assertEquals("In-situ / Field Instrument", snapshot.methodName)
+        assertNull(FirestoreObservationMapper.revision(snapshot, "DRAFT")["instrument_name"])
+        assertThrows(IllegalArgumentException::class.java) { draft.copy(waterColor = "").toCanonicalSnapshot("owner-a", "1.0.0") }
+    }
+
+    @Test
+    fun pendingLaboratoryWorkIsDraftOnlyAndCompletionKeepsOriginalIdentity() {
+        val pending = validDraft().copy(values = emptyMap(), labResultsPending = true, collectionStage = CollectionStage.LAB_PENDING)
+        assertThrows(IllegalArgumentException::class.java) { pending.toCanonicalSnapshot("owner-a", "1.0.0") }
+        assertEquals("LAB_PENDING", pending.toCanonicalSnapshot("owner-a", "1.0.0", forDraft = true).collectionStage)
+        val completed = pending.copy(labResultsPending = false, collectionStage = CollectionStage.LAB_COMPLETED, values = mapOf(MeasurementKind.Nitrate to "1.2")).toCanonicalSnapshot("owner-a", "1.0.0")
+        assertEquals(pending.submissionId, completed.submissionId); assertEquals(pending.revisionId, completed.revisionId)
+        assertNull(completed.tempC); assertEquals("NITRATE_MG_L", completed.measurements.single().parameterCode)
+    }
+
+    @Test
+    fun waterDepthConvertsLengthAndRejectsNegativeDepth() {
+        val draft = validDraft().copy(values = mapOf(MeasurementKind.WaterDepth to "30"), unitIds = mapOf(MeasurementKind.WaterDepth to Units.Centimeters.id))
+        val depth = draft.toCanonicalSnapshot("owner-a", "1.0.0").measurements.single()
+        assertEquals("WATER_DEPTH_M", depth.parameterCode); assertEquals("m", depth.unitCode)
+        assertEquals(0.3, depth.value, 1e-12); assertEquals(30.0, depth.enteredValue, 0.0)
+        assertThrows(IllegalArgumentException::class.java) { draft.copy(values = mapOf(MeasurementKind.WaterDepth to "-1")).toCanonicalSnapshot("owner-a", "1.0.0") }
     }
 
     private fun validDraft() = ObservationDraft(
-        ownerUid = "owner-a", siteId = "SITE-1", collector = "Collector", latitude = 40.0, longitude = -77.0,
+        ownerUid = "owner-a", siteId = "SITE-1", collector = "Collector",
+            weatherCondition = "Unknown", waterColor = "Unknown", flowCondition = "Unknown", latitude = 40.0, longitude = -77.0,
         accuracyMeters = 5.0, gpsState = GpsState.Good, testType = TestType.FieldInstrument,
         method = "Meter", instrument = "Instrument",
         values = mapOf(

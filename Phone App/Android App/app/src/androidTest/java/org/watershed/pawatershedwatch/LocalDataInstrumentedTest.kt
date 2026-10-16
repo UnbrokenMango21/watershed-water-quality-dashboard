@@ -81,6 +81,36 @@ class LocalDataInstrumentedTest {
     }
 
     @Test
+    fun migrationFourToFivePreservesHistoricalTemperatureAndAllowsMissingNewValues() {
+        val name = "science-migration-${System.nanoTime()}"
+        migration.createDatabase(name, 4).apply {
+            execSQL("INSERT INTO revisions (revision_id, submission_id, event_id, revision_no, owner_uid, site_id, created_at, collected_at, submitted_at, collector, latitude, longitude, accuracy_m, test_type, test_type_other, method, instrument, notes, temp_entered_value, temp_entered_unit, temp_c, temp_f, workflow_state, revision_note, app_version) VALUES ('r1','s1','e1',1,'owner-a','site1',1,2,3,'Historical Collector',40.8,-77.8,4,'Penn State Lab',NULL,'Grab sample','Lab',NULL,20,'C',20,68,'Submitted','Original','1.0.0')")
+            close()
+        }
+        migration.runMigrationsAndValidate(name, 5, true, WatershedDatabase.MIGRATION_4_5).use { migrated ->
+            migrated.query("SELECT collector, temp_c, weather_condition FROM revisions WHERE revision_id='r1'").use { cursor ->
+                assertTrue(cursor.moveToFirst()); assertEquals("Historical Collector", cursor.getString(0)); assertEquals(20.0, cursor.getDouble(1), 0.0); assertEquals("", cursor.getString(2))
+            }
+            migrated.execSQL("UPDATE revisions SET temp_entered_value=NULL,temp_entered_unit=NULL,temp_c=NULL,temp_f=NULL WHERE revision_id='r1'")
+            migrated.query("SELECT temp_c FROM revisions WHERE revision_id='r1'").use { cursor -> cursor.moveToFirst(); assertTrue(cursor.isNull(0)) }
+        }
+        context.deleteDatabase(name)
+    }
+
+    @Test
+    fun pendingLabDraftAndVisualOnlySubmissionPersistWithoutInventedTemperature() = runBlocking {
+        db.dao().putSites(listOf(CachedSiteEntity("SITE-1", "Test site", "Centre", "Spring Creek", 40.8, -77.8, true, 1)))
+        val pending = validDraft("owner-a").copy(values = emptyMap(), labResultsPending = true, collectionStage = CollectionStage.LAB_PENDING, fieldCollectedAt = 123)
+        repository.saveDraft(pending)
+        assertEquals(pending, repository.loadDraft("owner-a"))
+        val ready = pending.copy(labResultsPending = false, collectionStage = CollectionStage.LAB_COMPLETED, labCompletedAt = 456)
+        val record = repository.persistSubmission(ready, WorkflowState.Submitted, SyncState.Waiting, "Completed")
+        assertEquals(pending.submissionId.value, record.id); assertTrue(record.measurements.isEmpty())
+        assertNull(db.dao().revision("owner-a", ready.revisionId.value)?.tempC)
+        assertEquals("Unknown", record.waterColor)
+    }
+
+    @Test
     fun fieldGpsRejectsStaleAndZeroFallbackCoordinates() {
         val current = android.location.Location("test").apply {
             latitude = 40.7934; longitude = -77.86; accuracy = 4.2f; time = System.currentTimeMillis()
@@ -91,6 +121,7 @@ class LocalDataInstrumentedTest {
     }
 
     private fun validDraft(owner: String) = ObservationDraft(
+        weatherCondition = "Unknown", waterColor = "Unknown", flowCondition = "Unknown",
         ownerUid = owner, siteId = "SITE-1", collector = "Maya Chen", latitude = 40.7934, longitude = -77.86,
         accuracyMeters = 4.2, gpsState = GpsState.Good, testType = TestType.FieldInstrument,
         method = "Calibrated multiparameter field meter", instrument = "YSI ProDSS · Unit 4412",

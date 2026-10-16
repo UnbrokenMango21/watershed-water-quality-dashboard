@@ -106,6 +106,26 @@ class FirebaseSyncRepository(
     private val dao: MobileDao,
     private val local: ObservationRepository,
 ) : SyncRepository {
+    override suspend fun saveFieldDraft(snapshot: CanonicalObservationSnapshot) {
+        require(auth.currentUser?.uid == snapshot.ownerUid) { "Authenticated account does not own this draft" }
+        val parent = firestore.collection("submissions").document(snapshot.submissionId.value)
+        val revision = parent.collection("revisions").document(snapshot.revisionId.value)
+        val existing = parent.get(Source.SERVER).awaitResult()
+        if (existing.exists()) {
+            require(existing.getString("collector_user_id") == snapshot.ownerUid && existing.getString("event_id") == snapshot.eventId.value && existing.getString("site_id") == snapshot.siteId.value) { "Remote draft identity mismatch" }
+            require(existing.getString("status") == if (snapshot.correction) "NEEDS_CORRECTION" else "DRAFT") { "Remote record is no longer an editable draft" }
+        } else {
+            require(!snapshot.correction) { "Correction parent is missing" }
+            parent.set(FirestoreObservationMapper.submission(snapshot, "DRAFT")).awaitResult()
+        }
+        val previous = revision.get(Source.SERVER).awaitResult()
+        require(!previous.exists() || previous.getString("revision_status") == "DRAFT") { "Submitted scientific revisions are immutable" }
+        revision.set(FirestoreObservationMapper.revision(snapshot, "DRAFT")).awaitResult()
+        val desired = snapshot.measurements.map { it.id.value }.toSet()
+        revision.collection("measurements").get(Source.SERVER).awaitResult().documents.filter { it.id !in desired }.forEach { it.reference.delete().awaitResult() }
+        snapshot.measurements.forEach { measurement -> revision.collection("measurements").document(measurement.id.value).set(FirestoreObservationMapper.measurement(snapshot, measurement)).awaitResult() }
+    }
+
     override suspend fun enqueue(ownerUid: String, submissionId: SubmissionId, revisionId: RevisionId) {
         dao.putQueue(SyncQueueEntity(submissionId.value, revisionId.value, ownerUid, "WAITING", 0, 0, null))
         val request = OneTimeWorkRequestBuilder<ObservationSyncWorker>()
@@ -144,20 +164,10 @@ class FirebaseSyncRepository(
             }
 
             val remoteRevision = revisionRef.get(Source.SERVER).awaitResult()
-            if (!remoteRevision.exists()) {
-                revisionRef.set(FirestoreObservationMapper.revision(snapshot, "DRAFT")).awaitResult()
-            } else {
-                require(remoteRevision.getString("revision_status") == "DRAFT") { "Remote revision is immutable" }
+            if (remoteRevision.getString("revision_status") != "SUBMITTED") {
+                saveFieldDraft(snapshot)
+                revisionRef.update(mapOf("revision_status" to "SUBMITTED", "submitted_at" to FieldValue.serverTimestamp())).awaitResult()
             }
-            snapshot.measurements.forEach { value ->
-                revisionRef.collection("measurements").document(value.id.value)
-                    .set(FirestoreObservationMapper.measurement(snapshot, value)).awaitResult()
-            }
-            require(revisionRef.get(Source.SERVER).awaitResult().exists())
-            for (measurement in snapshot.measurements) {
-                require(revisionRef.collection("measurements").document(measurement.id.value).get(Source.SERVER).awaitResult().exists())
-            }
-            revisionRef.update(mapOf("revision_status" to "SUBMITTED", "submitted_at" to FieldValue.serverTimestamp())).awaitResult()
             val target = if (snapshot.correction) "RESUBMITTED" else "SUBMITTED"
             parentRef.update(
                 mapOf(
@@ -255,5 +265,6 @@ private fun RevisionEntity.snapshot(measurements: List<LocalMeasurementEntity>):
         SubmissionId(submissionId), EventId(eventId), RevisionId(revisionId), revisionNo, ownerUid, SiteId(siteId), createdAt,
         collectedAt, submittedAt, latitude, longitude, accuracyM, collector, testType, testTypeOther, method, instrument, notes,
         tempEnteredValue, tempEnteredUnit, tempC, tempF, canonicalMeasurements, emptyList(), appVersion, revisionNo > 1,
+        weatherCondition, waterColor, flowCondition, collectionStage,
     )
 }

@@ -124,12 +124,29 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         persistDraft(next)
     }
 
+    fun saveFieldCollection() {
+        updateDraft { it.copy(fieldCollectedAt = System.currentTimeMillis(), collectionStage = if (it.labResultsPending) CollectionStage.LAB_PENDING else CollectionStage.FIELD_COLLECTED) }
+        synchronizeFieldDraft()
+    }
+
+    private fun synchronizeFieldDraft() {
+        val current = draft ?: return
+        val owner = account ?: return
+        if (current.fieldCollectedAt == null || connection != ConnectionState.Online) return
+        viewModelScope.launch {
+            runCatching {
+                saveMutex.withLock { drafts.saveDraft(current) }
+                graph.sync.saveFieldDraft(current.toCanonicalSnapshot(owner.uid, BuildConfig.VERSION_NAME, forDraft = true))
+            }.onFailure { localStoreError = "Field collection remains saved on this phone. Reconnect and save again to synchronize it." }
+        }
+    }
+
     fun setStep(step: Int) = updateDraft { it.copy(currentStep = step.coerceIn(1, 6)) }
     fun selectSite(site: Site) = updateDraft { it.copy(siteId = site.id) }
     fun selectedSite(): Site? = sites.firstOrNull { it.id == draft?.siteId }
 
     fun selectTestType(type: TestType) = updateDraft {
-        it.copy(testType = type, method = type.suggestedMethod, instrument = type.suggestedInstrument, testTypeOther = "")
+        it.copy(testType = type, method = "", instrument = "", testTypeOther = "")
     }
 
     fun setLocation(latitude: Double, longitude: Double, accuracy: Float, approximateOnly: Boolean) = updateDraft {
@@ -178,8 +195,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             if (current.latitude == 0.0 && current.longitude == 0.0) issue("Capture a valid GPS location", WorkflowStep.VisitDetails)
             if (current.testType == null) issue("Choose a test type", WorkflowStep.TestMethod)
             if (current.testType == TestType.Other && current.testTypeOther.isBlank()) issue("Describe the other test type", WorkflowStep.TestMethod)
-            if (current.method.isBlank()) issue("Enter a collection or measurement method", WorkflowStep.TestMethod)
-            if (current.instrument.isBlank()) issue("Enter an instrument or laboratory", WorkflowStep.TestMethod)
+            if (!current.visualObservationsComplete) issue("Choose weather, water color, and flow condition. Unknown is allowed.", WorkflowStep.Measurements)
+            if (current.labResultsPending) issue("Complete laboratory results before submitting for review", WorkflowStep.Measurements)
             current.requiredMeasurements.filterNot(current::isComplete).forEach { issue("Enter ${it.title}", WorkflowStep.Measurements, it) }
             current.values.forEach { (kind, value) ->
                 if (ProductionMeasurementCatalog.spec(kind).support != ProductionSupport.FULLY_SUPPORTED && value.isNotBlank()) {
@@ -233,6 +250,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         val base = ObservationDraft(
             submissionId = SubmissionId(record.id), eventId = record.eventId, revisionId = nextRevision,
             revisionNo = record.revision + 1, ownerUid = owner.uid, siteId = record.site.id, collectedAt = record.collectedAt,
+            weatherCondition = record.weatherCondition, waterColor = record.waterColor, flowCondition = record.flowCondition,
             collector = record.collector, latitude = record.latitude, longitude = record.longitude, accuracyMeters = record.accuracyMeters,
             gpsState = when { record.accuracyMeters == null -> GpsState.Unavailable; record.accuracyMeters <= 20 -> GpsState.Good; else -> GpsState.Poor },
             testType = record.testType, method = record.method, instrument = record.instrument,
@@ -282,6 +300,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             .onSuccess { sites = it; siteLoadError = null }
             .onFailure { siteLoadError = "Live sites are unavailable. Cached sites remain available." }
         sitesLoading = false
+        synchronizeFieldDraft()
         remoteListener = graph.sync.observe(value.uid) { remote ->
             viewModelScope.launch {
                 observations.updateRemoteState(
@@ -308,7 +327,11 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     private fun refreshConnection() {
         val capabilities = connectivity.getNetworkCapabilities(connectivity.activeNetwork)
         val next = if (capabilities?.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) == true) ConnectionState.Online else ConnectionState.Offline
-        viewModelScope.launch(Dispatchers.Main) { connection = next }
+        viewModelScope.launch(Dispatchers.Main) {
+            val previous = connection
+            connection = next
+            if (next == ConnectionState.Online && previous != next) synchronizeFieldDraft()
+        }
     }
 
     override fun onCleared() {
