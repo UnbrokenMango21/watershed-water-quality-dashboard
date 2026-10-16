@@ -53,8 +53,9 @@ Status vocabulary: **COMPLETE & VERIFIED** (implemented and proven by automated 
 | Code-side scientific reconciliation | COMPLETE & VERIFIED | docs/SCIENTIFIC_SCHEMA_RECONCILIATION_2026-10-15.md; golden payload keys checked against rules allowlists by test |
 | Excel workbook reconciliation | BLOCKED — USER INPUT REQUIRED | Workbook not supplied |
 | Dependency remediation | COMPLETE & VERIFIED | Patch-level updates within ranges; all suites and builds pass; retained upstream advisories documented |
-| Independent code/security review | COMPLETE & VERIFIED | Three independent reviewers (backend/security, web, mobile); no critical findings; every high/medium/low finding fixed with tests |
-| Push, pull request, CI, merge into `main` | BLOCKED — USER INPUT REQUIRED | `git push` was refused by the session's permission policy; branch is ready at its final commit |
+| Independent code/security review | COMPLETE & VERIFIED | Two independent passes (three reviewers each: backend/security, web, mobile; then security/permissions, scientific integrity, deployment configuration). No critical findings; every finding fixed with tests or recorded as a decision in docs/SUPERVISOR_QUESTIONS.md |
+| Push, pull request, CI | COMPLETE & VERIFIED | PR #52 (https://github.com/UnbrokenMango21/watershed-water-quality-dashboard/pull/52); all 15 checks pass (backend contracts and rules, QC web, dashboard build, dashboard visual QA demo and empty, iOS native, Android native with emulator instrumentation, CodeQL for five languages, publication contract, hygiene) |
+| Merge into `main` | BLOCKED — USER INPUT REQUIRED | Not merged: awaiting human review of PR #52, a decision on merging the 231 integration commits (draft PR #34) with it, and the iOS UI-journey re-run below |
 | Deployments (Functions, Firestore rules/indexes, QC and dashboard App Hosting) | BLOCKED — USER INPUT REQUIRED | Not performed. The six new callables are not deployed; the QC backend's configured rollout branch no longer exists. See docs/RELEASE_PLAN_2026-10-16.md |
 | Apple release | BLOCKED — USER INPUT REQUIRED | No TestFlight/App Store status is claimed |
 
@@ -75,6 +76,6 @@ All results below are from the final branch head on 2026-10-16, run locally with
 | Real browser, local emulators: `tests/qc/identity-workflow.mjs` | 7/7 (sign-in a11y/layout at 1440/820/390, failed login, verified registration, pending, approval without manual refresh, revocation, re-request and decline) |
 | Real browser, local emulators: `tests/qc/collaboration-workflow.mjs` | 7/7 (provenance and visual observations at three widths, reviewer question, correction request, live collector reply, private-record denial, coordinate proposal approval) |
 | Public dashboard visual QA (demo mode, local) | Desktop and laptop PASS; tablet/phone run stalled locally on live map tiles and is covered by the CI workflow on the PR |
-| iOS emulator-backed UI journey | Not completed: stopped by the host for low memory |
+| iOS emulator-backed UI journey (`scripts/dev.sh ios-ui`) | Partial. Name change and draft relaunch: PASS. First run through correction: completed account, measurements, submission, the real QC correction request and the correction revision in one run, but the final sync stayed at "Syncing"; a second run stalled at the first submission. Large text: the simulator returned no location (CoreLocation reported location unknown to MapKit as well). The host was swapping heavily (5.5 GB of 7 GB swap in use) during every run, which explains the stalls, but a sync hang is not ruled out: re-run on a machine with free memory before TestFlight |
 
 Evidence screenshots and JSON results are written to the git-ignored `artifacts/supervisor-qa/`.

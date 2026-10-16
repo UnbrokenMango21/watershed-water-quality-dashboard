@@ -304,6 +304,10 @@ final class WorkflowUITests: XCTestCase {
     /// selectors sit right above the measurements), so wait for the keyboard and tap again if needed.
     private func focus(_ element: XCUIElement) {
         for _ in 0..<3 {
+            // The bottom action bar (step label + primary button) floats over the scrolling form, so a
+            // field near the bottom can be covered: scroll it up into the open area before tapping.
+            let bar = app.buttons["flow.next"]
+            if bar.exists, element.frame.maxY > bar.frame.minY - 72 { app.swipeUp() }
             element.tap()
             if app.keyboards.firstMatch.waitForExistence(timeout: 2) { return }
         }
