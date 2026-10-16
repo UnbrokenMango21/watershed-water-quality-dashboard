@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { sendEmailVerification, type User } from 'firebase/auth';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { accountAction, clientDb } from '@/lib/firebase-client';
@@ -14,12 +14,23 @@ const labels: Record<string, string> = {
 export default function AccountAccessPanel({ user, refresh }: { user: User; refresh: () => Promise<void> }) {
   const [name, setName] = useState(user.displayName ?? '');
   const [reason, setReason] = useState('');
-  const [request, setRequest] = useState<{ status?: string; decision_reason?: string } | null>(null);
+  const [request, setRequest] = useState<{ status?: string; decision_reason?: string; request_id?: string; provisioning_state?: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const refreshRef = useRef(refresh);
+  refreshRef.current = refresh;
+  const settledDecision = useRef<string | null>(null);
   useEffect(() => onSnapshot(doc(clientDb(), 'reviewerAccessRequests', user.uid), snapshot => {
-    setRequest(snapshot.exists() ? snapshot.data() : null);
+    const data = snapshot.exists() ? snapshot.data() : null;
+    setRequest(data);
+    // When an administrator's decision finishes provisioning, fetch a fresh ID token so the new
+    // role and access version apply now instead of at the next hourly token refresh.
+    const decision = data?.provisioning_state === 'COMPLETE' ? `${data.request_id}:${data.status}` : '';
+    if (settledDecision.current !== null && decision && decision !== settledDecision.current) {
+      void refreshRef.current().catch(() => setError('Your access changed. Select Refresh access to continue.'));
+    }
+    settledDecision.current = decision;
   }, () => setError('Your access status could not be loaded. Try again.')), [user.uid]);
 
   async function perform(action: () => Promise<void>) {
@@ -50,15 +61,16 @@ export default function AccountAccessPanel({ user, refresh }: { user: User; refr
         <button type="button" className="btn btn-primary" disabled={busy} onClick={() => void perform(async () => {
           await sendEmailVerification(user); setMessage('Verification email sent. Open the link, then refresh your access.');
         })}>Send verification email</button>
-      </> : !request ? <form onSubmit={submit} aria-busy={busy}>
+      </> : !request || request.status === 'REJECTED' || request.status === 'REVOKED' ? <form onSubmit={submit} aria-busy={busy}>
+        {request ? <p>{request.decision_reason ?? 'Your previous request was not approved.'} You may submit a new request with updated information.</p> : null}
         <label className="field"><span className="field-label">Display name</span><input autoComplete="name" required minLength={2} maxLength={80} value={name} onChange={event => setName(event.target.value)} /></label>
         <button type="button" className="btn" disabled={busy || name.trim().length < 2} onClick={() => void perform(async () => {
           await accountAction('initializeMyAccount', { displayName: name }); await user.reload(); setMessage('Your collector profile is saved.');
         })}>Save collector profile</button>
         <label className="field"><span className="field-label">Why do you need supervisor access?</span><textarea required minLength={5} maxLength={1000} value={reason} onChange={event => setReason(event.target.value)} /></label>
-        <button type="submit" className="btn btn-primary" disabled={busy}>{busy ? 'Sending request…' : 'Request supervisor access'}</button>
+        <button type="submit" className="btn btn-primary" disabled={busy}>{busy ? 'Sending request…' : request ? 'Request supervisor access again' : 'Request supervisor access'}</button>
       </form> : <>
-        <p>{request.status === 'PENDING' ? 'An administrator will verify your membership and decide this request. You do not yet have QC access.' : request.decision_reason ?? 'Contact the program administrator about this access decision.'}</p>
+        <p>{request.status === 'PENDING' ? 'An administrator will verify your membership and decide this request. You do not yet have QC access.' : request.status === 'SUSPENDED' ? `${request.decision_reason ?? 'Your reviewer access is suspended.'} Contact the program administrator to restore it.` : request.decision_reason ?? 'Contact the program administrator about this access decision.'}</p>
       </>}
       <p><button type="button" className="btn" disabled={busy} onClick={() => void perform(refresh)}>Refresh access</button></p>
     </div>

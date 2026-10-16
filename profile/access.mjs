@@ -53,7 +53,7 @@ export async function initializeMembership({ db, auth, uid, data, serverTimestam
   return { uid, displayName };
 }
 
-export async function requestReviewerAccess({ db, auth, uid, data, serverTimestamp }) {
+export async function requestReviewerAccess({ db, auth, uid, data, serverTimestamp, now = Date.now }) {
   object(data, ['reason']);
   if (typeof data.reason !== 'string' || data.reason.trim().length < 5 || data.reason.length > 1000) {
     fail('invalid-argument', 'Explain your reviewer access request in 5 to 1000 characters.');
@@ -65,15 +65,32 @@ export async function requestReviewerAccess({ db, auth, uid, data, serverTimesta
     const [existing, profileSnapshot] = await Promise.all([tx.get(requestRef), tx.get(profileRef)]);
     const profile = profileSnapshot.data();
     if (!profile || profile.active !== true || !profile.display_name) fail('failed-precondition', 'Complete your verified account profile first.');
-    if (existing.exists) return { status: existing.data().status, requestId: existing.data().request_id };
+    const previous = existing.data();
+    // A rejected or revoked applicant may ask again once that decision has fully settled; the new
+    // request gets a new ID so a stale decision can never apply to it. Pending and suspended
+    // requests stay as they are: suspension is lifted only by an administrator.
+    const reopen = existing.exists && ['REJECTED', 'REVOKED'].includes(previous.status)
+      && previous.provisioning_state === 'COMPLETE' && !(previous.operation_expires_at_ms > now());
+    if (existing.exists && !reopen) return { status: previous.status, requestId: previous.request_id };
     if (['ADMIN', 'QC_REVIEWER'].includes(profile.role)) fail('already-exists', 'This account already has review authorization.');
     const requestId = randomUUID();
-    tx.create(requestRef, {
+    const request = {
       uid, request_id: requestId, status: 'PENDING', reason: data.reason.trim(),
       display_name: profile.display_name, verified_email: account.emailVerified ? account.email : null,
       created_at: serverTimestamp(), updated_at: serverTimestamp(),
+    };
+    if (!reopen) {
+      tx.create(requestRef, request);
+      return { status: 'PENDING', requestId };
+    }
+    // Replacing the document clears the previous decision fields; the audit trail keeps the history.
+    tx.set(requestRef, request);
+    tx.create(requestRef.collection('audit').doc(`request-${requestId}`), {
+      event: 'REQUEST_RESUBMITTED', actor_uid: uid, target_uid: uid, request_id: requestId,
+      previous_request_id: previous.request_id, previous_status: previous.status,
+      reason: request.reason, occurred_at: serverTimestamp(),
     });
-    return { status: 'PENDING', requestId };
+    return { status: 'PENDING', requestId, resubmitted: true };
   });
 }
 

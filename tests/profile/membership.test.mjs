@@ -64,6 +64,20 @@ test('verified registration → request → authorized decision → revoke prese
     assert.ok(reviewerAccessProblem({ disabled: false, claimRole: approved.customClaims.role, accessVersion: approved.customClaims.access_version, profile: revoked }));
     assert.equal((await auth.getUser(uids[0])).customClaims.role, 'COLLECTOR');
     assert.equal((await db.collection('reviewerAccessRequests').doc(uids[0]).collection('audit').get()).size, 2);
+    // A revoked (or rejected) applicant can ask again; the stale request ID can no longer be decided.
+    const again = await requestReviewerAccess({ ...input, uid: uids[0], data: { reason: 'Assigned to review the spring season.' } });
+    assert.equal(again.status, 'PENDING'); assert.equal(again.resubmitted, true); assert.notEqual(again.requestId, request.requestId);
+    assert.deepEqual(await requestReviewerAccess({ ...input, uid: uids[0], data: { reason: 'Duplicate while pending.' } }), { status: 'PENDING', requestId: again.requestId });
+    await assert.rejects(decideReviewerAccess({ ...input, uid: uids[1], data: decision }), error => error.code === 'aborted');
+    await decideReviewerAccess({ ...input, uid: uids[1], data: { uid: uids[0], requestId: again.requestId, status: 'REJECTED', reason: 'Spring review roster is already complete.' } });
+    const rejectedRequest = (await db.collection('reviewerAccessRequests').doc(uids[0]).get()).data();
+    assert.equal(rejectedRequest.status, 'REJECTED'); assert.equal((await auth.getUser(uids[0])).customClaims.role, 'COLLECTOR');
+    const third = await requestReviewerAccess({ ...input, uid: uids[0], data: { reason: 'Assigned to the summer review roster.' } });
+    assert.equal(third.status, 'PENDING');
+    assert.equal((await decideReviewerAccess({ ...input, uid: uids[1], data: { uid: uids[0], requestId: third.requestId, status: 'APPROVED', reason: 'Summer roster confirmed.' } })).status, 'APPROVED');
+    const events = (await db.collection('reviewerAccessRequests').doc(uids[0]).collection('audit').get()).docs.map(doc => doc.data());
+    assert.equal(events.filter(event => event.event === 'REQUEST_RESUBMITTED').length, 2);
+    assert.equal(events.length, 6);
     await historical.delete();
   } finally {
     for (const uid of uids) {
