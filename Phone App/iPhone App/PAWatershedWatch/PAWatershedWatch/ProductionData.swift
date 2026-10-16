@@ -124,6 +124,20 @@ struct CanonicalSnapshot: Codable, Hashable {
     var waterColor: String? = nil
     var flowCondition: String? = nil
     var collectionStage: String? = nil
+    /// The Firestore contract this revision was created under. Persisted with every queued snapshot so a
+    /// record saved by an earlier app build is replayed under its own contract after an upgrade. Snapshots
+    /// persisted before this field existed decode it as nil; see `resolvedSchemaVersion`.
+    var schemaVersion: String? = nil
+
+    /// A snapshot without a recorded schema came from a build that predates this field. Only 0.2 builds
+    /// record a collection stage (it is always set there), so its presence identifies a 0.2.0 snapshot;
+    /// otherwise the snapshot was created by an installed 0.1.0 build and keeps that contract.
+    var resolvedSchemaVersion: String {
+        if let schemaVersion { return schemaVersion }
+        return collectionStage != nil ? FirebaseMapper.schemaVersion : FirebaseMapper.legacySchemaVersion
+    }
+
+    var usesLegacySchema: Bool { resolvedSchemaVersion == FirebaseMapper.legacySchemaVersion }
 }
 
 enum CanonicalizationError: LocalizedError {
@@ -247,7 +261,7 @@ extension ObservationDraft {
                 enteredUnitID: selected.id, enteredUnit: selected.menuTitle, value: canonicalValue(entered, for: kind), unitCode: unitCode,
                 analysisStage: kind.needsAnalysisProvenance ? analysisDetails[kind]?.stage : "FIELD",
                 analysisMethod: kind.needsAnalysisProvenance ? analysisDetails[kind]?.method.trimmingCharacters(in: .whitespacesAndNewlines) : canonicalMethod,
-                analysisInstrument: kind.needsAnalysisProvenance ? analysisDetails[kind]?.instrument : canonicalInstrument,
+                analysisInstrument: kind.needsAnalysisProvenance ? analysisDetails[kind].flatMap { Self.trimmedOrNil($0.instrument) } : canonicalInstrument,
                 analyzedAt: kind.needsAnalysisProvenance ? analysisDetails[kind]?.analyzedAt : date,
                 fieldExceptionReason: fieldExceptionReason(for: kind)
             )
@@ -269,8 +283,15 @@ extension ObservationDraft {
             tempC: tempC, tempF: tempF, measurements: canonical, attachments: attachments,
             appVersion: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.0", correction: isCorrection,
             weatherCondition: weatherCondition, waterColor: waterColor, flowCondition: flowCondition,
-            collectionStage: forDraft ? collectionStage.rawValue : (collectionStage == .labCompleted ? CollectionStage.labCompleted.rawValue : CollectionStage.readyForReview.rawValue)
+            collectionStage: forDraft ? collectionStage.rawValue : (collectionStage == .labCompleted ? CollectionStage.labCompleted.rawValue : CollectionStage.readyForReview.rawValue),
+            // New snapshots, including correction revisions of a 0.1.0 record, use the current contract.
+            schemaVersion: FirebaseMapper.schemaVersion
         )
+    }
+
+    private static func trimmedOrNil(_ value: String) -> String? {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
     }
 }
 
@@ -357,7 +378,12 @@ extension ObservationDraft {
 }
 
 enum FirebaseMapper {
+    /// The current contract for every new snapshot.
     static let schemaVersion = "0.2.0"
+    /// The contract of installed 0.1.0 builds. A snapshot they queued offline is still replayed under it:
+    /// the rules accept 0.1.0 science only in its original shape (temperature and instrument required,
+    /// measurements without analysis provenance).
+    static let legacySchemaVersion = "0.1.0"
 
     /// `submitted_at` is a trusted server timestamp. Firestore rules require it to equal `request.time`
     /// on every collector write, so a concrete client `Timestamp` from the phone clock is always rejected.
@@ -373,12 +399,12 @@ enum FirebaseMapper {
             "current_revision_id": value.revisionID.uuidString.lowercased(), "current_revision_no": value.revisionNumber,
             "latest_collected_at": Timestamp(date: value.collectedAt), "created_at": Timestamp(date: value.createdAt),
             "updated_at": Timestamp(date: value.submittedAt), "submitted_at": submittedAt(status),
-            "schema_version": schemaVersion, "mobile_app_version": value.appVersion,
+            "schema_version": value.resolvedSchemaVersion, "mobile_app_version": value.appVersion,
         ]
     }
 
     static func revision(_ value: CanonicalSnapshot, status: String) -> [String: Any] {
-        [
+        var fields: [String: Any] = [
             "revision_id": value.revisionID.uuidString.lowercased(), "revision_no": value.revisionNumber,
             "submission_id": value.submissionID.uuidString.lowercased(), "event_id": value.eventID.uuidString.lowercased(),
             "collector_user_id": value.ownerUID, "site_id": value.siteID, "revision_status": status,
@@ -392,23 +418,35 @@ enum FirebaseMapper {
             "method_name": value.method, "instrument_name": value.instrument.isEmpty ? NSNull() : value.instrument, "instrument_other": NSNull(),
             "temp_entered_value": value.temperatureEnteredValue.map { $0 as Any } ?? NSNull(), "temp_entered_unit": value.temperatureEnteredUnit ?? NSNull(),
             "temp_c": value.tempC.map { $0 as Any } ?? NSNull(), "temp_f": value.tempF.map { $0 as Any } ?? NSNull(), "field_notes_original": value.notes ?? NSNull(),
-            "schema_version": schemaVersion, "mobile_app_version": value.appVersion,
+            "schema_version": value.resolvedSchemaVersion, "mobile_app_version": value.appVersion,
         ]
+        // A 0.1.0 revision predates the collection stage.
+        if value.usesLegacySchema { fields.removeValue(forKey: "collection_stage") }
+        return fields
     }
 
     static func measurement(_ item: CanonicalMeasurement, in value: CanonicalSnapshot) -> [String: Any] {
-        [
+        // A laboratory result names only its own analysis instrument, never the field instrument. A 0.1.0
+        // measurement keeps the observation's instrument exactly as that build recorded it.
+        let instrument = value.usesLegacySchema ? value.instrument
+            : item.kind.needsAnalysisProvenance ? (item.analysisInstrument ?? "") : (item.analysisInstrument ?? value.instrument)
+        var fields: [String: Any] = [
             "measurement_id": item.id.uuidString.lowercased(), "parameter_code": item.parameterCode,
             "display_name": item.displayName, "value": item.value, "unit_code": item.unitCode,
             // Provenance required by config/firebase_schema.json: exactly what the collector typed and the
             // stable MeasurementUnit id they picked. Never used as conversion authority.
             "entered_value": item.enteredValue, "entered_unit_code": item.enteredUnitID,
             "method_name": item.analysisMethod ?? value.method,
-            "instrument_name": (item.analysisInstrument ?? value.instrument).isEmpty ? NSNull() : (item.analysisInstrument ?? value.instrument),
+            "instrument_name": instrument.isEmpty ? NSNull() : instrument,
             "analysis_stage": item.analysisStage ?? "FIELD", "analyzed_at": Timestamp(date: item.analyzedAt ?? value.collectedAt),
             "field_exception_reason": item.fieldExceptionReason ?? NSNull(),
             "qualifier": NSNull(), "notes": NSNull(), "entered_at": Timestamp(date: value.collectedAt),
         ]
+        // 0.1.0 measurements predate analysis provenance; the rules reject these keys on them.
+        if value.usesLegacySchema {
+            ["analysis_stage", "analyzed_at", "field_exception_reason"].forEach { fields.removeValue(forKey: $0) }
+        }
+        return fields
     }
 
     static func attachment(_ item: AttachmentRecord, in value: CanonicalSnapshot, storagePath: String) -> [String: Any] {

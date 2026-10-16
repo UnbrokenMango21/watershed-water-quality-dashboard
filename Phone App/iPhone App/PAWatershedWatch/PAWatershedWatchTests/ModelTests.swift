@@ -405,6 +405,142 @@ final class ModelTests: XCTestCase {
         XCTAssertThrowsError(try draft.canonicalSnapshot())
     }
 
+    /// A submission queued offline by an installed 0.1.0 build must replay under the 0.1.0 contract after
+    /// the app upgrades: its snapshot has no schema version, collection stage, visual observations or
+    /// analysis provenance, and the rules would deny it forever as 0.2.0.
+    @MainActor
+    func testPreUpgradeQueuedSnapshotReplaysUnderTheLegacyContract() throws {
+        let draft = completeDraft()
+        draft[valueFor: .nitrate] = "1.2"
+        draft.analysisDetails[.nitrate] = AnalysisProvenance(stage: "LAB", method: "Ion chromatography", instrument: "IC-2", analyzedAt: draft.date.addingTimeInterval(60))
+        let legacy = try Self.preUpgradeSnapshot(from: try draft.canonicalSnapshot())
+        XCTAssertNil(legacy.schemaVersion); XCTAssertNil(legacy.collectionStage)
+        XCTAssertEqual(legacy.resolvedSchemaVersion, "0.1.0")
+
+        // The queued snapshot survives the on-device store unchanged and still resolves to 0.1.0.
+        let container = try MobileModelContainer.make(inMemory: true)
+        let store = LocalMobileStore(context: container.mainContext)
+        try store.persist(legacy, workflow: .submitted, sync: .waiting, note: "Submitted before the upgrade")
+        let replayed = try XCTUnwrap(store.snapshot(ownerUID: legacy.ownerUID, submissionID: legacy.submissionID))
+        XCTAssertEqual(replayed.resolvedSchemaVersion, "0.1.0")
+
+        XCTAssertEqual(FirebaseMapper.submission(replayed, status: "DRAFT")["schema_version"] as? String, "0.1.0")
+        let revision = FirebaseMapper.revision(replayed, status: "DRAFT")
+        XCTAssertEqual(revision["schema_version"] as? String, "0.1.0")
+        XCTAssertNil(revision["collection_stage"], "a 0.1.0 revision predates the collection stage")
+        XCTAssertEqual(revision["instrument_name"] as? String, "YSI ProDSS · Unit 4412")
+        XCTAssertEqual(revision["temp_entered_unit"] as? String, "C")
+        XCTAssertEqual(revision["temp_c"] as? Double, 20)
+        let measurements = replayed.measurements.map { FirebaseMapper.measurement($0, in: replayed) }
+        XCTAssertEqual(Set(measurements.compactMap { $0["parameter_code"] as? String }), ["PH", "DO_MG_L", "CONDUCTIVITY_US_CM", "NITRATE_MG_L"])
+        for measurement in measurements {
+            for key in ["analysis_stage", "analyzed_at", "field_exception_reason"] {
+                XCTAssertNil(measurement[key], "0.1.0 measurements must not carry \(key)")
+            }
+            XCTAssertEqual(measurement["instrument_name"] as? String, "YSI ProDSS · Unit 4412", "0.1.0 keeps the instrument as recorded")
+            XCTAssertEqual(measurement["method_name"] as? String, "Calibrated multiparameter field meter")
+        }
+
+        // The correction the reviewer requests is a new revision under the current contract.
+        try store.updateRemoteState(ownerUID: legacy.ownerUID, submissionID: legacy.submissionID, workflow: .needsCorrection, sync: .synced, correctionReason: "Verify DO", validation: nil, flags: [])
+        let correction = completeDraft(id: legacy.submissionID, eventID: legacy.eventID, revisionID: UUID(), revisionNumber: 2, ownerUID: legacy.ownerUID)
+        correction.isCorrection = true; correction.baseRevision = 1; correction.revisionNote = "Checked the meter export."
+        let corrected = try correction.canonicalSnapshot()
+        XCTAssertEqual(corrected.schemaVersion, "0.2.0")
+        try store.persist(corrected, workflow: .resubmitted, sync: .waiting, note: correction.revisionNote)
+        let queuedCorrection = try XCTUnwrap(store.snapshot(ownerUID: legacy.ownerUID, submissionID: legacy.submissionID))
+        XCTAssertEqual(FirebaseMapper.revision(queuedCorrection, status: "DRAFT")["schema_version"] as? String, "0.2.0")
+        XCTAssertEqual(FirebaseMapper.measurement(try XCTUnwrap(queuedCorrection.measurements.first), in: queuedCorrection)["analysis_stage"] as? String, "FIELD")
+    }
+
+    /// New snapshots record the current contract, and a 0.2 snapshot persisted before the schema field
+    /// existed (it always carries a collection stage) still maps to 0.2.0.
+    @MainActor
+    func testNewSnapshotsRecordAndReplayTheCurrentContract() throws {
+        let snapshot = try completeDraft().canonicalSnapshot()
+        XCTAssertEqual(snapshot.schemaVersion, "0.2.0")
+        let decoded = try JSONDecoder().decode(CanonicalSnapshot.self, from: try JSONEncoder().encode(snapshot))
+        XCTAssertEqual(decoded.schemaVersion, "0.2.0")
+        XCTAssertEqual(FirebaseMapper.submission(decoded, status: "DRAFT")["schema_version"] as? String, "0.2.0")
+        XCTAssertEqual(FirebaseMapper.revision(decoded, status: "DRAFT")["collection_stage"] as? String, "READY_FOR_REVIEW")
+        XCTAssertEqual(FirebaseMapper.measurement(try XCTUnwrap(decoded.measurements.first), in: decoded)["analysis_stage"] as? String, "FIELD")
+
+        var object = try XCTUnwrap(JSONSerialization.jsonObject(with: try JSONEncoder().encode(snapshot)) as? [String: Any])
+        object.removeValue(forKey: "schemaVersion")
+        let earlierBuild = try JSONDecoder().decode(CanonicalSnapshot.self, from: try JSONSerialization.data(withJSONObject: object))
+        XCTAssertNil(earlierBuild.schemaVersion)
+        XCTAssertEqual(earlierBuild.resolvedSchemaVersion, "0.2.0")
+        XCTAssertEqual(FirebaseMapper.revision(earlierBuild, status: "DRAFT")["schema_version"] as? String, "0.2.0")
+    }
+
+    /// A laboratory instrument is trimmed like its method; whitespace alone records no instrument, and
+    /// a lab result never borrows the field instrument.
+    @MainActor
+    func testLabInstrumentIsTrimmedAndBlankBecomesNull() throws {
+        let draft = completeDraft()
+        draft[valueFor: .nitrate] = "1.2"
+        draft.analysisDetails[.nitrate] = AnalysisProvenance(stage: "LAB", method: "Ion chromatography", instrument: "  IC-2 \n", analyzedAt: draft.date.addingTimeInterval(60))
+        var snapshot = try draft.canonicalSnapshot()
+        var nitrate = try XCTUnwrap(snapshot.measurements.first { $0.parameterCode == "NITRATE_MG_L" })
+        XCTAssertEqual(nitrate.analysisInstrument, "IC-2")
+        XCTAssertEqual(FirebaseMapper.measurement(nitrate, in: snapshot)["instrument_name"] as? String, "IC-2")
+        draft.analysisDetails[.nitrate]?.instrument = "   "
+        snapshot = try draft.canonicalSnapshot()
+        nitrate = try XCTUnwrap(snapshot.measurements.first { $0.parameterCode == "NITRATE_MG_L" })
+        XCTAssertNil(nitrate.analysisInstrument)
+        XCTAssertTrue(FirebaseMapper.measurement(nitrate, in: snapshot)["instrument_name"] is NSNull)
+    }
+
+    /// Once a revision is persisted for submission, the cloud draft sync must leave it to the submission
+    /// sync; a correction draft (a new revision) still synchronizes.
+    @MainActor
+    func testFieldDraftCloudSyncStopsOnceItsRevisionIsQueuedForSubmission() throws {
+        let container = try MobileModelContainer.make(inMemory: true)
+        let store = LocalMobileStore(context: container.mainContext)
+        let draft = completeDraft()
+        XCTAssertFalse(AppModel.fieldDraftNeedsCloudSync(draft, persisted: nil), "nothing to sync before field collection is saved")
+        draft.fieldCollectedAt = .now
+        XCTAssertTrue(AppModel.fieldDraftNeedsCloudSync(draft, persisted: try store.snapshot(ownerUID: draft.ownerUID, submissionID: draft.id)))
+        try store.persist(try draft.canonicalSnapshot(), workflow: .submitted, sync: .waiting, note: "Submitted")
+        XCTAssertFalse(AppModel.fieldDraftNeedsCloudSync(draft, persisted: try store.snapshot(ownerUID: draft.ownerUID, submissionID: draft.id)))
+
+        let correction = completeDraft(id: draft.id, eventID: draft.eventID, revisionID: UUID(), revisionNumber: 2, ownerUID: draft.ownerUID)
+        correction.isCorrection = true; correction.fieldCollectedAt = .now
+        XCTAssertTrue(AppModel.fieldDraftNeedsCloudSync(correction, persisted: try store.snapshot(ownerUID: draft.ownerUID, submissionID: draft.id)))
+    }
+
+    /// The draft sync and the pending-submission sync share one serial queue, so they never overlap.
+    @MainActor
+    func testSerialWorkQueueRunsWorkOneAtATimeInOrder() async {
+        final class Log { var events: [String] = [] }
+        let log = Log()
+        let queue = SerialWorkQueue()
+        queue.enqueue {
+            log.events.append("submission-start")
+            await Task.yield()
+            try? await Task.sleep(nanoseconds: 20_000_000)
+            log.events.append("submission-end")
+        }
+        let last = queue.enqueue {
+            log.events.append("draft-start")
+            log.events.append("draft-end")
+        }
+        await last.value
+        XCTAssertEqual(log.events, ["submission-start", "submission-end", "draft-start", "draft-end"])
+    }
+
+    /// Re-creates what a 0.1.0 build persisted: no schema version, collection stage, visual observations
+    /// or measurement analysis provenance.
+    @MainActor
+    private static func preUpgradeSnapshot(from current: CanonicalSnapshot) throws -> CanonicalSnapshot {
+        var object = try XCTUnwrap(JSONSerialization.jsonObject(with: try JSONEncoder().encode(current)) as? [String: Any])
+        for key in ["schemaVersion", "collectionStage", "weatherCondition", "waterColor", "flowCondition"] { object.removeValue(forKey: key) }
+        object["measurements"] = try XCTUnwrap(object["measurements"] as? [[String: Any]]).map { measurement in
+            measurement.filter { !["analysisStage", "analysisMethod", "analysisInstrument", "analyzedAt", "fieldExceptionReason"].contains($0.key) }
+        }
+        return try JSONDecoder().decode(CanonicalSnapshot.self, from: try JSONSerialization.data(withJSONObject: object))
+    }
+
     @MainActor
     private func temperatureOnlyDraft(testType: TestType) -> ObservationDraft {
         let draft = ObservationDraft(ownerUID: "collector-a")

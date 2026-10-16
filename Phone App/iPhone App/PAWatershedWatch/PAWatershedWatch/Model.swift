@@ -734,6 +734,9 @@ final class AppModel {
     private let monitorQueue = DispatchQueue(label: "org.watershed.pawatershedwatch.connectivity")
     private var authHandle: AuthStateDidChangeListenerHandle?
     private var remoteListener: ListenerRegistration?
+    /// Every Firestore write for records and drafts runs here, one at a time, so a cloud draft sync can
+    /// never interleave with the final submission of the same revision.
+    private let syncQueue = SerialWorkQueue()
 
     var authResolved = false
     var isSignedIn = false
@@ -927,13 +930,28 @@ final class AppModel {
         synchronizeFieldDraft()
     }
 
+    /// Queued behind any pending submission sync. Whether the draft still needs a cloud copy is decided
+    /// when the work runs, because the collector may have submitted it while earlier work was in flight.
     private func synchronizeFieldDraft() {
-        guard let draft, draft.fieldCollectedAt != nil, let remote, connection == .online,
+        guard draft != nil, remote != nil, connection == .online else { return }
+        syncQueue.enqueue { [weak self] in await self?.synchronizeFieldDraftNow() }
+    }
+
+    private func synchronizeFieldDraftNow() async {
+        guard let draft, let remote, connection == .online else { return }
+        let persisted = try? store.snapshot(ownerUID: draft.ownerUID, submissionID: draft.id)
+        guard Self.fieldDraftNeedsCloudSync(draft, persisted: persisted),
               let snapshot = try? draft.canonicalSnapshot(forDraft: true) else { return }
-        Task {
-            do { try await remote.saveFieldDraft(snapshot); syncState = .synced }
-            catch { syncState = .failed; workflowError = "Field collection remains saved on this phone. Reconnect and save again to synchronize it." }
-        }
+        do { try await remote.saveFieldDraft(snapshot); syncState = .synced }
+        catch { syncState = .failed; workflowError = "Field collection remains saved on this phone. Reconnect and save again to synchronize it." }
+    }
+
+    /// A saved field collection gets a cloud draft only until its revision is submitted. Once that revision
+    /// is persisted for submission it belongs to the sync queue, and a draft write would set it back to
+    /// DRAFT (or fail against the submitted record). A correction draft is a new revision, so the
+    /// submitted revision it corrects never blocks it.
+    static func fieldDraftNeedsCloudSync(_ draft: ObservationDraft, persisted: CanonicalSnapshot?) -> Bool {
+        draft.fieldCollectedAt != nil && persisted?.revisionID != draft.revisionID
     }
 
     func resumeObservation() {
@@ -988,7 +1006,7 @@ final class AppModel {
 
     func retrySync(recordID: UUID? = nil) {
         guard connection == .online else { syncState = .waiting; return }
-        Task { await syncPending(only: recordID) }
+        syncQueue.enqueue { [weak self] in await self?.syncPending(only: recordID) }
     }
 
     func finishStatus() {
@@ -1231,6 +1249,22 @@ final class AppModel {
 
 private extension String {
     var nilIfEmpty: String? { isEmpty ? nil : self }
+}
+
+/// Runs asynchronous work strictly one item at a time, in the order it was enqueued.
+@MainActor final class SerialWorkQueue {
+    private var tail: Task<Void, Never>?
+
+    @discardableResult
+    func enqueue(_ work: @escaping @MainActor @Sendable () async -> Void) -> Task<Void, Never> {
+        let previous = tail
+        let task = Task { @MainActor in
+            await previous?.value
+            await work()
+        }
+        tail = task
+        return task
+    }
 }
 
 enum SignInProvider: String, Hashable {
