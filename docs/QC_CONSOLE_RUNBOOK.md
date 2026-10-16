@@ -163,13 +163,15 @@ stop at once), then remove the claim or disable the account, and revoke refresh 
 Auth account alone stops decisions immediately but not reads. `scripts/verify_reviewer_access.mjs`
 fails for any account that has a reviewer claim but is disabled or lacks an active profile.
 
-The rules requiring an active profile are in `firebase/firestore.rules` and `firebase/storage.rules`
-on the release branch and are covered by `tests/firestore-rules`. They are not yet deployed to the live
-project; deploy them only after confirming every live reviewer and admin has an active profile.
+The live Firestore rules (read back 2026-10-16) already require an active reviewer profile. This
+release adds the stricter checks in `firebase/firestore.rules` and `firebase/storage.rules`: the profile
+role must equal the token's role claim and its `access_version` must match the token's, so a suspension
+or revocation closes access immediately. Deploy them only after confirming every live reviewer and
+admin has an active profile whose role matches their claim (`scripts/verify_reviewer_access.mjs`).
 
 ## Review lifecycle
 
-The active queue contains only `PENDING_REVIEW`, oldest `updated_at` first.
+The active queue contains only `PENDING_REVIEW`; the unfiltered queue pages oldest `updated_at` first. Site, collector and history views page by document ID (no extra composite index) and sort the loaded records on screen.
 Reviewers inspect the immutable current revision and send its
 `expectedRevisionId`. Approve moves to `APPROVED`; Request Correction requires a
 reason and moves to `NEEDS_CORRECTION`; Reject requires a reason and moves to
