@@ -48,7 +48,7 @@ export async function resolveReviewerGate({ user, readRole, readProfile, isCurre
     }
     const profile = await readProfile();
     if (!isCurrent()) return;
-    const active = profile != null && profile.active === true && REVIEWER_ROLES.has(/** @type {string} */ (profile.role));
+    const active = profile != null && profile.active === true && profile.role === role;
     apply({ kind: active ? 'ready' : 'unauthorized', user, role });
   } catch {
     if (isCurrent()) apply({ kind: 'unauthorized', user, role });

@@ -42,6 +42,7 @@ type ApplyReviewDecision = (input: {
   decision: string | null;
   reviewerUid: string;
   reviewerRole: string;
+  reviewerDisplayName?: string | null;
   reason?: string | null;
   now?: Date;
 }) => Promise<ReviewResult>;
@@ -92,6 +93,7 @@ export async function POST(request: Request, context: { params: Promise<{ submis
   const accessProblem = reviewerAccessProblem({
     disabled: userRecord.disabled,
     claimRole: reviewerRole,
+    accessVersion: userRecord.customClaims?.access_version,
     profile: profileSnapshot.exists ? profileSnapshot.data() : null,
   });
   if (accessProblem) {
@@ -115,6 +117,7 @@ export async function POST(request: Request, context: { params: Promise<{ submis
       decision: typeof body.decision === 'string' ? body.decision : null,
       reviewerUid: decodedToken.uid,
       reviewerRole,
+      reviewerDisplayName: typeof profileSnapshot.get('display_name') === 'string' ? profileSnapshot.get('display_name') : null,
       reason: typeof body.reason === 'string' ? body.reason : null,
     });
     return NextResponse.json(result, { status: 200 });

@@ -19,6 +19,7 @@ import type { User } from 'firebase/auth';
 import { Icon, type IconName } from '@/components/icons';
 import SampleLocationMap from '@/components/SampleLocationMap';
 import ReviewActions from '@/components/ReviewActions';
+import DiscussionPanel from '@/components/DiscussionPanel';
 import {
   Badge,
   Disclosure,
@@ -594,6 +595,9 @@ export default function RecordView({ detail, user }: { detail: SubmissionDetail;
             <KV label="Collected by">{formatText(currentRevision?.data_collected_by, NOT_RECORDED)}</KV>
             <KV label="Collected at">{formatEastern(currentRevision?.collected_at, NOT_RECORDED)}</KV>
             <KV label="Weather">{formatText(currentRevision?.weather_condition, NOT_RECORDED)}</KV>
+            <KV label="Water color">{formatText(currentRevision?.water_color, NOT_RECORDED)}</KV>
+            <KV label="Flow condition">{formatText(currentRevision?.flow_condition, NOT_RECORDED)}</KV>
+            <KV label="Collection stage">{formatText(currentRevision?.collection_stage, NOT_RECORDED)}</KV>
             <KV label="Time recorded">
               {currentRevision?.time_known === false || currentRevision?.time_imputed ? (
                 <Badge tone="warning" icon="alert">
@@ -755,6 +759,7 @@ export default function RecordView({ detail, user }: { detail: SubmissionDetail;
             reviewable={submission.status === 'PENDING_REVIEW'}
             currentStatus={submission.status}
           />
+          <DiscussionPanel submissionId={submission.submission_id} revisionId={submission.current_revision_id} collectorUid={submission.collector_user_id} />
 
           <Panel title="Collector field notes" icon="notes">
             {currentRevision?.field_notes_original ? (

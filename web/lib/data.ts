@@ -16,6 +16,10 @@ import {
   getDoc,
   getDocs,
   orderBy,
+  documentId,
+  limit,
+  startAfter,
+  type QueryConstraint,
   query,
   where,
   type DocumentSnapshot,
@@ -25,11 +29,11 @@ import {
 
 import { clientDb } from './firebase-client';
 import { toDate } from './format';
+import type { QueuePage, QueueQueryOptions, ReviewerDisplayProfile } from './queue-types';
 import type {
   AttachmentDoc,
   AuditDoc,
   MeasurementDoc,
-  QueueRow,
   RevisionDoc,
   SiteDoc,
   SubmissionDetail,
@@ -65,28 +69,49 @@ async function fetchRevision(
 }
 
 /**
- * The review queue: every submission sitting in PENDING_REVIEW, oldest wait
- * first. `updated_at` is set the moment a submission enters PENDING_REVIEW, and
- * nothing in this queue has been reviewed yet, so it is the "waiting since"
- * timestamp.
+ * Bounded queue/history pages. Document-ID ordering preserves legacy records that lack dates;
+ * date sorting/filtering applies to loaded rows and the screen states that scope explicitly.
+ * Exact site/collector/status filters are applied by Firestore before pagination.
  */
-export async function fetchQueue(): Promise<QueueRow[]> {
+export async function fetchQueue(options: QueueQueryOptions = {}): Promise<QueuePage> {
   const db = clientDb();
-  const snapshot = await getDocs(
-    query(collection(db, 'submissions'), where('status', '==', 'PENDING_REVIEW'), orderBy('updated_at', 'asc')),
-  );
-
-  return Promise.all(
-    snapshot.docs.map(async (submissionSnapshot) => {
-      const raw = { ...(submissionSnapshot.data() as object) } as SubmissionDoc;
-      const submission = { ...raw, submission_id: raw.submission_id ?? submissionSnapshot.id };
-      const [site, currentRevision] = await Promise.all([
-        fetchSite(db, submission.site_id),
-        fetchRevision(db, submission.submission_id, submission.current_revision_id),
-      ]);
-      return { submission, site, currentRevision };
-    }),
-  );
+  const pageSize = Number.isInteger(options.pageSize) ? Math.max(1, Math.min(100, options.pageSize!)) : 100;
+  const constraints: QueryConstraint[] = [];
+  const status = options.mode !== 'history' ? 'PENDING_REVIEW' : options.status;
+  if (status) constraints.push(where('status', '==', status));
+  if (options.siteId?.trim()) constraints.push(where('site_id', '==', options.siteId.trim()));
+  if (options.collectorUid?.trim()) constraints.push(where('collector_user_id', '==', options.collectorUid.trim()));
+  constraints.push(orderBy(documentId(), 'asc'));
+  if (options.cursor) constraints.push(startAfter(options.cursor));
+  constraints.push(limit(pageSize + 1));
+  const snapshot = await getDocs(query(collection(db, 'submissions'), ...constraints));
+  const selected = snapshot.docs.slice(0, pageSize);
+  const sites = new Map<string, Promise<SiteDoc | null>>();
+  const profiles = new Map<string, Promise<ReviewerDisplayProfile | null>>();
+  async function collectorProfile(uid: string): Promise<ReviewerDisplayProfile | null> {
+    if (!uid) return null;
+    try {
+      const profile = docData<ReviewerDisplayProfile>(await getDoc(doc(db, 'reviewerDisplayProfiles', uid)));
+      return profile?.identity_verified === true && profile.uid === uid && typeof profile.display_name === 'string' && profile.display_name.trim()
+        ? profile : null;
+    } catch {
+      // A missing/denied projection remains unavailable; never infer identity verification from a name.
+      return null;
+    }
+  }
+  const rows = await Promise.all(selected.map(async submissionSnapshot => {
+    const raw = { ...(submissionSnapshot.data() as object) } as SubmissionDoc;
+    const submission = { ...raw, submission_id: raw.submission_id ?? submissionSnapshot.id };
+    if (!sites.has(submission.site_id)) sites.set(submission.site_id, fetchSite(db, submission.site_id));
+    if (!profiles.has(submission.collector_user_id)) profiles.set(submission.collector_user_id, collectorProfile(submission.collector_user_id));
+    const [site, currentRevision, profile] = await Promise.all([
+      sites.get(submission.site_id)!,
+      fetchRevision(db, submission.submission_id, submission.current_revision_id),
+      profiles.get(submission.collector_user_id)!,
+    ]);
+    return { submission, site, currentRevision, collectorProfile: profile };
+  }));
+  return { rows, hasMore: snapshot.docs.length > pageSize, cursor: selected.at(-1) ?? null };
 }
 
 /** Everything the detail page needs, in one parallel fan-out. */

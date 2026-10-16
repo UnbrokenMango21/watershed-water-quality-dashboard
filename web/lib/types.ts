@@ -97,6 +97,9 @@ export interface RevisionDoc {
   gps_accuracy_m: Nullable<number>;
   site_distance_m: Nullable<number>;
   weather_condition: Nullable<string>;
+  water_color: Nullable<string>;
+  flow_condition: Nullable<string>;
+  collection_stage: Nullable<'DRAFT' | 'FIELD_COLLECTED' | 'LAB_PENDING' | 'LAB_COMPLETED' | 'READY_FOR_REVIEW'>;
   data_collected_by: Nullable<string>;
   test_type: Nullable<string>;
   test_type_other: Nullable<string>;

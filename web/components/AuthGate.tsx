@@ -3,15 +3,16 @@
 /**
  * Email/Password sign-in, the reviewer role gate, and the application chrome.
  *
- * There is deliberately NO signup form: reviewer accounts and the `role` custom
- * claim are provisioned server-side.
+ * Registration creates an ordinary Firebase account. Reviewer membership remains
+ * server-owned and requires a separate verified request and administrator decision.
  *
  * IMPORTANT: this gate is a UX affordance, not the security boundary. Reads are
  * actually enforced by firebase/firestore.rules and writes by the API route's own
  * Admin-SDK token verification. Hiding the UI proves nothing on its own.
  */
 import { createContext, useCallback, useContext, useEffect, useState, type FormEvent, type ReactNode } from 'react';
-import { onAuthStateChanged, sendPasswordResetEmail, signInWithEmailAndPassword, signOut, type User } from 'firebase/auth';
+import { createUserWithEmailAndPassword, onIdTokenChanged, sendEmailVerification, sendPasswordResetEmail, signInWithEmailAndPassword, signOut, type User } from 'firebase/auth';
+import AccountAccessPanel from '@/components/AccountAccessPanel';
 
 import { Icon } from '@/components/icons';
 import { Notice } from '@/components/ui';
@@ -48,6 +49,13 @@ function friendlyAuthError(error: unknown): string {
   switch (code) {
     case 'auth/invalid-email':
       return 'That email address is not valid.';
+    case 'auth/email-already-in-use':
+    case 'auth/account-exists-with-different-credential':
+      return 'Use your existing account to sign in or recover access. Link another provider only after signing in.';
+    case 'auth/weak-password':
+      return 'Choose a stronger password with at least 8 characters.';
+    case 'auth/operation-not-allowed':
+      return 'This sign-in method is not enabled. Contact the program administrator.';
     case 'auth/invalid-credential':
     case 'auth/wrong-password':
     case 'auth/user-not-found':
@@ -87,9 +95,12 @@ function AppBar({ session }: { session: ReviewerSession | null }) {
       </a>
 
       <div className="appbar-spacer" />
+      {process.env.NEXT_PUBLIC_USE_FIREBASE_EMULATORS === 'true' && <span className="count-chip">Local emulator · test records</span>}
 
       {session ? (
         <div className="appbar-actions">
+          <a className="btn" href="/my-observations">My observations</a>
+          {session.role === 'ADMIN' && <a className="btn" href="/admin/access">Access requests</a>}
           <a className="icon-btn" href="/help" aria-label="Reviewer help" data-tooltip="Reviewer help">
             <Icon name="help" size={17} />
           </a>
@@ -98,7 +109,7 @@ function AppBar({ session }: { session: ReviewerSession | null }) {
               {initials(session)}
             </span>
             <span className="user-chip-text">
-              <strong>{session.user.email ?? session.user.uid}</strong>
+              <strong>{session.user.displayName ?? session.user.email ?? session.user.uid}</strong>
               <span>
                 <span className="sr-only">Role: </span>
                 {session.role === 'ADMIN' ? 'Administrator' : session.role === 'QC_REVIEWER' ? 'QC reviewer' : session.role}
@@ -115,7 +126,7 @@ function AppBar({ session }: { session: ReviewerSession | null }) {
   );
 }
 
-export default function AuthGate({ children }: { children: ReactNode }) {
+export default function AuthGate({ children, allowCollector = false }: { children: ReactNode; allowCollector?: boolean }) {
   const [state, setState] = useState<GateState>({ kind: 'loading' });
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -123,6 +134,7 @@ export default function AuthGate({ children }: { children: ReactNode }) {
   const [formError, setFormError] = useState<string | null>(null);
   const [resetMessage, setResetMessage] = useState<string | null>(null);
   const [sendingReset, setSendingReset] = useState(false);
+  const [registering, setRegistering] = useState(false);
 
   async function handlePasswordReset() {
     setFormError(null); setResetMessage(null); setSendingReset(true);
@@ -149,7 +161,7 @@ export default function AuthGate({ children }: { children: ReactNode }) {
     // Each auth event starts a new generation; a lookup for an earlier user or a signed-out session
     // never applies after a later event has been handled.
     const sequence = createAuthSequence();
-    const unsubscribe = onAuthStateChanged(clientAuth(), (user) => {
+    const unsubscribe = onIdTokenChanged(clientAuth(), (user) => {
       const isCurrent = sequence.begin();
       if (!user) {
         setState({ kind: 'signed-out' });
@@ -162,6 +174,8 @@ export default function AuthGate({ children }: { children: ReactNode }) {
         readRole: async () => (await user.getIdTokenResult()).claims.role,
         readProfile: async () => {
           const profile = await getDoc(doc(clientDb(), 'users', user.uid));
+          const token = await user.getIdTokenResult();
+          if (profile.get('access_version') && profile.get('access_version') !== token.claims.access_version) return null;
           return profile.exists() ? { active: profile.get('active'), role: profile.get('role') } : null;
         },
         isCurrent,
@@ -180,7 +194,10 @@ export default function AuthGate({ children }: { children: ReactNode }) {
       setFormError(null);
       setSigningIn(true);
       try {
-        await signInWithEmailAndPassword(clientAuth(), email.trim(), password);
+        if (registering) {
+          const credential = await createUserWithEmailAndPassword(clientAuth(), email.trim(), password);
+          await sendEmailVerification(credential.user);
+        } else await signInWithEmailAndPassword(clientAuth(), email.trim(), password);
         // onAuthStateChanged drives the transition from here.
       } catch (error) {
         setFormError(friendlyAuthError(error));
@@ -188,7 +205,7 @@ export default function AuthGate({ children }: { children: ReactNode }) {
         setSigningIn(false);
       }
     },
-    [email, password],
+    [email, password, registering],
   );
 
   if (state.kind === 'loading') {
@@ -226,10 +243,10 @@ export default function AuthGate({ children }: { children: ReactNode }) {
               <Icon name="shield" size={13} strokeWidth={2} />
               Scientific review workspace
             </p>
-            <h1>Reviewer sign-in</h1>
+            <h1>{registering ? 'Create your account' : 'Reviewer sign-in'}</h1>
             <p className="muted">
               Review submitted watershed observations, validation results, and revision history. Access is limited to
-              administrator-provisioned reviewers.
+              approved reviewers. New accounts start with collector access; supervisor access requires administrator approval.
             </p>
 
             {formError ? (
@@ -255,16 +272,21 @@ export default function AuthGate({ children }: { children: ReactNode }) {
                 <input
                   type="password"
                   name="password"
-                  autoComplete="current-password"
+                  autoComplete={registering ? 'new-password' : 'current-password'}
                   required
+                  minLength={registering ? 8 : undefined}
                   value={password}
                   onChange={(event) => setPassword(event.target.value)}
                 />
               </label>
               <button type="submit" className="btn btn-primary btn-lg" disabled={signingIn || !email.trim() || !password}>
-                {signingIn ? 'Signing in…' : 'Sign in'}
+                {signingIn ? 'Please wait…' : registering ? 'Create account' : 'Sign in'}
               </button>
             </form>
+
+            <button type="button" className="btn" disabled={signingIn} onClick={() => { setRegistering(value => !value); setFormError(null); }}>
+              {registering ? 'Already registered? Sign in' : 'Create a collector account'}
+            </button>
 
             <button type="button" className="btn" disabled={sendingReset || signingIn || !email.trim()} onClick={() => void handlePasswordReset()}>
               {sendingReset ? 'Sending reset link…' : 'Set or reset password'}
@@ -274,7 +296,7 @@ export default function AuthGate({ children }: { children: ReactNode }) {
             <p className="auth-foot">
               <Icon name="info" size={14} />
               <span>
-                Accounts are created by the program administrator. <a href="/help">How reviewing works</a>
+                Use the same account as your collector app. <a href="/help">How reviewing works</a>
               </span>
             </p>
           </div>
@@ -283,25 +305,12 @@ export default function AuthGate({ children }: { children: ReactNode }) {
     );
   }
 
-  if (state.kind === 'unauthorized') {
+  if (state.kind === 'unauthorized' && !allowCollector) {
     return (
       <div className="app">
         <AppBar session={{ user: state.user, role: state.role }} />
         <div className="auth-wrap">
-          <div className="state-card">
-            <h1>Not authorized</h1>
-            <p>Your account does not have reviewer access.</p>
-            <p className="muted">
-              Signed in as {state.user.email ?? state.user.uid}. Ask an administrator to verify your access, then sign
-              out and back in.
-            </p>
-            <p style={{ marginTop: 18 }}>
-              <button type="button" className="btn" onClick={() => void signOut(clientAuth())}>
-                <Icon name="logOut" size={15} />
-                Sign out
-              </button>
-            </p>
-          </div>
+          <AccountAccessPanel user={state.user} refresh={async () => { await state.user.reload(); await state.user.getIdToken(true); }} />
         </div>
       </div>
     );

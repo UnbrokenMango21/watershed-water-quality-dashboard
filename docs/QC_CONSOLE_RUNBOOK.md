@@ -74,15 +74,23 @@ unless both Auth and Firestore emulator hosts are set. They create/use
 emulator-only `COLLECTOR`, `QC_REVIEWER`, and `ADMIN` identities so security
 tests continue to prove role separation without polluting live Firebase Auth.
 
-`ensure_dev_admin.mjs --apply` is the guarded live-dev repair path for the one
-persistent human account. It preserves the existing UID, sets the `ADMIN` claim,
-ensures `users/{uid}` is active with role `ADMIN`, and revokes stale sessions.
-It never creates or changes a password.
+`ensure_dev_admin.mjs` defaults to dry-run and supports only the designated
+administrator and supervisor. Apply requires verified Firebase email/provider ownership,
+an independently confirmed existing UID, a specific role-grant confirmation and a private
+verification/approval reference. It cannot create accounts, change passwords or reactivate
+a suspended identity. Privilege grants still require the specific operator approval gate.
 
-`cleanup_dev_auth_users.mjs` is destructive and dry-runs by default. It deletes
-Firebase Auth identities only; it deliberately leaves historical Firestore user
-profiles, submissions, revisions, audit rows, and stored UIDs untouched. Apply
-requires the explicit confirmation flag printed by the dry run.
+`audit_auth_accounts.mjs` is read-only and inventories all Auth accounts and Firestore UID
+references. Reports stay in ignored `artifacts/identity/` with mode `0600`; stdout contains
+counts only. `--firebase-cli-credentials` can reuse the existing CLI operator session in
+memory when ADC is unavailable. Never print `firebase login:list --json` or credential stores.
+
+`cleanup_dev_auth_users.mjs` has no deletion path. It can disable only explicit, reviewed,
+history-free fixtures from a fresh complete private inventory and approval manifest. Both
+designated identities, unknown users and historical attribution are protected. The former
+blanket delete-all-except-admin flags are refused. See
+[`IDENTITY_ACCOUNT_AUDIT_2026-10-15.md`](IDENTITY_ACCOUNT_AUDIT_2026-10-15.md) for the
+verified inventory, identity-verification gate and manifest format.
 
 The site script can seed controlled `TEST-*` catalog fixtures where needed.
 Those fixtures and emulator smoke submissions are test data, not public
