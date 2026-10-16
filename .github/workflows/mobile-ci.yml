@@ -9,6 +9,7 @@ on:
       - 'config/**'
       - 'firebase/**'
       - 'functions/**'
+      - 'profile/**'
       - 'tests/**'
       - 'validation/**'
       - 'scripts/**'
@@ -57,6 +58,8 @@ jobs:
         run: npx firebase emulators:exec --project central-pa-watershed-dev --only firestore,functions "npm run test:trigger"
       - name: QC reviewer action and lifecycle integration
         run: npx firebase emulators:exec --project central-pa-watershed-dev --only firestore "npm run test:review"
+      - name: Membership, reviewer access, coordinate proposal and discussion integration
+        run: npx firebase emulators:exec --project central-pa-watershed-dev --only firestore,auth "npm run test:profile"
 
   web:
     name: QC reviewer web app
