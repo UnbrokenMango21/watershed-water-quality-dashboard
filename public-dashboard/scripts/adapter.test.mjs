@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { ArcgisDashboardDataSource, parameterFields } from '../lib/data/ArcgisDashboardDataSource.ts';
-import { createWatershedLookup } from '../lib/geography/watershedContext.ts';
+import { createRemoteWatershedLookup, createWatershedLookup, LOCAL_OUTLINE_LAYER_URL, parseWatershedLookup, REGIONAL_OUTLINE_LAYER_URL } from '../lib/geography/watershedContext.ts';
 
 const schema = JSON.parse(readFileSync(new URL('../../config/arcgis_publication_schema.json', import.meta.url)));
 const kinds = ['sites', 'observations', 'measurements', 'latest'];
@@ -187,4 +187,31 @@ test('production public sites become map markers without demo mode, and an empty
   assert.deepEqual(siteMarkerAttributes(empty, () => 'Reviewed'), []);
   const mapSource = readFileSync(new URL('../components/dashboard/useDashboardMap.ts', import.meta.url), 'utf8');
   assert.ok(!/demoMode/.test(mapSource), 'site plotting must not depend on demo mode');
+});
+
+test('browser watershed lookups use the same-origin route, validate responses strictly and never cache failures', async () => {
+  // Map outlines come from CORS-enabled Esri copies of the USGS WBD; identification never calls USGS from the browser.
+  for (const url of [REGIONAL_OUTLINE_LAYER_URL, LOCAL_OUTLINE_LAYER_URL]) assert.match(url, /^https:\/\/services\.arcgis\.com\/.+\/FeatureServer\/0$/);
+  const calls = [];
+  let reply = { status: 'found', level: 12, sourceUrl: 'https://hydro.nationalmap.gov/arcgis/rest/services/wbd/MapServer/6', checkedAt: '2026-10-16T12:00:00.000Z',
+    huc: '020502040102', name: 'Slab Cabin Run', polygon: { rings: [[[-77.9, 40.7], [-77.8, 40.7], [-77.8, 40.8], [-77.9, 40.7]]], spatialReference: { wkid: 4326 } } };
+  const lookup = createRemoteWatershedLookup(async (input, options) => {
+    calls.push({ input, options });
+    if (reply instanceof Error) throw reply;
+    return { ok: true, json: async () => reply };
+  }, () => Date.parse('2026-10-16T12:00:00Z'));
+  const found = await lookup(12, -77.86, 40.7934);
+  assert.equal(found.status, 'found'); assert.equal(found.huc, '020502040102'); assert.ok(found.polygon);
+  assert.equal(calls[0].input, '/api/watershed?level=12&x=-77.86&y=40.7934');
+  assert.equal(calls[0].options.credentials, 'omit');
+  await lookup(12, -77.86, 40.7934);
+  assert.equal(calls.length, 1, 'successful lookups are cached per exact coordinates');
+  for (const bad of [{ ...reply, level: 10 }, { ...reply, huc: '0205' }, { ...reply, sourceUrl: 'http://example.test' },
+    { ...reply, polygon: { rings: [[[999, 40]]], spatialReference: { wkid: 4326 } } }, { status: 'mystery' }]) {
+    assert.equal(parseWatershedLookup(bad, 12), null, JSON.stringify(bad));
+  }
+  reply = new Error('offline');
+  assert.equal((await lookup(10, -77.86, 40.7934)).status, 'error');
+  assert.equal((await lookup(10, -77.86, 40.7934)).status, 'error');
+  assert.equal(calls.length, 3, 'errors are not cached, so Retry issues a real request');
 });

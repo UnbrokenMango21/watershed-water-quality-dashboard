@@ -5,7 +5,7 @@ import type { DashboardSite, LatestSiteCondition } from "@/lib/data/DashboardDat
 import { completenessFor, completenessLabel } from "./dashboard-utils";
 import { registerArcgisComponents } from "./registerArcgisComponents";
 import { siteMarkerAttributes } from "./siteMarkers";
-import { HUC8_LAYER_URL, HUC12_LAYER_URL, lookupWatershed, type WatershedLookup } from "@/lib/geography/watershedContext";
+import { LOCAL_OUTLINE_LAYER_URL, REGIONAL_OUTLINE_LAYER_URL, lookupWatershed, type WatershedLookup } from "@/lib/geography/watershedContext";
 
 // Public, keyless Esri context layers. Order of emphasis, bottom to top: a quiet background, streams,
 // restrained place names, watershed outlines only where they help, then the monitoring sites.
@@ -223,7 +223,7 @@ export function useDashboardMap({
 
         // Public USGS/Esri Watershed Boundary Dataset reference geography, independent of monitoring data.
         const regionalWatersheds = new FeatureLayer({
-          url: HUC8_LAYER_URL,
+          url: REGIONAL_OUTLINE_LAYER_URL,
           title: "Larger watersheds",
           definitionExpression: "states LIKE '%PA%'",
           outFields: ["huc8", "name"],
@@ -236,7 +236,7 @@ export function useDashboardMap({
           }),
         });
         const watershedLayer = new FeatureLayer({
-          url: HUC12_LAYER_URL,
+          url: LOCAL_OUTLINE_LAYER_URL,
           title: "Watersheds (USGS HUC12)",
           definitionExpression: "states LIKE '%PA%'",
           outFields: ["huc12", "name", "states"],

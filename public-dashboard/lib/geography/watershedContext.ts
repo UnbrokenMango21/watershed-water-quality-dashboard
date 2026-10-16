@@ -7,10 +7,16 @@ function publicReferenceUrl(value: string): string {
       && /\/(FeatureServer|MapServer)\/\d+$/.test(url.pathname) ? value : "";
   } catch { return ""; }
 }
-export const HUC8_LAYER_URL = "https://hydro.nationalmap.gov/arcgis/rest/services/wbd/MapServer/4";
-export const HUC12_LAYER_URL = publicReferenceUrl(process.env.NEXT_PUBLIC_ARCGIS_WATERSHEDS_VIEW_URL
-  || "https://hydro.nationalmap.gov/arcgis/rest/services/wbd/MapServer/6");
+// Map outlines: Esri Living Atlas copies of the USGS Watershed Boundary Dataset. They allow browser
+// (CORS) access, which hydro.nationalmap.gov does not reliably provide for map layers.
+export const REGIONAL_OUTLINE_LAYER_URL = "https://services.arcgis.com/P3ePLMYs2RVChkJx/arcgis/rest/services/Watershed_Boundary_Dataset_HUC_8s/FeatureServer/0";
+export const LOCAL_OUTLINE_LAYER_URL = publicReferenceUrl(process.env.NEXT_PUBLIC_ARCGIS_WATERSHEDS_VIEW_URL
+  || "https://services.arcgis.com/P3ePLMYs2RVChkJx/arcgis/rest/services/Watershed_Boundary_Dataset_HUC_12s/FeatureServer/0");
+// Selected-site identification: the authoritative USGS service, queried server-side only
+// (app/api/watershed), so browser CORS behaviour can never break it.
 const HUC10_LAYER_URL = "https://hydro.nationalmap.gov/arcgis/rest/services/wbd/MapServer/5";
+const HUC12_LAYER_URL = "https://hydro.nationalmap.gov/arcgis/rest/services/wbd/MapServer/6";
+const USGS_WBD_URL = "https://www.usgs.gov/national-hydrography/watershed-boundary-dataset";
 export type WatershedLevel = 10 | 12;
 export type WatershedPolygon = { rings: number[][][]; spatialReference: { wkid: number } };
 export type WatershedLookup = {
@@ -42,7 +48,7 @@ export function createWatershedLookup(fetcher: Fetcher = fetch, now: () => numbe
     if (cache.size >= MAX_CACHE_ENTRIES) cache.delete(cache.keys().next().value!);
 
     async function load(): Promise<WatershedLookup> {
-      const context = { level, sourceUrl: sourceUrl || "https://www.usgs.gov/national-hydrography/watershed-boundary-dataset", checkedAt: new Date(now()).toISOString() };
+      const context = { level, sourceUrl: sourceUrl || USGS_WBD_URL, checkedAt: new Date(now()).toISOString() };
       try {
         const base = new URL(sourceUrl);
         if (base.protocol !== "https:" || base.username || base.password || base.search || base.hash
@@ -108,4 +114,51 @@ export function createWatershedLookup(fetcher: Fetcher = fetch, now: () => numbe
   };
 }
 
-export const lookupWatershed = createWatershedLookup();
+/** Accepts only a well-formed lookup for the requested level; anything else is reported as an error. */
+export function parseWatershedLookup(value: unknown, level: WatershedLevel): WatershedLookup | null {
+  if (!value || typeof value !== "object") return null;
+  const v = value as Record<string, unknown>;
+  if (!["found", "unmapped", "ambiguous", "error"].includes(String(v.status)) || v.level !== level
+    || typeof v.sourceUrl !== "string" || !/^https:\/\//.test(v.sourceUrl) || typeof v.checkedAt !== "string") return null;
+  const result: WatershedLookup = { status: v.status as WatershedLookup["status"], level, sourceUrl: v.sourceUrl, checkedAt: v.checkedAt };
+  if (typeof v.dataLastEditedAt === "string") result.dataLastEditedAt = v.dataLastEditedAt;
+  if (result.status !== "found") return result;
+  if (typeof v.huc !== "string" || !new RegExp(`^\\d{${level}}$`).test(v.huc) || typeof v.name !== "string" || !v.name.trim()) return null;
+  result.huc = v.huc; result.name = v.name;
+  const polygon = v.polygon as WatershedPolygon | undefined;
+  if (polygon !== undefined) {
+    const valid = level === 12 && polygon?.spatialReference?.wkid === 4326 && Array.isArray(polygon.rings) && polygon.rings.length > 0
+      && polygon.rings.every(ring => Array.isArray(ring) && ring.length >= 4 && ring.every(point => Array.isArray(point)
+        && Number.isFinite(point[0]) && Math.abs(point[0]) <= 180 && Number.isFinite(point[1]) && Math.abs(point[1]) <= 90));
+    if (!valid) return null;
+    result.polygon = polygon;
+  }
+  return result;
+}
+
+/** Browser lookups go through the dashboard's own route; errors are not cached so Retry re-queries. */
+export function createRemoteWatershedLookup(fetcher: Fetcher = fetch, now: () => number = Date.now, endpoint = "/api/watershed") {
+  const cache = new Map<string, Entry>();
+  return function lookup(level: WatershedLevel, longitude: number, latitude: number): Promise<WatershedLookup> {
+    const key = `${level}:${longitude}:${latitude}`;
+    const cached = cache.get(key);
+    if (cached && cached.expires > now()) return cached.result;
+    cache.delete(key);
+    if (cache.size >= MAX_CACHE_ENTRIES) cache.delete(cache.keys().next().value!);
+    const failure = (): WatershedLookup => ({ status: "error", level, sourceUrl: level === 10 ? HUC10_LAYER_URL : HUC12_LAYER_URL, checkedAt: new Date(now()).toISOString() });
+    const result = (async () => {
+      try {
+        const query = new URLSearchParams({ level: String(level), x: String(longitude), y: String(latitude) });
+        const response = await fetcher(`${endpoint}?${query}`, { credentials: "omit", signal: AbortSignal.timeout(20000) });
+        return (response.ok && parseWatershedLookup(await response.json(), level)) || failure();
+      } catch { return failure(); }
+    })().then(value => {
+      if (value.status === "error") cache.delete(key);
+      return value;
+    });
+    cache.set(key, { expires: now() + CACHE_MS, result });
+    return result;
+  };
+}
+
+export const lookupWatershed = createRemoteWatershedLookup();
