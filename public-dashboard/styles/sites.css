@@ -11,6 +11,11 @@
 .site-search-input { width: 100%; min-width: 0; height: 36px; border: 0; outline: 0; padding: 0 32px 0 0; background: transparent; color: var(--ink); font-size: 13px; }
 .site-search-input::placeholder { color: var(--muted); opacity: .85; }
 .site-search-input:disabled { cursor: not-allowed; color: var(--muted); }
+.site-filter { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; margin: 0 12px 10px; }
+.site-filter-label { flex: none; color: var(--muted); font-size: 12px; font-weight: 600; }
+.site-filter-select { flex: 1; min-width: 0; height: 36px; padding: 0 8px; border: 1px solid var(--line-input); border-radius: var(--radius-sm); background: var(--surface-field); color: var(--ink); font-size: 13px; }
+.site-filter-select:focus-visible { outline: 0; border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.site-filter-select:disabled { cursor: not-allowed; color: var(--muted); background: var(--surface-soft); }
 .search-clear { position: absolute; right: 3px; width: 30px; height: 30px; border: 0; border-radius: var(--radius-sm); display: grid; place-items: center; background: transparent; color: var(--muted); cursor: pointer; }
 .search-clear:hover { background: var(--surface-raised); color: var(--ink); }
 .site-list { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; border-top: 1px solid var(--line-soft); }

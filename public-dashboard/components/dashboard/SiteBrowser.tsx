@@ -11,13 +11,18 @@ export function SiteBrowser(props: {
   selectedSiteId: string | null;
   hoveredSiteId: string | null;
   search: string;
+  watershedFilter: string;
+  watershedOptions: string[];
+  hasUnassignedWatershed: boolean;
   loading: boolean;
   productionDataConfigured: boolean;
   onSearch: (value: string) => void;
+  onWatershedFilter: (value: string) => void;
   onSelect: (siteId: string) => void;
   onHover: (siteId: string | null) => void;
 }) {
-  const { sites, filteredSites, conditions, selectedSiteId, hoveredSiteId, search, loading, productionDataConfigured, onSearch, onSelect, onHover } = props;
+  const { sites, filteredSites, conditions, selectedSiteId, hoveredSiteId, search, watershedFilter, watershedOptions, hasUnassignedWatershed, loading, productionDataConfigured, onSearch, onWatershedFilter, onSelect, onHover } = props;
+  const filtersActive = Boolean(search || watershedFilter);
   const sourceUnavailable = !loading && sites.length === 0 && !productionDataConfigured;
 
   return (
@@ -34,7 +39,7 @@ export function SiteBrowser(props: {
         <input
           className="site-search-input"
           type="search"
-          placeholder="Search sites, county, or stream"
+          placeholder="Search sites, county, or watershed"
           value={search}
           onChange={(event) => onSearch(event.target.value)}
           disabled={loading || sites.length === 0}
@@ -42,6 +47,24 @@ export function SiteBrowser(props: {
         />
         {search && <button type="button" className="search-clear" aria-label="Clear site search" onClick={() => onSearch("")}><CalciteIcon icon="x" label="Clear search" /></button>}
       </label>
+
+      {/* Watershed names come from each approved public site record; stream filtering needs an
+          authoritative stream attribute that the public views do not carry yet. */}
+      {(watershedOptions.length > 1 || (watershedOptions.length > 0 && hasUnassignedWatershed)) && (
+        <label className="site-filter">
+          <span className="site-filter-label">Watershed</span>
+          <select
+            className="site-filter-select"
+            value={watershedFilter}
+            onChange={(event) => onWatershedFilter(event.target.value)}
+            disabled={loading || sites.length === 0}
+          >
+            <option value="">All watersheds</option>
+            {watershedOptions.map((name) => <option key={name} value={name}>{name}</option>)}
+            {hasUnassignedWatershed && <option value="__none__">Watershed not recorded</option>}
+          </select>
+        </label>
+      )}
 
       <div className="site-list" aria-label="Monitoring site list">
         {loading ? (
@@ -51,7 +74,7 @@ export function SiteBrowser(props: {
         ) : sites.length === 0 ? (
           <div className="empty-panel compact" role="status"><strong>No monitoring sites available</strong><span>The connected public source returned no monitoring sites.</span></div>
         ) : filteredSites.length === 0 ? (
-          <div className="empty-panel compact" role="status"><strong>No matching sites</strong><span>Try a different name, county, stream, or site ID.</span><button type="button" className="text-action" onClick={() => onSearch("")}>Clear search</button></div>
+          <div className="empty-panel compact" role="status"><strong>No matching sites</strong><span>Try a different name, county, watershed, or site ID.</span>{filtersActive && <button type="button" className="text-action" onClick={() => { onSearch(""); onWatershedFilter(""); }}>Clear filters</button>}</div>
         ) : filteredSites.map((site) => (
           <SiteRow
             key={site.id}

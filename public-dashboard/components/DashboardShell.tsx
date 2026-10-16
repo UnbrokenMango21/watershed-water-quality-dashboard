@@ -13,6 +13,7 @@ import { SiteDetail } from "./dashboard/SiteDetail";
 import { CalciteIcon, formatShortDate, parameterDefinitions, rangeStart, type MobileView, type RangeName } from "./dashboard/dashboard-utils";
 
 type DataSubview = "readings" | "series";
+const NO_WATERSHED = "__none__";
 
 export function DashboardShell() {
   const [activeRange, setActiveRange] = useState<RangeName>("90D");
@@ -23,6 +24,8 @@ export function DashboardShell() {
   const [hoveredSiteId, setHoveredSiteId] = useState<string | null>(null);
   const [series, setSeries] = useState<DashboardObservationSeriesPoint[]>([]);
   const [search, setSearch] = useState("");
+  // "" = every watershed; NO_WATERSHED = sites whose public record names no watershed.
+  const [watershedFilter, setWatershedFilter] = useState("");
   const [loadingSites, setLoadingSites] = useState(true);
   const [mobileView, setMobileView] = useState<MobileView>("map");
   const [dataSubview, setDataSubview] = useState<DataSubview>("readings");
@@ -71,11 +74,17 @@ export function DashboardShell() {
     return () => { cancelled = true; };
   }, [source, productionDataConfigured, retry]);
 
+  const watershedOptions = useMemo(() => [...new Set(sites.map((site) => site.watershed?.trim()).filter((name): name is string => Boolean(name)))]
+    .sort((a, b) => a.localeCompare(b)), [sites]);
+  const hasUnassignedWatershed = useMemo(() => sites.some((site) => !site.watershed?.trim()), [sites]);
   const filteredSites = useMemo(() => {
     const needle = search.trim().toLowerCase();
-    if (!needle) return sites;
-    return sites.filter((site) => [site.name, site.code, site.county, site.watershed, site.siteType].filter(Boolean).some((value) => String(value).toLowerCase().includes(needle)));
-  }, [search, sites]);
+    return sites.filter((site) => {
+      const watershed = site.watershed?.trim() ?? "";
+      if (watershedFilter === NO_WATERSHED ? watershed !== "" : watershedFilter !== "" && watershed !== watershedFilter) return false;
+      return !needle || [site.name, site.code, site.county, site.watershed, site.siteType].filter(Boolean).some((value) => String(value).toLowerCase().includes(needle));
+    });
+  }, [search, sites, watershedFilter]);
   const selectedSite = useMemo(() => sites.find((site) => site.id === selectedSiteId) ?? null, [selectedSiteId, sites]);
   const hoveredSite = useMemo(() => sites.find((site) => site.id === hoveredSiteId) ?? null, [hoveredSiteId, sites]);
   const selectedCondition = selectedSiteId ? conditions[selectedSiteId] ?? null : null;
@@ -174,9 +183,13 @@ export function DashboardShell() {
           selectedSiteId={selectedSiteId}
           hoveredSiteId={hoveredSiteId}
           search={search}
+          watershedFilter={watershedFilter}
+          watershedOptions={watershedOptions}
+          hasUnassignedWatershed={hasUnassignedWatershed}
           loading={loadingSites}
           productionDataConfigured={Boolean(source) && !dataError}
           onSearch={setSearch}
+          onWatershedFilter={setWatershedFilter}
           onSelect={handleSelectFromList}
           onHover={handleHover}
         />
