@@ -280,3 +280,184 @@ final class ProductContractTests: XCTestCase {
         return draft
     }
 }
+
+/// Site coordinate proposals, discussion presentation and callable parsing (supervisor directive 2.6).
+@MainActor
+final class SupervisorFeedbackContractTests: XCTestCase {
+    // MARK: Coordinate proposals
+
+    func testNewSiteProposalPayloadMatchesTheCallableContract() throws {
+        let submission = try SiteProposalSubmission.make(
+            kind: .newSite, siteID: "ignored-site", proposedSiteName: "  Spring   Creek\nbelow the mill ",
+            latitude: 40.79, longitude: -77.86, accuracyMeters: 6.5, reason: "Regular\nsampling   point not in the list"
+        )
+        let id = try XCTUnwrap(UUID(uuidString: "6F1B5C1A-8E7D-4F3B-9A2C-1D2E3F405162"))
+        let payload = submission.payload(proposalID: id)
+        XCTAssertEqual(Set(payload.keys), ["proposalId", "kind", "latitude", "longitude", "gpsAccuracyM", "reason", "proposedSiteName"])
+        XCTAssertEqual(payload["proposalId"] as? String, "6f1b5c1a-8e7d-4f3b-9a2c-1d2e3f405162")
+        XCTAssertEqual(payload["kind"] as? String, "NEW_SITE")
+        XCTAssertEqual(payload["proposedSiteName"] as? String, "Spring Creek below the mill")
+        XCTAssertEqual(payload["reason"] as? String, "Regular sampling point not in the list")
+        XCTAssertEqual(payload["gpsAccuracyM"] as? Double, 6.5)
+        XCTAssertNil(payload["siteId"], "The server assigns a new site's ID")
+        let json = try XCTUnwrap(String(data: JSONSerialization.data(withJSONObject: ["data": payload]), encoding: .utf8))
+        XCTAssertFalse(json.contains("\\n"), "Line breaks are control characters the server rejects")
+    }
+
+    func testCorrectionProposalCarriesSiteAndUnknownAccuracyAsNull() throws {
+        let submission = try SiteProposalSubmission.make(
+            kind: .coordinateCorrection, siteID: "site-a", proposedSiteName: "Should not be sent",
+            latitude: 40.8, longitude: -77.9, accuracyMeters: -1, reason: "Pin is across the road"
+        )
+        let payload = submission.payload(proposalID: UUID())
+        XCTAssertEqual(payload["siteId"] as? String, "site-a")
+        XCTAssertEqual(payload["kind"] as? String, "COORDINATE_CORRECTION")
+        XCTAssertNil(payload["proposedSiteName"], "A correction never renames a site")
+        XCTAssertTrue(payload["gpsAccuracyM"] is NSNull, "Unknown accuracy is null, never zero")
+        XCTAssertNil(submission.gpsAccuracyMeters)
+    }
+
+    func testProposalValidationMirrorsServerRules() {
+        func problem(_ kind: SiteProposalKind = .newSite, site: String? = nil, name: String = "Spring Creek", latitude: Double? = 40.8, longitude: Double? = -77.9, accuracy: Double? = 5, reason: String = "Missing from list") -> String? {
+            do {
+                _ = try SiteProposalSubmission.make(kind: kind, siteID: site, proposedSiteName: name, latitude: latitude, longitude: longitude, accuracyMeters: accuracy, reason: reason)
+                return nil
+            } catch { return error.localizedDescription }
+        }
+        XCTAssertNil(problem())
+        XCTAssertNotNil(problem(name: "S"))
+        XCTAssertNotNil(problem(name: String(repeating: "x", count: 161)))
+        XCTAssertNil(problem(name: String(repeating: "x", count: 160)))
+        XCTAssertNotNil(problem(.coordinateCorrection, site: nil))
+        XCTAssertNotNil(problem(.coordinateCorrection, site: ""))
+        XCTAssertNil(problem(.coordinateCorrection, site: "site-a"))
+        XCTAssertNotNil(problem(latitude: nil))
+        XCTAssertNotNil(problem(latitude: 0, longitude: 0))
+        XCTAssertNotNil(problem(latitude: 91))
+        XCTAssertNotNil(problem(longitude: -181))
+        XCTAssertNotNil(problem(latitude: .nan))
+        XCTAssertNotNil(problem(accuracy: 100_001))
+        XCTAssertNil(problem(accuracy: nil))
+        XCTAssertNil(problem(accuracy: 0))
+        XCTAssertNotNil(problem(reason: " abc "))
+        XCTAssertNil(problem(reason: "abcde"))
+        XCTAssertNotNil(problem(reason: String(repeating: "r", count: 1001)))
+        XCTAssertNotNil(problem(reason: "Missing\u{0007} from list"))
+    }
+
+    func testProposalRetryReusesIDOnlyForTheSameProposal() throws {
+        let first = try SiteProposalSubmission.make(kind: .newSite, siteID: nil, proposedSiteName: "Spring Creek", latitude: 40.8, longitude: -77.9, accuracyMeters: 5, reason: "Missing from list")
+        let edited = try SiteProposalSubmission.make(kind: .newSite, siteID: nil, proposedSiteName: "Spring Creek", latitude: 40.8, longitude: -77.9, accuracyMeters: 5, reason: "Missing from the list")
+        var retry = SiteProposalRetry()
+        let id = retry.identifier(for: first)
+        XCTAssertEqual(retry.identifier(for: first), id)
+        let changed = retry.identifier(for: edited)
+        XCTAssertNotEqual(changed, id)
+        retry.reset()
+        XCTAssertNotEqual(retry.identifier(for: edited), changed)
+    }
+
+    func testProposalDecoderReadsOwnProposalAndComparesWithCatalog() throws {
+        let created = Timestamp(date: Date(timeIntervalSince1970: 1_760_000_000))
+        let proposal = try XCTUnwrap(SiteProposalDecoder.proposal(documentID: "p1", data: [
+            "proposal_id": "p1", "kind": "COORDINATE_CORRECTION", "site_id": "site-a",
+            "proposed_coordinates": ["latitude": 40.80, "longitude": -77.90],
+            "original_coordinates": ["latitude": 40.79, "longitude": -77.86],
+            "gps_accuracy_m": NSNull(), "reason": "Pin is across the road", "proposed_site_name": NSNull(),
+            "status": "REJECTED", "decision_reason": "The original pin matches the access point.",
+            "created_at": created, "decided_at": NSNull(), "submitted_by_uid": "collector-a",
+        ]))
+        XCTAssertEqual(proposal.status, .rejected)
+        XCTAssertNil(proposal.accuracyMeters)
+        XCTAssertEqual(proposal.decisionReason, "The original pin matches the access point.")
+        XCTAssertEqual(proposal.currentApproved(in: []), ProposalCoordinate(latitude: 40.79, longitude: -77.86))
+        let site = Site(id: "site-a", name: "Spring Creek", county: "", watershed: "", latitude: 40.795, longitude: -77.87)
+        XCTAssertEqual(proposal.currentApproved(in: [site]), ProposalCoordinate(latitude: 40.795, longitude: -77.87))
+        XCTAssertEqual(proposal.title(in: [site]), "Spring Creek")
+
+        let newSite = try XCTUnwrap(SiteProposalDecoder.proposal(documentID: "p2", data: [
+            "kind": "NEW_SITE", "site_id": "site-p2", "proposed_coordinates": ["latitude": 41.0, "longitude": -77.5],
+            "original_coordinates": NSNull(), "status": "PENDING", "proposed_site_name": "Buffalo Run", "reason": "Not listed",
+        ]))
+        XCTAssertNil(newSite.currentApproved(in: [site]), "An unapproved new site has no approved location")
+        XCTAssertEqual(newSite.title(in: []), "Buffalo Run")
+        XCTAssertNil(SiteProposalDecoder.proposal(documentID: "bad", data: ["kind": "NEW_SITE", "status": "PENDING"]))
+        XCTAssertEqual(SiteProposalDecoder.sorted([proposal, newSite]).map(\.id), ["p2", "p1"])
+        XCTAssertEqual(SiteProposalService.ownerField, "submitted_by_uid")
+    }
+
+    // MARK: Callable responses
+
+    func testCallableResponseSurfacesServerMessage() throws {
+        let failure = Data(#"{"error":{"status":"FAILED_PRECONDITION","message":"The selected monitoring site is unavailable."}}"#.utf8)
+        XCTAssertThrowsError(try CallableResponse.result(statusCode: 400, body: failure)) { error in
+            XCTAssertEqual(error as? CallableFailure, .server(status: "FAILED_PRECONDITION", message: "The selected monitoring site is unavailable."))
+            XCTAssertEqual(error.localizedDescription, "The selected monitoring site is unavailable.")
+        }
+        let success = Data(#"{"result":{"proposalId":"p1","status":"PENDING"}}"#.utf8)
+        let result = try CallableResponse.result(statusCode: 200, body: success) as? [String: Any]
+        XCTAssertEqual(result?["status"] as? String, "PENDING")
+        XCTAssertThrowsError(try CallableResponse.result(statusCode: 500, body: Data("oops".utf8))) { error in
+            XCTAssertEqual(error as? CallableFailure, .unexpectedResponse)
+        }
+    }
+
+    // MARK: Discussion
+
+    func testDiscussionKindsHaveDistinctLabelsAndIcons() {
+        let visible: [DiscussionKind] = [.collectorComment, .reviewerQuestion, .correctionRequest, .reviewDecision]
+        XCTAssertEqual(visible.map(\.title), ["Collector comment", "Reviewer question", "Request for correction", "Review decision"])
+        XCTAssertEqual(Set(visible.map(\.icon)).count, visible.count)
+        XCTAssertEqual(DiscussionKind(raw: "CORRECTION_REQUEST"), .correctionRequest)
+        XCTAssertEqual(DiscussionKind(raw: "ADMINISTRATIVE_NOTE"), .unknown)
+        XCTAssertEqual(DiscussionKind.correctionRequest.tone, .error)
+        XCTAssertEqual(DiscussionPresentation.role("QC_REVIEWER"), "QC reviewer")
+        XCTAssertEqual(DiscussionPresentation.role("COLLECTOR"), "Collector")
+        XCTAssertEqual(DiscussionPresentation.role("ADMIN"), "Administrator")
+        XCTAssertEqual(DiscussionPresentation.decision("NEEDS_CORRECTION"), "Needs Correction")
+        XCTAssertNil(DiscussionPresentation.decision(nil))
+    }
+
+    func testDiscussionRevisionContextNamesTheRevision() {
+        let first = RevisionSummary(id: UUID(), number: 1, date: .now, state: .submitted, note: "")
+        let second = RevisionSummary(id: UUID(), number: 2, date: .now, state: .resubmitted, note: "")
+        XCTAssertEqual(DiscussionPresentation.revision(first.id.uuidString.lowercased(), revisions: [first, second], currentRevisionID: second.id), "About Revision 1, earlier")
+        XCTAssertEqual(DiscussionPresentation.revision(second.id.uuidString, revisions: [first, second], currentRevisionID: second.id), "About Revision 2, current")
+        XCTAssertEqual(DiscussionPresentation.revision("unknown", revisions: [first], currentRevisionID: first.id), "About a revision not stored on this phone")
+    }
+
+    func testDiscussionMessageRequestMatchesServerRules() throws {
+        XCTAssertNotNil(DiscussionMessageRequest.problem("   "))
+        XCTAssertNil(DiscussionMessageRequest.problem("Line one\nLine two"))
+        XCTAssertNotNil(DiscussionMessageRequest.problem(String(repeating: "a", count: 4001)))
+        XCTAssertNotNil(DiscussionMessageRequest.problem(String(repeating: "😀", count: 2001)), "The server counts UTF-16 units")
+        XCTAssertNotNil(DiscussionMessageRequest.problem("bell\u{0007}"))
+        let submission = UUID(), revision = UUID(), message = UUID()
+        let payload = DiscussionMessageRequest.payload(submissionID: submission, revisionID: revision, messageID: message, text: "  Checked the sheet. ")
+        XCTAssertEqual(Set(payload.keys), ["submissionId", "revisionId", "messageId", "kind", "text"])
+        XCTAssertEqual(payload["kind"] as? String, "COLLECTOR_COMMENT")
+        XCTAssertEqual(payload["messageId"] as? String, message.uuidString.lowercased())
+        XCTAssertEqual(payload["revisionId"] as? String, revision.uuidString.lowercased())
+        XCTAssertEqual(payload["text"] as? String, "Checked the sheet.")
+    }
+
+    // MARK: Laboratory analysis
+
+    func testAnalysisDatePickerRangeStartsAtSamplingAndEndsNow() {
+        let sampled = Date(timeIntervalSince1970: 1_754_684_200)
+        let now = sampled.addingTimeInterval(3_600)
+        XCTAssertEqual(AnalysisProvenanceFields.analysisDateRange(sampledAt: sampled, now: now), sampled...now)
+        let future = now.addingTimeInterval(600)
+        XCTAssertEqual(AnalysisProvenanceFields.analysisDateRange(sampledAt: future, now: now), future...future, "Never an invalid range")
+    }
+
+    func testFieldExceptionReasonIsLimitedToTheArchiveMaximum() {
+        let draft = ObservationDraft(ownerUID: "collector-a")
+        draft.date = Date.now.addingTimeInterval(-3_600)
+        draft[valueFor: .nitrate] = "1.2"
+        draft.analysisDetails[.nitrate] = AnalysisProvenance(stage: "FIELD", method: "Field kit", instrument: "", analyzedAt: draft.date, fieldExceptionReason: String(repeating: "r", count: 1001))
+        XCTAssertNotNil(draft.measurementProblem(for: .nitrate))
+        draft.analysisDetails[.nitrate]?.fieldExceptionReason = String(repeating: "r", count: 1000)
+        XCTAssertNil(draft.measurementProblem(for: .nitrate))
+    }
+}

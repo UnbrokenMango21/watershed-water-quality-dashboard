@@ -162,7 +162,7 @@ struct ObservationDetailContent: View {
                 DetailNotesMediaSection(notes: record.notes, attachments: record.attachments)
                 RevisionHistorySection(revisions: record.revisions)
                 if record.sync == .synced {
-                    SubmissionDiscussionSection(submissionID: record.id, revisionID: record.currentRevisionID)
+                    SubmissionDiscussionSection(model: model, record: record)
                 }
             }
             .padding(.horizontal, FieldTheme.m)
@@ -550,6 +550,98 @@ struct OriginalValuePanel: View {
     }
 }
 
+/// The message kinds a collector can see. Each has its own icon and written label, so the kinds never
+/// differ by color alone. Administrative notes live in reviewer-only `internalNotes` and never appear.
+enum DiscussionKind: String, CaseIterable {
+    case collectorComment = "COLLECTOR_COMMENT"
+    case reviewerQuestion = "REVIEWER_QUESTION"
+    case correctionRequest = "CORRECTION_REQUEST"
+    case reviewDecision = "REVIEW_DECISION"
+    case unknown = "UNKNOWN"
+
+    init(raw: String) { self = DiscussionKind(rawValue: raw) ?? .unknown }
+
+    var title: String {
+        switch self {
+        case .collectorComment: String(localized: "Collector comment")
+        case .reviewerQuestion: String(localized: "Reviewer question")
+        case .correctionRequest: String(localized: "Request for correction")
+        case .reviewDecision: String(localized: "Review decision")
+        case .unknown: String(localized: "Message")
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .collectorComment: "person.crop.circle"
+        case .reviewerQuestion: "questionmark.bubble.fill"
+        case .correctionRequest: "exclamationmark.bubble.fill"
+        case .reviewDecision: "seal.fill"
+        case .unknown: "bubble.left"
+        }
+    }
+
+    var tone: StatusTone {
+        switch self {
+        case .collectorComment, .unknown: .neutral
+        case .reviewerQuestion: .info
+        case .correctionRequest: .error
+        case .reviewDecision: .warning
+        }
+    }
+}
+
+enum DiscussionPresentation {
+    static func role(_ raw: String) -> String {
+        switch raw {
+        case "COLLECTOR": String(localized: "Collector")
+        case "QC_REVIEWER": String(localized: "QC reviewer")
+        case "ADMIN": String(localized: "Administrator")
+        default: String(localized: "Program participant")
+        }
+    }
+
+    static func decision(_ raw: String?) -> String? {
+        guard let raw, !raw.isEmpty else { return nil }
+        if let state = WorkflowState.backend(raw) { return String(localized: state.title) }
+        return raw.replacingOccurrences(of: "_", with: " ").localizedCapitalized
+    }
+
+    /// Which revision a message concerns, as the collector knows it ("Revision 2, current").
+    static func revision(_ revisionID: String, revisions: [RevisionSummary], currentRevisionID: UUID) -> String {
+        guard let summary = revisions.first(where: { $0.id.uuidString.lowercased() == revisionID.lowercased() }) else {
+            return String(localized: "About a revision not stored on this phone")
+        }
+        return summary.id == currentRevisionID
+            ? String(localized: "About Revision \(summary.number), current")
+            : String(localized: "About Revision \(summary.number), earlier")
+    }
+}
+
+/// The `sendSubmissionMessage` request a collector may make, mirroring `profile/discussion.mjs`.
+enum DiscussionMessageRequest {
+    static let maximumLength = 4000
+
+    static func problem(_ text: String) -> String? {
+        let value = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if value.isEmpty { return String(localized: "Write a message before sending.") }
+        // The server counts JavaScript string length (UTF-16 code units).
+        if value.utf16.count > maximumLength { return String(localized: "Keep your message to 4,000 characters or fewer.") }
+        if value.unicodeScalars.contains(where: { ($0.value < 0x20 && ![0x09, 0x0a, 0x0d].contains($0.value)) }) {
+            return String(localized: "Remove unsupported characters from your message.")
+        }
+        return nil
+    }
+
+    static func payload(submissionID: UUID, revisionID: UUID, messageID: UUID, text: String) -> [String: Any] {
+        [
+            "submissionId": submissionID.uuidString.lowercased(), "revisionId": revisionID.uuidString.lowercased(),
+            "messageId": messageID.uuidString.lowercased(), "kind": DiscussionKind.collectorComment.rawValue,
+            "text": text.trimmingCharacters(in: .whitespacesAndNewlines),
+        ]
+    }
+}
+
 private struct DiscussionEntry: Identifiable, Sendable {
     let id: String
     let name: String
@@ -557,116 +649,229 @@ private struct DiscussionEntry: Identifiable, Sendable {
     let kind: String
     let text: String
     let revision: String
+    let decision: String?
     let date: Date?
 }
 
 /// The same private, server-owned conversation used by the QC console and collector website.
 /// Messages never edit submitted science or review state. Administrative notes are not queried.
 struct SubmissionDiscussionSection: View {
-    let submissionID: UUID
-    let revisionID: UUID
+    let model: AppModel
+    let record: ObservationRecord
     @State private var entries: [DiscussionEntry] = []
     @State private var listener: ListenerRegistration?
     @State private var loading = true
     @State private var text = ""
-    @State private var failure: String?
+    @State private var loadFailure: String?
+    @State private var sendFailure: String?
     @State private var sending = false
+    @State private var sentNotice = false
     @State private var retryID: UUID?
     @State private var retryText = ""
+    @FocusState private var messageFocused: Bool
+
+    private var canStartCorrection: Bool { record.workflow == .needsCorrection && record.sync == .synced }
 
     var body: some View {
         VStack(alignment: .leading, spacing: FieldTheme.m) {
-            FieldSectionHeader(title: "Discussion and Corrections")
-            Text("Messages stay with this sampling record. Scientific corrections create a new revision.")
-                .font(.subheadline).foregroundStyle(FieldTheme.inkMuted)
-            if loading { ProgressView("Loading discussion…") }
-            if let failure { Text(failure).font(.subheadline).foregroundStyle(.red).accessibilityAddTraits(.updatesFrequently) }
-            if !loading && entries.isEmpty && failure == nil { Text("No messages yet.").foregroundStyle(FieldTheme.inkMuted) }
-            ForEach(entries) { entry in
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(kindLabel(entry.kind)).font(.subheadline.bold())
-                    Text("\(entry.name) · \(entry.role.replacingOccurrences(of: "_", with: " ").localizedCapitalized)")
-                        .font(.caption).foregroundStyle(FieldTheme.inkMuted)
-                    if let date = entry.date { Text(date.fieldTimestamp).font(.caption).foregroundStyle(FieldTheme.inkMuted) }
-                    Text(entry.text).textSelection(.enabled)
-                    DisclosureGroup("Revision context") { Text(entry.revision).font(.caption.monospaced()).textSelection(.enabled) }
+            FieldSectionHeader(title: "Discussion and Corrections", detail: "Messages stay with this sampling record. Scientific corrections create a new revision; earlier revisions never change.")
+            if loading {
+                HStack(spacing: FieldTheme.s) {
+                    ProgressView()
+                    Text("Loading discussion").font(.subheadline).foregroundStyle(FieldTheme.inkMuted)
                 }
-                CardDivider()
+                .frame(minHeight: 44)
             }
-            TextField("Message to reviewer", text: $text, axis: .vertical)
-                .lineLimit(3...8).textFieldStyle(.roundedBorder)
-                .accessibilityIdentifier("discussion.message")
-            Button(sending ? "Sending…" : "Send Message") { Task { await send() } }
-                .buttonStyle(.borderedProminent)
-                .disabled(sending || text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || text.count > 4000)
-                .accessibilityIdentifier("discussion.send")
-            if text.count > 4000 { Text("Keep your message to 4,000 characters or fewer.").font(.caption).foregroundStyle(.red) }
+            if let loadFailure {
+                NoticeBanner(title: "Discussion Unavailable", verbatimMessage: loadFailure, systemImage: "exclamationmark.triangle.fill", tone: .error)
+            }
+            if !loading && entries.isEmpty && loadFailure == nil {
+                Text("No messages yet. Reviewer questions and correction requests appear here.")
+                    .font(.subheadline).foregroundStyle(FieldTheme.inkMuted)
+            }
+            ForEach(entries) { entry in row(for: entry) }
+            CardDivider()
+            replyComposer
         }
         .fieldCard()
         .onAppear { listen() }
         .onDisappear { listener?.remove(); listener = nil }
     }
 
-    private func kindLabel(_ value: String) -> String {
-        switch value {
-        case "COLLECTOR_COMMENT": "Collector comment"
-        case "REVIEWER_QUESTION": "Reviewer question"
-        case "CORRECTION_REQUEST": "Request for correction"
-        case "REVIEW_DECISION": "Review decision"
-        default: "Message"
+    private var replyComposer: some View {
+        VStack(alignment: .leading, spacing: FieldTheme.s) {
+            Text("Reply to reviewers").font(.subheadline.weight(.semibold)).accessibilityHidden(true)
+            TextField("Your message about Revision \(record.revision)", text: $text, axis: .vertical)
+                .lineLimit(3...8)
+                .focused($messageFocused)
+                .padding(12)
+                .fieldInput(focused: messageFocused, invalid: text.utf16.count > DiscussionMessageRequest.maximumLength, minHeight: 88)
+                .accessibilityLabel("Reply to reviewers")
+                .accessibilityIdentifier("discussion.message")
+            if text.utf16.count > DiscussionMessageRequest.maximumLength {
+                Text("Keep your message to 4,000 characters or fewer.").font(.footnote).foregroundStyle(FieldTheme.alert)
+            }
+            if model.connection != .online {
+                Text("Sending needs a connection. Your text stays here until you can send it.")
+                    .font(.footnote).foregroundStyle(FieldTheme.inkMuted)
+            }
+            if let sendFailure {
+                NoticeBanner(title: "Message Not Sent", verbatimMessage: sendFailure, systemImage: "exclamationmark.circle.fill", tone: .error)
+            } else if sentNotice {
+                Label("Message sent", systemImage: "checkmark.circle.fill")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(FieldTheme.fern)
+            }
+            InlineActionButton(
+                title: sending ? "Sending…" : "Send Message", systemImage: "paperplane.fill",
+                isEnabled: !sending && model.connection == .online && DiscussionMessageRequest.problem(text) == nil
+            ) { Task { await send() } }
+            .accessibilityIdentifier("discussion.send")
+            Text("Messages do not change your submitted values. To change data, create a correction revision when a reviewer requests one.")
+                .font(.footnote).foregroundStyle(FieldTheme.inkMuted)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
+
+    private func row(for entry: DiscussionEntry) -> DiscussionMessageRow {
+        let kind = DiscussionKind(raw: entry.kind)
+        let isCurrent = entry.revision.lowercased() == record.currentRevisionID.uuidString.lowercased()
+        var action: (() -> Void)?
+        if kind == .correctionRequest && isCurrent && canStartCorrection {
+            action = { startCorrection() }
+        }
+        return DiscussionMessageRow(
+            kind: kind, name: entry.name, role: DiscussionPresentation.role(entry.role),
+            text: entry.text, decision: DiscussionPresentation.decision(entry.decision), date: entry.date,
+            revision: DiscussionPresentation.revision(entry.revision, revisions: record.revisions, currentRevisionID: record.currentRevisionID),
+            onStartCorrection: action
+        )
+    }
+
+    private func startCorrection() {
+        if model.startCorrection(for: record) {
+            model.recentPath.append(.correction(record.id))
+        }
+    }
+
     private func listen() {
         listener?.remove()
-        listener = Firestore.firestore().collection("submissions").document(submissionID.uuidString.lowercased())
+        listener = Firestore.firestore().collection("submissions").document(record.id.uuidString.lowercased())
             .collection("messages").addSnapshotListener { snapshot, error in
                 var values: [DiscussionEntry] = []
                 for document in snapshot?.documents ?? [] {
                     let data = document.data()
-                    let name = data["sender_display_name"] as? String ?? "Program participant"
-                    let role = data["sender_role"] as? String ?? ""
-                    let kind = data["kind"] as? String ?? ""
-                    let text = data["text"] as? String ?? ""
-                    let revision = data["revision_id"] as? String ?? ""
-                    let date = (data["created_at"] as? Timestamp)?.dateValue()
-                    values.append(DiscussionEntry(id: document.documentID, name: name, role: role,
-                        kind: kind, text: text, revision: revision, date: date))
+                    values.append(DiscussionEntry(
+                        id: document.documentID,
+                        name: (data["sender_display_name"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfBlank ?? String(localized: "Program participant"),
+                        role: data["sender_role"] as? String ?? "", kind: data["kind"] as? String ?? "",
+                        text: data["text"] as? String ?? "", revision: data["revision_id"] as? String ?? "",
+                        decision: data["decision"] as? String, date: (data["created_at"] as? Timestamp)?.dateValue()
+                    ))
                 }
-                let loaded = values.sorted { ($0.date ?? .distantPast) < ($1.date ?? .distantPast) }
+                // Oldest first, as the conversation happened; a message still awaiting its server time goes last.
+                let loaded = values.sorted { ($0.date ?? .distantFuture) < ($1.date ?? .distantFuture) }
                 let unavailable = error != nil
                 Task { @MainActor in
                     loading = false
-                    if unavailable { failure = "Discussion is unavailable. Check your connection and account access." }
-                    else { entries = loaded; failure = nil }
+                    if unavailable { loadFailure = String(localized: "Discussion is unavailable. Check your connection and account access.") }
+                    else { entries = loaded; loadFailure = nil }
                 }
             }
     }
+
     @MainActor private func send() async {
-        guard let user = Auth.auth().currentUser, let projectID = FirebaseApp.app()?.options.projectID else {
-            failure = "Sign in again before sending a message."; return
+        if let problem = DiscussionMessageRequest.problem(text) { sendFailure = problem; return }
+        guard model.connection == .online else {
+            sendFailure = String(localized: "You are offline. Your message is kept here; send it when you have a connection.")
+            return
         }
-        sending = true; failure = nil
+        guard let user = Auth.auth().currentUser else { sendFailure = String(localized: "Sign in again before sending a message."); return }
+        sending = true; sendFailure = nil; sentNotice = false
         defer { sending = false }
+        // The same message ID is reused while the text is unchanged, so a retry never posts twice.
         if retryID == nil || retryText != text { retryID = UUID(); retryText = text }
-        let url = FirebaseEnvironment.usesEmulators
-            ? URL(string: "http://\(FirebaseEnvironment.emulatorHost):5001/\(projectID)/us-east4/sendSubmissionMessage")!
-            : URL(string: "https://us-east4-\(projectID).cloudfunctions.net/sendSubmissionMessage")!
+        guard let messageID = retryID else { return }
         do {
-            var request = URLRequest(url: url, timeoutInterval: 25)
-            request.httpMethod = "POST"
-            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            request.setValue("Bearer \(try await user.getIDToken())", forHTTPHeaderField: "Authorization")
-            request.httpBody = try JSONSerialization.data(withJSONObject: ["data": [
-                "submissionId": submissionID.uuidString.lowercased(), "revisionId": revisionID.uuidString.lowercased(),
-                "messageId": retryID!.uuidString.lowercased(), "kind": "COLLECTOR_COMMENT", "text": text
-            ]])
-            let (data, response) = try await URLSession.shared.data(for: request)
-            guard (response as? HTTPURLResponse)?.statusCode == 200 else {
-                let body = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-                let message = (body?["error"] as? [String: Any])?["message"] as? String
-                failure = message ?? "The message could not be sent. Your text is preserved for retry."; return
-            }
-            text = ""; retryID = nil; retryText = ""
-        } catch { failure = "The message could not be sent. Check your connection and retry; your text is preserved." }
+            try await ProfileCallable.call(
+                "sendSubmissionMessage",
+                data: DiscussionMessageRequest.payload(submissionID: record.id, revisionID: record.currentRevisionID, messageID: messageID, text: text),
+                user: user, timeout: 25
+            )
+            text = ""; retryID = nil; retryText = ""; sentNotice = true; messageFocused = false
+        } catch let failure as CallableFailure {
+            sendFailure = failure.localizedDescription
+        } catch {
+            sendFailure = String(localized: "The message could not be sent. Check your connection and retry; your text is preserved.")
+        }
     }
+}
+
+/// One message. The kind leads with an icon and written label; a correction request is set apart with
+/// an alert bar and, when it concerns the current revision, the button that starts revision N+1.
+struct DiscussionMessageRow: View {
+    let kind: DiscussionKind
+    let name: String
+    let role: String
+    let text: String
+    let decision: String?
+    let date: Date?
+    let revision: String
+    var onStartCorrection: (() -> Void)?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: FieldTheme.s) {
+            VStack(alignment: .leading, spacing: FieldTheme.s) {
+                HStack(alignment: .top, spacing: 12) {
+                    Image(systemName: kind.icon)
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(kind.tone.foreground)
+                        .frame(width: 32, height: 32)
+                        .background(kind.tone == .neutral ? FieldTheme.surface : kind.tone.background, in: RoundedRectangle(cornerRadius: FieldTheme.radiusS, style: .continuous))
+                        .accessibilityHidden(true)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(kind.title)
+                            .font(kind == .correctionRequest ? .headline : .subheadline.weight(.bold))
+                            .foregroundStyle(FieldTheme.ink)
+                        Text("\(name), \(role)").font(.footnote).foregroundStyle(FieldTheme.inkMuted)
+                        if let date {
+                            Text(date.fieldTimestamp).font(.footnote).monospacedDigit().foregroundStyle(FieldTheme.inkMuted)
+                        }
+                    }
+                    Spacer(minLength: 0)
+                }
+                if let decision {
+                    Text("Decision: \(decision)").font(.subheadline.weight(.semibold)).foregroundStyle(FieldTheme.ink)
+                }
+                Text(text)
+                    .font(.body)
+                    .foregroundStyle(FieldTheme.ink)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .textSelection(.enabled)
+                Label(revision, systemImage: "doc.text")
+                    .font(.footnote)
+                    .foregroundStyle(FieldTheme.inkMuted)
+            }
+            .accessibilityElement(children: .combine)
+            if let onStartCorrection {
+                PrimaryActionButton(title: "Create Correction Revision", systemImage: "doc.badge.plus", action: onStartCorrection)
+                    .accessibilityIdentifier("discussion.correct")
+            }
+        }
+        .padding(12)
+        .padding(.leading, kind == .correctionRequest ? 4 : 0)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(kind == .correctionRequest ? StatusTone.error.background : FieldTheme.surfaceRaised, in: RoundedRectangle(cornerRadius: FieldTheme.radiusS, style: .continuous))
+        .overlay(alignment: .leading) {
+            if kind == .correctionRequest {
+                UnevenRoundedRectangle(topLeadingRadius: FieldTheme.radiusS, bottomLeadingRadius: FieldTheme.radiusS, style: .continuous)
+                    .fill(FieldTheme.alert)
+                    .frame(width: 4)
+            }
+        }
+    }
+}
+
+private extension String {
+    var nilIfBlank: String? { isEmpty ? nil : self }
 }

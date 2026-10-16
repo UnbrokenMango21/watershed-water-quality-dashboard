@@ -39,7 +39,7 @@ struct PAWatershedWatchApp: App {
 }
 
 /// First launch → Welcome → Sign in or create account → Confirm name → Home.
-/// Welcome is shown once per device; it can be reopened from Account → About.
+/// Welcome is shown once per device; it can be reopened from Account → How the App Works.
 struct RootView: View {
     let model: AppModel
     @AppStorage("hasSeenWelcome") private var hasSeenWelcome = false

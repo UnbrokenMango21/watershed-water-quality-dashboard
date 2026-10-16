@@ -177,6 +177,8 @@ extension ObservationDraft {
             else { return "Record the analysis method and time for \(String(localized: kind.title))." }
             if analyzedAt < date || analyzedAt > Date.now.addingTimeInterval(300) { return "Analysis time must be on or after sampling and cannot be in the future." }
             if analysis.stage == "FIELD" && analysis.fieldExceptionReason.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return "Describe the field-analysis protocol or exception for \(String(localized: kind.title))." }
+            // The archive accepts at most 1,000 characters for a documented field exception.
+            if analysis.stage == "FIELD" && analysis.fieldExceptionReason.trimmingCharacters(in: .whitespacesAndNewlines).unicodeScalars.count > 1000 { return "Keep the field-analysis exception for \(String(localized: kind.title)) to 1,000 characters or fewer." }
         }
 
         let name = String(localized: kind.title)
@@ -848,18 +850,48 @@ enum ProfileCallable {
         }
     }
 
-    static func call(_ function: String, data: [String: Any], user: User) async throws {
+    /// Posts `{"data": ...}` with the caller's ID token. A rejected call throws `CallableFailure.server`
+    /// carrying the server's own human-readable message, so screens can show exactly why it failed.
+    @discardableResult
+    static func call(_ function: String, data: [String: Any], user: User, timeout: TimeInterval = 20) async throws -> Any? {
         guard let projectID = FirebaseApp.app()?.options.projectID else { throw URLError(.badURL) }
         let url = FirebaseEnvironment.usesEmulators
             ? URL(string: "http://\(FirebaseEnvironment.emulatorHost):5001/\(projectID)/\(region)/\(function)")!
             : URL(string: "https://\(region)-\(projectID).cloudfunctions.net/\(function)")!
-        var request = URLRequest(url: url, timeoutInterval: 20)
+        var request = URLRequest(url: url, timeoutInterval: timeout)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("Bearer \(try await user.getIDToken())", forHTTPHeaderField: "Authorization")
         request.httpBody = try JSONSerialization.data(withJSONObject: ["data": data])
-        let (_, response) = try await URLSession.shared.data(for: request)
-        guard (response as? HTTPURLResponse)?.statusCode == 200 else { throw URLError(.badServerResponse) }
+        let (body, response) = try await URLSession.shared.data(for: request)
+        return try CallableResponse.result(statusCode: (response as? HTTPURLResponse)?.statusCode, body: body)
+    }
+}
+
+/// A callable request the server refused, with the server's message when it sent one.
+enum CallableFailure: LocalizedError, Equatable {
+    case server(status: String?, message: String)
+    case unexpectedResponse
+
+    var errorDescription: String? {
+        switch self {
+        case .server(_, let message): message
+        case .unexpectedResponse: "The server returned an unexpected response. Try again."
+        }
+    }
+}
+
+/// Reads the callable wire protocol: `{"result": ...}` on success, `{"error": {"status", "message"}}`
+/// on failure. Kept separate from the network call so the parsing is unit-tested.
+enum CallableResponse {
+    static func result(statusCode: Int?, body: Data) throws -> Any? {
+        let json = try? JSONSerialization.jsonObject(with: body) as? [String: Any]
+        if let error = json?["error"] as? [String: Any] {
+            let message = (error["message"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            throw CallableFailure.server(status: error["status"] as? String, message: message.isEmpty ? "The server could not complete this request." : message)
+        }
+        guard statusCode == 200 else { throw CallableFailure.unexpectedResponse }
+        return json?["result"]
     }
 }
 

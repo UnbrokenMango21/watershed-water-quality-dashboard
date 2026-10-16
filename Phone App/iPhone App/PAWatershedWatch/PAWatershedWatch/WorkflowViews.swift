@@ -694,24 +694,67 @@ struct AnalysisProvenanceFields: View {
     private var value: Binding<AnalysisProvenance> {
         Binding(get: { draft.analysisDetails[kind] ?? AnalysisProvenance() }, set: { draft.analysisDetails[kind] = $0 })
     }
+    /// Analysis cannot precede sampling or lie in the future. The upper bound never falls below the
+    /// sampling time, so an unusual sampling clock can never produce an invalid (crashing) range.
+    static func analysisDateRange(sampledAt: Date, now: Date = .now) -> ClosedRange<Date> {
+        sampledAt...max(sampledAt, now)
+    }
+
     var body: some View {
+        let name = String(localized: kind.title)
+        let range = Self.analysisDateRange(sampledAt: draft.date)
         VStack(alignment: .leading, spacing: FieldTheme.m) {
-            Text("Analysis provenance").font(.subheadline.bold())
-            Picker("Analysis location", selection: value.stage) {
+            FieldSectionHeader(title: "\(name) analysis", detail: "Record how and when this value was analyzed.")
+            Picker("Where was \(name) analyzed?", selection: value.stage) {
                 Text("Laboratory").tag("LAB")
                 Text("Field — documented protocol").tag("FIELD")
-            }.pickerStyle(.menu)
-            TextField("Analysis method / protocol", text: value.method).textFieldStyle(.roundedBorder)
-            TextField("Instrument or laboratory (optional)", text: value.instrument).textFieldStyle(.roundedBorder)
-            DatePicker("Analysis date and time", selection: Binding(get: { value.wrappedValue.analyzedAt ?? draft.date }, set: { date in var next = value.wrappedValue; next.analyzedAt = date; value.wrappedValue = next }))
-            if value.wrappedValue.analyzedAt == nil {
-                Button("Confirm analysis time shown") { var next = value.wrappedValue; next.analyzedAt = draft.date; value.wrappedValue = next }
             }
+            .pickerStyle(.menu)
+            .frame(minHeight: 44)
+            .accessibilityIdentifier("analysis.\(kind.rawValue).stage")
+            labeledField("Analysis method or protocol", required: true, prompt: "For example, ion chromatography", text: value.method, identifier: "method")
+            labeledField("Instrument or laboratory", required: false, prompt: "Optional", text: value.instrument, identifier: "instrument")
+            DatePicker(selection: Binding(get: { min(max(value.wrappedValue.analyzedAt ?? draft.date, range.lowerBound), range.upperBound) }, set: { date in var next = value.wrappedValue; next.analyzedAt = date; value.wrappedValue = next }), in: range) {
+                HStack(spacing: FieldTheme.xs) {
+                    Text("Analysis date and time")
+                    RequiredMark()
+                }
+            }
+            .frame(minHeight: 44)
+            .accessibilityLabel("\(name) analysis date and time")
+            .accessibilityIdentifier("analysis.\(kind.rawValue).date")
+            if value.wrappedValue.analyzedAt.map({ !range.contains($0) }) ?? true {
+                Text(value.wrappedValue.analyzedAt == nil ? "Not recorded yet. Choose the time above, or confirm the time shown." : "The recorded time is outside the allowed range. Choose the time again.")
+                    .font(.footnote).foregroundStyle(FieldTheme.inkMuted)
+                InlineActionButton(title: "Use the Time Shown", systemImage: "checkmark.circle") {
+                    var next = value.wrappedValue; next.analyzedAt = min(max(draft.date, range.lowerBound), range.upperBound); value.wrappedValue = next
+                }
+                .accessibilityLabel("Use the time shown for \(name) analysis")
+            }
+            Text("Must be on or after sampling and not in the future.")
+                .font(.footnote).foregroundStyle(FieldTheme.inkMuted)
             if value.wrappedValue.stage == "FIELD" {
-                TextField("Field protocol / exception reason", text: value.fieldExceptionReason, axis: .vertical).textFieldStyle(.roundedBorder)
+                labeledField("Field protocol or exception reason", required: true, prompt: "Why this was analyzed in the field", text: value.fieldExceptionReason, identifier: "exception", multiline: true)
             }
             Text("Describe the method actually used. A field exception records your protocol; it does not claim program approval.").font(.caption).foregroundStyle(FieldTheme.inkMuted)
         }.fieldCard()
+    }
+
+    private func labeledField(_ title: String, required: Bool, prompt: String, text: Binding<String>, identifier: String, multiline: Bool = false) -> some View {
+        VStack(alignment: .leading, spacing: FieldTheme.xs) {
+            HStack(spacing: FieldTheme.xs) {
+                Text(title).font(.subheadline.weight(.semibold))
+                if required { RequiredMark() }
+            }
+            .accessibilityHidden(true)
+            TextField(prompt, text: text, axis: multiline ? .vertical : .horizontal)
+                .lineLimit(multiline ? 2...6 : 1...1)
+                .padding(.horizontal, 12)
+                .padding(.vertical, multiline ? 10 : 0)
+                .fieldInput(minHeight: 48)
+                .accessibilityLabel("\(String(localized: kind.title)) \(title.lowercased())\(required ? "" : ", optional")")
+                .accessibilityIdentifier("analysis.\(kind.rawValue).\(identifier)")
+        }
     }
 }
 

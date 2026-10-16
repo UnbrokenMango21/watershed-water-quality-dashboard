@@ -25,10 +25,12 @@ struct WelcomeView: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 VStack(alignment: .leading, spacing: FieldTheme.l) {
-                    WelcomeStep(systemImage: "mappin.and.ellipse", title: "Choose a site", detail: "Select your monitoring site and record the sampling time and position.")
-                    WelcomeStep(systemImage: "eye", title: "Observe and measure", detail: "Record weather, water color, and flow. Add measurements and notes when available; Unknown is an honest response.")
-                    WelcomeStep(systemImage: "testtube.2", title: "Complete laboratory analysis", detail: "Save field collection on this phone, then reopen the same draft to enter laboratory results. Numerical readings can stay blank.")
-                    WelcomeStep(systemImage: "checkmark.seal", title: "Submit and respond", detail: "Submit the completed record for review. If corrections are requested, respond with a new revision; earlier records stay unchanged.")
+                    WelcomeStep(systemImage: "mappin.and.ellipse", title: "Choose a site", detail: "Select your monitoring site. If it is missing or misplaced, propose a location for review.")
+                    WelcomeStep(systemImage: "eye", title: "Collect field observations", detail: "Record the sampling time, GPS position, weather, water color, and flow. Unknown is an honest response.")
+                    WelcomeStep(systemImage: "thermometer.medium", title: "Record measurements and notes", detail: "Enter the readings you took and any notes. Values you did not measure stay blank, never zero.")
+                    WelcomeStep(systemImage: "testtube.2", title: "Complete lab analysis if needed", detail: "Save the field collection, then reopen the same record to add laboratory results with their method and analysis time.")
+                    WelcomeStep(systemImage: "paperplane", title: "Submit for review", detail: "Review the record and submit it yourself. Nothing is submitted automatically.")
+                    WelcomeStep(systemImage: "arrow.uturn.forward.circle", title: "Respond to corrections", detail: "If a reviewer asks for a correction, reply or submit a new revision. Earlier revisions stay unchanged.")
                 }
                 .fieldCard()
             }
@@ -216,7 +218,7 @@ struct AuthenticationView: View {
                     }
                 }
 
-                Button("About PA Watershed Watch") { showAbout = true }
+                Button("How the App Works") { showAbout = true }
                     .font(.subheadline.weight(.semibold))
                     .frame(maxWidth: .infinity, minHeight: 44)
             }

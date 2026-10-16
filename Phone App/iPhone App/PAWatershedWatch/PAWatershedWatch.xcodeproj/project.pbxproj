@@ -28,6 +28,7 @@
 		CC0000000000000000000002 /* OnboardingAuthViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC0000000000000000000001 /* OnboardingAuthViews.swift */; };
 		CC0000000000000000000004 /* AccountViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC0000000000000000000003 /* AccountViews.swift */; };
 		CC0000000000000000000006 /* SitePickerViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC0000000000000000000005 /* SitePickerViews.swift */; };
+		DD0000000000000000000102 /* SiteProposals.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD0000000000000000000101 /* SiteProposals.swift */; };
 		CC0000000000000000000008 /* ProductContractTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC0000000000000000000007 /* ProductContractTests.swift */; };
 		DD0000000000000000000002 /* WorkflowUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD0000000000000000000001 /* WorkflowUITests.swift */; };
 /* End PBXBuildFile section */
@@ -69,6 +70,7 @@
 		CC0000000000000000000001 /* OnboardingAuthViews.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = OnboardingAuthViews.swift; sourceTree = "<group>"; };
 		CC0000000000000000000003 /* AccountViews.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AccountViews.swift; sourceTree = "<group>"; };
 		CC0000000000000000000005 /* SitePickerViews.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SitePickerViews.swift; sourceTree = "<group>"; };
+		DD0000000000000000000101 /* SiteProposals.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SiteProposals.swift; sourceTree = "<group>"; };
 		CC0000000000000000000007 /* ProductContractTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ProductContractTests.swift; sourceTree = "<group>"; };
 		DD0000000000000000000001 /* WorkflowUITests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = WorkflowUITests.swift; sourceTree = "<group>"; };
 		DD0000000000000000000003 /* PAWatershedWatchUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = PAWatershedWatchUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -150,6 +152,7 @@
 				5CF4E4B30C3C4497F45685EB /* ReviewSubmissionViews.swift */,
 				E186245AFE2848662761BFE0 /* WorkflowViews.swift */,
 				CC0000000000000000000005 /* SitePickerViews.swift */,
+				DD0000000000000000000101 /* SiteProposals.swift */,
 				CC0000000000000000000003 /* AccountViews.swift */,
 				CC0000000000000000000001 /* OnboardingAuthViews.swift */,
 			);
@@ -324,6 +327,7 @@
 				2C6A17F985A8FE0CDDEE015D /* ReviewSubmissionViews.swift in Sources */,
 				69A55ED5E84FB230A53ECF02 /* WorkflowViews.swift in Sources */,
 				CC0000000000000000000006 /* SitePickerViews.swift in Sources */,
+				DD0000000000000000000102 /* SiteProposals.swift in Sources */,
 				CC0000000000000000000004 /* AccountViews.swift in Sources */,
 				CC0000000000000000000002 /* OnboardingAuthViews.swift in Sources */,
 			);

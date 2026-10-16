@@ -90,8 +90,27 @@ struct AccountView: View {
                 }
                 .listRowBackground(FieldTheme.surface)
 
-                Section("About") {
-                    Button("About PA Watershed Watch") { showAbout = true }
+                Section {
+                    NavigationLink {
+                        SiteProposalsView(model: model)
+                    } label: {
+                        Label("Site Location Proposals", systemImage: "mappin.and.ellipse")
+                    }
+                    .accessibilityIdentifier("account.siteProposals")
+                } header: {
+                    Text("Monitoring Sites")
+                } footer: {
+                    Text("Propose a new site or a location correction from your current GPS position, and follow each review decision.")
+                }
+                .listRowBackground(FieldTheme.surface)
+
+                Section("Help and About") {
+                    Button {
+                        showAbout = true
+                    } label: {
+                        Label("How the App Works", systemImage: "questionmark.circle")
+                    }
+                    .accessibilityIdentifier("account.howItWorks")
                     if let url = AppLinks.privacyPolicy { Link("Privacy Policy", destination: url) }
                     if let url = AppLinks.support { Link("Support", destination: url) }
                     LabeledContent("Version", value: AppBuildInfo.display)

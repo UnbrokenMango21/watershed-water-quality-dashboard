@@ -106,6 +106,7 @@ struct SelectSiteView: View {
                         }
                         .fieldCard(padding: 0)
                     }
+                    SiteProposalEntryButton(model: model, selectedSiteID: selectedID)
                 }
                 .padding(.horizontal, FieldTheme.m)
                 .padding(.bottom, FieldTheme.l)
