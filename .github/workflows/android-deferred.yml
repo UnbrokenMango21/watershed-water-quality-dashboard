@@ -4,9 +4,16 @@ name: Android native (deferred)
 # publication milestone (docs/ROADMAP.md). This is the former "Android native" job from mobile-ci.yml,
 # unchanged, so it no longer gates routine pull requests. Run it on demand from the Actions tab
 # (or `gh workflow run android-deferred.yml --ref <branch>`); move it back into mobile-ci.yml when
-# Android work resumes.
+# Android work resumes. Pull requests that change the Android app run it too, so Android changes never
+# merge without unit, lint, build and instrumentation evidence (on-demand dispatch needs the workflow
+# on the default branch first).
 on:
   workflow_dispatch:
+  pull_request:
+    paths:
+      - 'Phone App/Android App/**'
+      - 'tests/mobile-contract-fixtures/**'
+      - '.github/workflows/android-deferred.yml'
 
 permissions:
   contents: read
