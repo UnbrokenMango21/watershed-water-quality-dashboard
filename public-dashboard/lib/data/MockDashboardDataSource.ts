@@ -58,7 +58,7 @@ const latestMeasurements: Record<string, DashboardMeasurement[]> = {
   ],
 };
 
-const offsets: Record<DashboardParameter, number[]> = {
+const offsets: Partial<Record<DashboardParameter, number[]>> = {
   waterTemperature: [-5.1, -3.8, -1.9, 0.7, 1.8, 0],
   ph: [-0.18, -0.09, 0.04, -0.06, 0.11, 0],
   dissolvedOxygen: [1.1, 0.7, 0.3, -0.4, -0.2, 0],
@@ -91,6 +91,7 @@ for (const site of demoSites) {
 
   for (const measurement of current) {
     const parameterOffsets = offsets[measurement.parameter];
+    if (!parameterOffsets) continue;
     const points = observationDates.map((observedAt, index) => ({
       observationId: `${site.id}-${measurement.parameter}-${index + 1}`,
       parameter: measurement.parameter,

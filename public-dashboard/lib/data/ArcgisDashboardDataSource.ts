@@ -1,6 +1,6 @@
 import type { DashboardDataSource, DashboardParameter, DashboardSite, LatestSiteCondition, DashboardObservationSeriesPoint } from "./DashboardDataSource";
 
-export const parameterFields: Record<DashboardParameter, { code: string; field: string; unit: string; label: string }> = {
+export const parameterFields: Record<DashboardParameter, { code: string; field: string | null; unit: string; label: string }> = {
   waterTemperature: { code: "WATER_TEMP_C", field: "temp_c", unit: "degC", label: "°C" },
   ph: { code: "PH", field: "ph", unit: "pH", label: "pH" },
   dissolvedOxygen: { code: "DO_MG_L", field: "do_mg_l", unit: "mg/L", label: "mg/L" },
@@ -13,6 +13,8 @@ export const parameterFields: Record<DashboardParameter, { code: string; field: 
   nitrate: { code: "NITRATE_MG_L", field: "nitrate_mg_l", unit: "mg/L as N", label: "mg/L as N" },
   phosphate: { code: "PHOSPHATE_MG_L", field: "phosphate_mg_l", unit: "mg/L as P", label: "mg/L as P" },
   discharge: { code: "DISCHARGE_M3_S", field: "discharge_m3_s", unit: "m3/s", label: "m³/s" },
+  // Depth uses the existing approved generic measurement table, never a new public wide field.
+  waterDepth: { code: "WATER_DEPTH_M", field: null, unit: "m", label: "m" },
 };
 
 type Dataset = "sites" | "observations" | "measurements" | "latest";
@@ -21,7 +23,7 @@ type Attributes = Record<string, unknown>;
 type Feature = { attributes: Attributes };
 type Metadata = { fields: { name: string; type: string }[]; objectIdField: string; maxRecordCount?: number; capabilities: string };
 type Reply = { error?: { code?: number }; features?: Feature[]; objectIds?: number[]; exceededTransferLimit?: boolean };
-const wideFields = Object.values(parameterFields).map((p) => p.field);
+const wideFields = Object.values(parameterFields).map((p) => p.field).filter((field): field is string => field !== null);
 const siteFields = ["site_id", "site_code", "site_name", "county", "watershed_name"];
 const allowed: Record<Dataset, string[]> = {
   sites: [...siteFields, "site_status", "latitude", "longitude"],
@@ -159,8 +161,8 @@ export class ArcgisDashboardDataSource implements DashboardDataSource {
     const observedAt = iso(a.collected_at);
     return { siteId: text(a.site_id), observedAt, reviewed: true,
       measurements: (Object.entries(parameterFields) as [DashboardParameter, typeof parameterFields[DashboardParameter]][])
-        .filter(([, p]) => a[p.field] != null)
-        .map(([parameter, p]) => ({ parameter, observedAt, value: number(a[p.field]), unit: p.label })) };
+        .filter(([, p]) => p.field !== null && a[p.field] != null)
+        .map(([parameter, p]) => ({ parameter, observedAt, value: number(a[p.field!]), unit: p.label })) };
   }
 
   async listLatestSiteConditions(): Promise<LatestSiteCondition[]> {

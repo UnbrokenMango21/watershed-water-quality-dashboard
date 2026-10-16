@@ -20,6 +20,7 @@ export const parameterDefinitions: Array<{
   { key: "sulfate", label: "Sulfate", shortLabel: "Sulfate", glyph: "SO₄", decimals: 2 },
   { key: "phosphate", label: "Phosphate (as P)", shortLabel: "Phosphate", glyph: "P", decimals: 2 },
   { key: "discharge", label: "Discharge / Flow", shortLabel: "Discharge", glyph: "Q", decimals: 3 },
+  { key: "waterDepth", label: "Water Depth", shortLabel: "Water Depth", glyph: "m", decimals: 3 },
 ];
 
 export const ranges = ["7D", "30D", "90D", "1Y", "All"] as const;

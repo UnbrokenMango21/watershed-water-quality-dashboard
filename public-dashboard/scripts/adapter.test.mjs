@@ -2,12 +2,71 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { ArcgisDashboardDataSource, parameterFields } from '../lib/data/ArcgisDashboardDataSource.ts';
+import { createWatershedLookup } from '../lib/geography/watershedContext.ts';
 
 const schema = JSON.parse(readFileSync(new URL('../../config/arcgis_publication_schema.json', import.meta.url)));
 const kinds = ['sites', 'observations', 'measurements', 'latest'];
 const urls = Object.fromEntries(kinds.map((kind, i) => [kind, `https://services9.arcgis.com/test/arcgis/rest/services/Public_${kind}/FeatureServer/${i}`]));
 const time = Date.parse('2026-09-01T14:30:00Z');
 const record = { observation_id: 'opaque-public-record', site_id: "site's-1", collected_at: time };
+
+function geographyFixture(change = () => {}) {
+  const calls = [];
+  let clock = time;
+  const lookup = createWatershedLookup(async (input, options) => {
+    const url = new URL(input); calls.push(url);
+    assert.equal(options.credentials, 'omit'); assert.equal(options.redirect, 'error');
+    const level = url.pathname.includes('/MapServer/5') ? 10 : 12;
+    const code = `huc${level}`;
+    let body;
+    if (!url.pathname.endsWith('/query')) {
+      body = { fields: [{ name: code }, { name: 'name' }], editingInfo: { dataLastEditDate: time - 86400000 } };
+    } else {
+      assert.equal(url.searchParams.get('spatialRel'), 'esriSpatialRelIntersects');
+      assert.equal(url.searchParams.get('inSR'), '4326');
+      assert.equal(url.searchParams.get('outFields'), `${code},name`);
+      body = { spatialReference: { wkid: 4326 }, features: [{
+        attributes: { [code]: level === 10 ? '0205020401' : '020502040102', name: 'Fixture watershed' },
+        geometry: { rings: [[[-78, 40], [-77, 40], [-77, 41], [-78, 40]]] },
+      }] };
+    }
+    change(body, url);
+    return new Response(JSON.stringify(body));
+  }, () => clock);
+  return { lookup, calls, advance: () => { clock += 16 * 60 * 1000; } };
+}
+
+test('reference geography uses real point queries, bounded field selection and coordinate-specific expiring cache', async () => {
+  const f = geographyFixture();
+  const [a, b] = await Promise.all([f.lookup(12, -77.86, 40.79), f.lookup(12, -77.86, 40.79)]);
+  assert.deepEqual(a, b); assert.equal(a.status, 'found'); assert.equal(a.huc, '020502040102');
+  assert.equal(a.dataLastEditedAt, new Date(time - 86400000).toISOString());
+  assert.equal(a.polygon.spatialReference.wkid, 4326); assert.equal(f.calls.length, 2);
+  await f.lookup(12, -77.860001, 40.79); assert.equal(f.calls.length, 4);
+  f.advance(); await f.lookup(12, -77.86, 40.79); assert.equal(f.calls.length, 6);
+  const huc10 = await f.lookup(10, -77.86, 40.79);
+  assert.equal(huc10.huc, '0205020401'); assert.equal(huc10.polygon, undefined);
+});
+
+test('geography errors retry without fabricated fallback; empty and ambiguous polygons remain explicit', async () => {
+  let failed = false;
+  const f = geographyFixture(body => { if (!failed) { failed = true; body.error = { code: 503 }; } });
+  assert.equal((await f.lookup(12, -77.86, 40.79)).status, 'error');
+  assert.equal((await f.lookup(12, -77.86, 40.79)).status, 'found');
+  for (const [change, expected] of [
+    [body => { if (body.features) body.features = []; }, 'unmapped'],
+    [body => { if (body.features) body.features.push(body.features[0]); }, 'ambiguous'],
+    [body => { if (body.features) body.exceededTransferLimit = true; }, 'ambiguous'],
+    [body => { if (body.features) body.features[0].attributes.huc12 = 'invalid'; }, 'error'],
+    [body => { if (body.fields) body.fields = [{ name: 'private_field' }]; }, 'error'],
+    [body => { if (body.features) body.spatialReference.wkid = 3857; }, 'error'],
+  ]) {
+    const result = await geographyFixture(change).lookup(12, -77.86, 40.79);
+    assert.equal(result.status, expected); assert.equal(result.huc, undefined);
+  }
+  const invalid = geographyFixture();
+  assert.equal((await invalid.lookup(12, 181, 40)).status, 'error'); assert.equal(invalid.calls.length, 0);
+});
 function fixture(mutator = () => {}) {
   const rows = {
     sites: [{ OBJECTID: 1, site_id: record.site_id, site_code: 'PUBLIC-1', site_name: 'Sampling Site PUBLIC-1', longitude: -77, latitude: 41 }],
@@ -24,7 +83,10 @@ function fixture(mutator = () => {}) {
     let body;
     if (url.pathname.endsWith('/FeatureServer')) body = { isView: true, capabilities: 'Query' };
     else if (!url.pathname.endsWith('/query')) body = { objectIdField: 'OBJECTID', maxRecordCount: 1, capabilities: 'Query', fields: [{ name: 'OBJECTID', type: 'esriFieldTypeOID' }, ...dataset.fields.filter((f) => f.public)] };
-    else if (url.searchParams.has('returnIdsOnly')) body = { objectIds: rows[kind].map((r) => r.OBJECTID) };
+    else if (url.searchParams.has('returnIdsOnly')) {
+      const code = /parameter_code='([^']+)'/.exec(url.searchParams.get('where') || '')?.[1];
+      body = { objectIds: rows[kind].filter(r => !code || r.parameter_code === code).map((r) => r.OBJECTID) };
+    }
     else body = { features: rows[kind].filter((r) => url.searchParams.get('objectIds').split(',').map(Number).includes(r.OBJECTID)).map((attributes) => ({ attributes })) };
     mutator(body, kind, url, rows);
     return new Response(JSON.stringify(body));
@@ -80,6 +142,22 @@ test('empty approved views stay empty, invalid dates fail, errors do not become 
   await assert.rejects(fixture((body) => { body.error = { code: 403 }; }).source.listSites());
   assert.equal(parameterFields.nitrate.unit, 'mg/L as N');
   assert.equal(parameterFields.phosphate.unit, 'mg/L as P');
+});
+
+test('optional water depth uses approved generic measurements, preserves absence and cannot widen public schemas', async () => {
+  const f = fixture();
+  assert.deepEqual(await f.source.getObservationSeries(record.site_id, 'waterDepth'), []);
+  assert.equal((await f.source.listLatestSiteConditions())[0].measurements.some(m => m.parameter === 'waterDepth'), false);
+  f.rows.measurements.push({ OBJECTID: 2, ...record, parameter_code: 'WATER_DEPTH_M', value: 0, unit_code: 'm' });
+  const series = await f.source.getObservationSeries(record.site_id, 'waterDepth');
+  assert.equal(series.length, 1); assert.equal(series[0].value, 0); assert.equal(series[0].unit, 'm');
+  f.rows.measurements[1].unit_code = 'm3/s';
+  await assert.rejects(f.source.getObservationSeries(record.site_id, 'waterDepth'));
+  for (const name of ['weather_condition', 'water_color', 'flow_condition', 'water_depth_m']) {
+    await assert.rejects(fixture((body, kind) => {
+      if (kind === 'latest' && body.fields) body.fields.push({ name, type: 'esriFieldTypeString' });
+    }).source.listLatestSiteConditions());
+  }
 });
 
 

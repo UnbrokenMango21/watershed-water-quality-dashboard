@@ -10,7 +10,8 @@ export type DashboardParameter =
   | "sulfate"
   | "nitrate"
   | "phosphate"
-  | "discharge";
+  | "discharge"
+  | "waterDepth";
 
 export interface DashboardSite {
   id: string;

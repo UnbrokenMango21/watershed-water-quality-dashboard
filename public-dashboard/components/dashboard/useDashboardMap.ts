@@ -5,6 +5,7 @@ import type { DashboardSite, LatestSiteCondition } from "@/lib/data/DashboardDat
 import { completenessFor, completenessLabel } from "./dashboard-utils";
 import { registerArcgisComponents } from "./registerArcgisComponents";
 import { siteMarkerAttributes } from "./siteMarkers";
+import { HUC8_LAYER_URL, HUC12_LAYER_URL, lookupWatershed, type WatershedLookup } from "@/lib/geography/watershedContext";
 
 // Public, keyless Esri context layers. Order of emphasis, bottom to top: a quiet background, streams,
 // restrained place names, watershed outlines only where they help, then the monitoring sites.
@@ -16,9 +17,6 @@ const BACKGROUND_URLS = {
 const STREAMS_URL = "https://tiles.arcgis.com/tiles/P3ePLMYs2RVChkJx/arcgis/rest/services/Esri_Hydro_Reference_Overlay/MapServer";
 const PLACES_URL = "https://services.arcgisonline.com/arcgis/rest/services/Reference/World_Reference_Overlay/MapServer";
 const STATES_URL = "https://services.arcgis.com/P3ePLMYs2RVChkJx/arcgis/rest/services/USA_States_Generalized_Boundaries/FeatureServer/0";
-const REGIONAL_WATERSHED_URL = "https://services.arcgis.com/P3ePLMYs2RVChkJx/arcgis/rest/services/Watershed_Boundary_Dataset_HUC_8s/FeatureServer/0";
-const WATERSHED_LAYER_URL = process.env.NEXT_PUBLIC_ARCGIS_WATERSHEDS_VIEW_URL
-  || "https://services.arcgis.com/P3ePLMYs2RVChkJx/arcgis/rest/services/Watershed_Boundary_Dataset_HUC_12s/FeatureServer/0";
 
 // Statewide the map shows no watershed lines at all; larger (HUC8) watersheds appear at regional zoom and
 // hand over to local (HUC12) watersheds close in, so the two outline sets never draw together.
@@ -86,16 +84,20 @@ export function useDashboardMap({
   const layerStateRef = useRef(layerState);
   const selectedSiteRef = useRef<DashboardSite | null>(selectedSite);
   const [hoverPoint, setHoverPoint] = useState<HoverPoint>(null);
+  const [watershedContext, setWatershedContext] = useState<WatershedLookup[] | null>(null);
+  const [geographyError, setGeographyError] = useState<string | null>(null);
+  const [geographyAttempt, setGeographyAttempt] = useState(0);
 
   useEffect(() => { selectedSiteRef.current = selectedSite; }, [selectedSite]);
 
   useEffect(() => {
     let cancelled = false;
+    setGeographyError(null);
     const host = mapHost.current;
     if (!host) return;
 
     async function initializeMap() {
-      const [graphicsModule, featureLayerModule, graphicsLayerModule, pointModule, markerSymbolModule, fillSymbolModule, rendererModule, uniqueValueModule, reactiveUtils, basemapModule, tileLayerModule, labelClassModule] = await Promise.all([
+      const [graphicsModule, featureLayerModule, graphicsLayerModule, pointModule, markerSymbolModule, fillSymbolModule, rendererModule, uniqueValueModule, reactiveUtils, basemapModule, tileLayerModule, labelClassModule, polygonModule] = await Promise.all([
         import("@arcgis/core/Graphic.js"),
         import("@arcgis/core/layers/FeatureLayer.js"),
         import("@arcgis/core/layers/GraphicsLayer.js"),
@@ -108,6 +110,7 @@ export function useDashboardMap({
         import("@arcgis/core/Basemap.js"),
         import("@arcgis/core/layers/TileLayer.js"),
         import("@arcgis/core/layers/support/LabelClass.js"),
+        import("@arcgis/core/geometry/Polygon.js"),
         registerArcgisComponents(),
       ]);
       if (cancelled || !mapHost.current) return;
@@ -220,7 +223,7 @@ export function useDashboardMap({
 
         // Public USGS/Esri Watershed Boundary Dataset reference geography, independent of monitoring data.
         const regionalWatersheds = new FeatureLayer({
-          url: REGIONAL_WATERSHED_URL,
+          url: HUC8_LAYER_URL,
           title: "Larger watersheds",
           definitionExpression: "states LIKE '%PA%'",
           outFields: ["huc8", "name"],
@@ -233,7 +236,7 @@ export function useDashboardMap({
           }),
         });
         const watershedLayer = new FeatureLayer({
-          url: WATERSHED_LAYER_URL,
+          url: HUC12_LAYER_URL,
           title: "Watersheds (USGS HUC12)",
           definitionExpression: "states LIKE '%PA%'",
           outFields: ["huc12", "name", "states"],
@@ -258,19 +261,13 @@ export function useDashboardMap({
         watershedSelectionUpdaterRef.current = (site) => {
           watershedSelectionLayer.removeAll();
           if (!site) return;
-          const point = new Point({ longitude: site.longitude, latitude: site.latitude });
-          void watershedLayer.queryFeatures({
-            geometry: point,
-            spatialRelationship: "intersects",
-            returnGeometry: true,
-            outFields: ["huc12", "name"],
-          }).then((result) => {
-            if (cancelled || selectedSiteRef.current?.id !== site.id) return;
-            const watershed = result.features[0];
-            if (!watershed?.geometry) return;
+          void lookupWatershed(12, site.longitude, site.latitude).then((result) => {
+            if (cancelled || selectedSiteRef.current?.id !== site.id
+              || selectedSiteRef.current.longitude !== site.longitude || selectedSiteRef.current.latitude !== site.latitude) return;
+            if (result.status !== "found" || !result.polygon) return;
             watershedSelectionLayer.add(new Graphic({
-              geometry: watershed.geometry,
-              attributes: watershed.attributes,
+              geometry: new polygonModule.default(result.polygon),
+              attributes: { huc12: result.huc, name: result.name },
               symbol: new SimpleFillSymbol({
                 style: "solid",
                 // Hemlock marks the selected site's local watershed.
@@ -278,7 +275,7 @@ export function useDashboardMap({
                 outline: { color: rgba(HEMLOCK, 0.9), width: 2.25 },
               }),
             }));
-          }).catch(() => undefined);
+          });
         };
         watershedSelectionUpdaterRef.current(selectedSiteRef.current);
 
@@ -287,7 +284,15 @@ export function useDashboardMap({
           map.dataset.watershedLayerReady = "true";
           await waitForStableView();
         }).catch(() => {
-          if (!cancelled) map.dataset.watershedLayerReady = "error";
+          if (!cancelled) {
+            map.dataset.watershedLayerReady = "error";
+            setGeographyError("Watershed boundaries could not be loaded. Monitoring data remains separate.");
+          }
+        });
+        [streams, regionalWatersheds].forEach(layer => {
+          void layer.load().catch(() => {
+            if (!cancelled) setGeographyError("A reference map layer could not be loaded. Retry to restore geographic context.");
+          });
         });
 
         // Plots whatever sites the active source returned, in production and demo alike.
@@ -404,7 +409,9 @@ export function useDashboardMap({
       mapElementRef.current = map;
     }
 
-    void initializeMap();
+    void initializeMap().catch(() => {
+      if (!cancelled) setGeographyError("The reference map could not be loaded. Check your connection and retry.");
+    });
     return () => {
       cancelled = true;
       selectionUpdaterRef.current = null;
@@ -416,7 +423,19 @@ export function useDashboardMap({
       setHoverPoint(null);
       host.replaceChildren();
     };
-  }, [conditions, onHoverSite, onSelectSite, sites]);
+  }, [conditions, onHoverSite, onSelectSite, sites, geographyAttempt]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setWatershedContext(null);
+    if (selectedSite) {
+      void Promise.all([
+        lookupWatershed(10, selectedSite.longitude, selectedSite.latitude),
+        lookupWatershed(12, selectedSite.longitude, selectedSite.latitude),
+      ]).then(results => { if (!cancelled) setWatershedContext(results); });
+    }
+    return () => { cancelled = true; };
+  }, [selectedSite, geographyAttempt]);
 
   // Layer panel changes apply to the live layers without rebuilding the map.
   useEffect(() => {
@@ -448,5 +467,5 @@ export function useDashboardMap({
   }, [selectedSite]);
 
   useEffect(() => { hoverUpdaterRef.current?.(hoveredSite); }, [hoveredSite]);
-  return { mapHost, hoverPoint };
+  return { mapHost, hoverPoint, watershedContext, geographyError, retryGeography: () => setGeographyAttempt(value => value + 1) };
 }

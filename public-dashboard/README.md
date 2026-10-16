@@ -7,21 +7,23 @@ This package is the isolated public-facing dashboard. It does not replace or mod
 - ArcGIS Maps SDK for JavaScript 5.1
 - ArcGIS Map Components
 - Calcite Design System 5.1
-- Next.js 15.2 / React 19 for Firebase App Hosting compatibility
+- Next.js 15.5 / React 19 for Firebase App Hosting compatibility
 - Large central map, compact left monitoring-site browser, selected-site detail rail, and scientific time-series surface
 - Light topographic cartography with translucent watershed polygons and selected-site emphasis
 
 ## Reference geography
 
-The map includes a real public HUC12 watershed reference layer from the USGS/Esri Watershed Boundary Dataset, filtered to Pennsylvania. It is independent of monitoring-observation connectivity, so watershed geography remains available even when production monitoring sources are not yet configured.
+The map uses public USGS National Map Watershed Boundary Dataset layers, filtered to Pennsylvania. HUC8 outlines provide regional context and HUC12 outlines provide local context. Selecting a site queries its actual displayed coordinates against HUC10 and HUC12 polygons, displays the names/codes and source-check timestamps, and highlights the containing HUC12 polygon. Reference geography remains independent of monitoring observations.
 
 The default public reference layer is:
 
-`https://services.arcgis.com/P3ePLMYs2RVChkJx/arcgis/rest/services/Watershed_Boundary_Dataset_HUC_12s/FeatureServer/0`
+`https://hydro.nationalmap.gov/arcgis/rest/services/wbd/MapServer/6`
 
-The renderer is intentionally restrained: low-opacity blue-green watershed fill, thin blue/slate outlines, and a stronger blue fill/outline for the HUC12 polygon containing the selected monitoring site. Monitoring points remain visually above the watershed layer.
+The renderer keeps restrained watershed outlines and emphasizes only the selected site's containing polygon. Monitoring points remain visually above the watershed layer. Geographic lookup failures, missing coverage and multiple intersecting boundaries are explicit states; no watershed is guessed. Successful results are cached in memory for 15 minutes with a 100-entry bound and exact coordinate keys.
 
 If the project later publishes a reviewed public watershed view of its own, set `NEXT_PUBLIC_ARCGIS_WATERSHEDS_VIEW_URL` to replace the default reference service without changing dashboard code.
+
+Overrides must be anonymous HTTPS ArcGIS hosted-layer URLs without credentials or query strings. Invalid/unavailable sources show an error; they do not silently fall back. [Source selection, live checks and remaining geographic work](../docs/GIS_PROVENANCE_2026-10-15.md) are recorded separately. EPA How's My Waterway is linked as external assessment context, separate from this project's measurements.
 
 ## Data safety boundary
 
