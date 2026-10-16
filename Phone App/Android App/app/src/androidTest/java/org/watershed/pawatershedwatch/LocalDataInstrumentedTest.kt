@@ -163,6 +163,17 @@ class LocalDataInstrumentedTest {
     }
 
     @Test
+    fun laboratoryTestTypePersistsNoInventedFieldProvenance() = runBlocking {
+        db.dao().putSites(listOf(CachedSiteEntity("SITE-1", "Test site", "Centre", "Spring Creek", 40.8, -77.8, true, 1)))
+        val ready = validDraft("owner-a").copy(testType = TestType.PennStateLab)
+        repository.persistSubmission(ready, WorkflowState.Submitted, SyncState.Waiting, "Lab sample")
+        val ph = db.dao().measurements("owner-a", ready.revisionId.value).associateBy { it.kind }.getValue("Ph")
+        assertNull("a Penn State Lab pH has no recorded stage", ph.analysisStage)
+        assertNull("a Penn State Lab pH has no recorded analysis time", ph.analyzedAt)
+        assertNull(ph.fieldExceptionReason)
+    }
+
+    @Test
     fun fieldGpsRejectsStaleAndZeroFallbackCoordinates() {
         val current = android.location.Location("test").apply {
             latitude = 40.7934; longitude = -77.86; accuracy = 4.2f; time = System.currentTimeMillis()

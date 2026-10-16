@@ -111,6 +111,18 @@ class ProductionDomainTest {
         assertEquals("YSI ProDSS", revisionDocument["instrument_name"])
         assertEquals(20.0, revisionDocument["temp_c"])
         assertEquals("C", revisionDocument["temp_entered_unit"])
+        // The migrated row's placeholders ('DRAFT', '') are never replayed as observations: a 0.1.0
+        // revision has no collection stage, and visual observations the old build never recorded are null.
+        assertEquals("DRAFT", snapshot.collectionStage)
+        assertTrue("0.1.0 revisions predate the collection stage", "collection_stage" !in revisionDocument)
+        listOf("weather_condition", "water_color", "flow_condition").forEach { key ->
+            assertTrue("$key is written", revisionDocument.containsKey(key))
+            assertNull("$key is null, not a placeholder", revisionDocument[key])
+        }
+        val recorded = FirestoreObservationMapper.revision(
+            revision.snapshot(rows).copy(weatherCondition = "Light Rain", waterColor = "Clear", flowCondition = "Low"), "SUBMITTED",
+        )
+        assertEquals(listOf("Light Rain", "Clear", "Low"), listOf(recorded["weather_condition"], recorded["water_color"], recorded["flow_condition"]))
 
         val legacyKeys = setOf(
             "measurement_id", "parameter_code", "display_name", "value", "unit_code", "entered_value", "entered_unit_code",
@@ -125,14 +137,36 @@ class ProductionDomainTest {
             assertEquals(Timestamp(java.util.Date(2_000)), document["entered_at"])
         }
 
-        // The same row under the current contract keeps the 0.2.0 shape.
-        val current = revision.copy(schemaVersion = "0.2.0").snapshot(rows)
-        assertEquals("0.2.0", FirestoreObservationMapper.revision(current, "SUBMITTED")["schema_version"])
-        current.measurements.forEach { value ->
-            val document = FirestoreObservationMapper.measurement(current, value)
-            assertEquals("FIELD", document["analysis_stage"])
-            assertTrue(document.containsKey("field_exception_reason"))
+        // The same revision under the current contract keeps the 0.2.0 shape and replays the provenance
+        // exactly as it was persisted at submission.
+        val labAt = 2_000L + 3_600_000L
+        val persisted = listOf(
+            rows[0].copy(analysisStage = "FIELD", analysisMethod = "Calibrated meter", analysisInstrument = "YSI ProDSS", analyzedAt = 2_000),
+            rows[1].copy(analysisStage = "LAB", analysisMethod = "EPA 353.2", analysisInstrument = "Penn State AASL", analyzedAt = labAt),
+        )
+        val current = revision.copy(schemaVersion = "0.2.0").snapshot(persisted)
+        val currentRevision = FirestoreObservationMapper.revision(current, "SUBMITTED")
+        assertEquals("0.2.0", currentRevision["schema_version"])
+        assertTrue("0.2.0 revisions carry the collection stage", currentRevision.containsKey("collection_stage"))
+        val byCode = current.measurements.associate { it.parameterCode to FirestoreObservationMapper.measurement(current, it) }
+        assertEquals("FIELD", byCode.getValue("PH")["analysis_stage"])
+        assertEquals(Timestamp(java.util.Date(2_000)), byCode.getValue("PH")["analyzed_at"])
+        assertEquals("LAB", byCode.getValue("NITRATE_MG_L")["analysis_stage"])
+        assertEquals(Timestamp(java.util.Date(labAt)), byCode.getValue("NITRATE_MG_L")["analyzed_at"])
+        assertEquals("EPA 353.2", byCode.getValue("NITRATE_MG_L")["method_name"])
+        assertEquals("Penn State AASL", byCode.getValue("NITRATE_MG_L")["instrument_name"])
+        byCode.values.forEach { document -> assertTrue(document.containsKey("field_exception_reason")) }
+
+        // A row persisted without a stage (its method category did not establish one) replays with none;
+        // the replay never invents FIELD at the sampling time.
+        val unknown = revision.copy(schemaVersion = "0.2.0", testType = "Penn State Lab")
+            .snapshot(listOf(rows[0].copy(analysisMethod = "Grab sample", analysisInstrument = "Penn State AASL")))
+        val ph = FirestoreObservationMapper.measurement(unknown, unknown.measurements.single())
+        listOf("analysis_stage", "analyzed_at", "field_exception_reason").forEach { key ->
+            assertTrue("$key is written", ph.containsKey(key))
+            assertNull("$key is not invented on replay", ph[key])
         }
+        assertEquals("Penn State AASL", ph["instrument_name"])
         assertThrows(IllegalArgumentException::class.java) {
             FirestoreObservationMapper.revision(revision.copy(schemaVersion = "9.9.9").snapshot(rows), "SUBMITTED")
         }
@@ -331,6 +365,62 @@ class ProductionDomainTest {
             assertNull(document["field_exception_reason"])
             assertEquals("Meter", document["method_name"])
             assertEquals("Instrument", document["instrument_name"])
+        }
+    }
+
+    @Test
+    fun fieldMethodCategoriesRecordFieldStageAtSamplingTime() {
+        listOf(TestType.FieldInstrument, TestType.FieldKit, TestType.Sonde).forEach { type ->
+            val snapshot = validDraft().copy(testType = type).toCanonicalSnapshot("owner-a", "1.0.0")
+            val ph = snapshot.measurements.single { it.parameterCode == "PH" }
+            assertEquals(type.label, "FIELD", ph.analysisStage)
+            assertEquals(type.label, snapshot.collectedAt, ph.analyzedAt)
+            val document = FirestoreObservationMapper.measurement(snapshot, ph)
+            assertEquals(type.label, "FIELD", document["analysis_stage"])
+            assertEquals(type.label, Timestamp(java.util.Date(snapshot.collectedAt)), document["analyzed_at"])
+            assertEquals(type.label, Timestamp(java.util.Date(snapshot.collectedAt)), document["entered_at"])
+            assertNull(type.label, document["field_exception_reason"])
+        }
+    }
+
+    @Test
+    fun nonFieldMethodCategoriesNeverAssertAnAnalysisStageOrTime() {
+        listOf(TestType.PennStateLab, TestType.ExternalLab, TestType.Mixed, TestType.Other).forEach { type ->
+            val draft = validDraft().copy(testType = type, testTypeOther = if (type == TestType.Other) "Volunteer protocol" else "")
+            val snapshot = draft.toCanonicalSnapshot("owner-a", "1.0.0")
+            assertTrue(snapshot.measurements.isNotEmpty())
+            snapshot.measurements.forEach { value ->
+                // Neither the local store (which persists these canonical values) nor Firestore gets invented provenance.
+                assertNull("${type.label} ${value.parameterCode}", value.analysisStage)
+                assertNull("${type.label} ${value.parameterCode}", value.analyzedAt)
+                assertNull("${type.label} ${value.parameterCode}", value.fieldExceptionReason)
+                val document = FirestoreObservationMapper.measurement(snapshot, value)
+                listOf("analysis_stage", "analyzed_at", "field_exception_reason").forEach { key ->
+                    assertTrue("${type.label} writes $key", document.containsKey(key))
+                    assertNull("${type.label} $key", document[key])
+                }
+                // entered_at stays the sampling time.
+                assertEquals(Timestamp(java.util.Date(snapshot.collectedAt)), document["entered_at"])
+            }
+        }
+    }
+
+    @Test
+    fun laboratoryParametersKeepTheirRecordedProvenanceForEveryMethodCategory() {
+        val base = pastDraft()
+        val analyzedAt = base.collectedAt + 3_600_000L
+        listOf(TestType.PennStateLab, TestType.FieldKit, TestType.FieldInstrument).forEach { type ->
+            val snapshot = base.copy(
+                testType = type,
+                values = base.values + (MeasurementKind.Nitrate to "1.2"),
+                analysisDetails = mapOf(MeasurementKind.Nitrate to labAnalysis(analyzedAt)),
+            ).toCanonicalSnapshot("owner-a", "1.0.0")
+            val nitrate = FirestoreObservationMapper.measurement(snapshot, snapshot.measurements.single { it.parameterCode == "NITRATE_MG_L" })
+            assertEquals(type.label, "LAB", nitrate["analysis_stage"])
+            assertEquals(type.label, Timestamp(java.util.Date(analyzedAt)), nitrate["analyzed_at"])
+            assertEquals(type.label, Timestamp(java.util.Date(base.collectedAt)), nitrate["entered_at"])
+            assertNull(type.label, nitrate["field_exception_reason"])
+            assertEquals(type.label, "EPA 353.2 cadmium reduction", nitrate["method_name"])
         }
     }
 

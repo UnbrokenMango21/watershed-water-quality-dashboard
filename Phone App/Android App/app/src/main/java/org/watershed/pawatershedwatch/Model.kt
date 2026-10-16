@@ -106,6 +106,13 @@ enum class TestType(
     Other("Other", "Other", ""),
     ;
 
+    /**
+     * Whether choosing this method category itself establishes that a non-laboratory parameter was
+     * measured in the field at sampling time. Laboratory, mixed and other categories do not, so such
+     * a value records no analysis stage or time rather than asserting provenance nobody entered.
+     */
+    val establishesFieldAnalysis: Boolean get() = this == FieldInstrument || this == FieldKit || this == Sonde
+
     companion object {
         /**
          * Choices offered for a new observation (parity with iOS). Sonde and combined field-and-lab stay

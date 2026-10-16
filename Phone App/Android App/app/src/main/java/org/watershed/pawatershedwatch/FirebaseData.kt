@@ -282,16 +282,18 @@ internal fun RevisionEntity.snapshot(measurements: List<LocalMeasurementEntity>)
     val canonicalMeasurements = measurements.mapNotNull { entity ->
         val kind = MeasurementKind.entries.firstOrNull { it.name == entity.kind } ?: return@mapNotNull null
         if (kind == MeasurementKind.Temperature || entity.parameterCode == null || entity.canonicalValue == null || entity.canonicalUnit == null) return@mapNotNull null
-        // Provenance is replayed exactly as it was persisted at submission. A row without it falls back
-        // to the field defaults; a laboratory parameter in that state is rejected by the rules rather
-        // than being given an invented analysis.
+        // Provenance is replayed exactly as it was persisted at submission, including a null stage and
+        // time for a value whose method category did not establish them. Nothing is defaulted: a
+        // laboratory parameter without provenance is rejected by the rules rather than being given an
+        // invented analysis. Rows written before Room v5 have no analysis method either and replay
+        // under 0.1.0, which ignores these fields.
         CanonicalMeasurement(
             MeasurementId(entity.measurementId), kind, entity.parameterCode, kind.title,
             entity.rawValue.toDouble(), entity.rawUnitId, Units.byId(entity.rawUnitId)?.menuTitle.orEmpty(), entity.canonicalValue, entity.canonicalUnit,
-            analysisStage = entity.analysisStage ?: AnalysisStage.FIELD.name,
+            analysisStage = entity.analysisStage,
             analysisMethod = entity.analysisMethod?.takeIf(String::isNotBlank) ?: method,
-            analysisInstrument = if (entity.analysisStage != null) entity.analysisInstrument else instrument.ifBlank { null },
-            analyzedAt = entity.analyzedAt ?: collectedAt,
+            analysisInstrument = if (entity.analysisMethod != null) entity.analysisInstrument else instrument.ifBlank { null },
+            analyzedAt = entity.analyzedAt,
             fieldExceptionReason = entity.fieldExceptionReason,
         )
     }

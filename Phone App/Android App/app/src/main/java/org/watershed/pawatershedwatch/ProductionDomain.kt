@@ -86,12 +86,18 @@ data class CanonicalMeasurement(
     val enteredUnit: String,
     val value: Double,
     val unitCode: String,
-    /** "FIELD" or "LAB". Field parameters are always FIELD. */
-    val analysisStage: String,
+    /**
+     * "FIELD" or "LAB" for a laboratory-dependent parameter (as recorded). Any other parameter is FIELD
+     * only when the test type is a field method category, and null (unknown) otherwise.
+     */
+    val analysisStage: String?,
     val analysisMethod: String,
     val analysisInstrument: String?,
-    /** Field parameters: the sampling time. Laboratory-dependent parameters: the recorded analysis time. */
-    val analyzedAt: Long,
+    /**
+     * Laboratory-dependent parameters: the recorded analysis time. Other parameters: the sampling time
+     * when [analysisStage] is FIELD, and null when the stage is unknown.
+     */
+    val analyzedAt: Long?,
     /** Only a laboratory-dependent parameter analyzed in the field carries a documented exception. */
     val fieldExceptionReason: String?,
 )
@@ -203,6 +209,8 @@ fun ObservationDraft.toCanonicalSnapshot(ownerUid: String, appVersion: String, s
         val canonicalUnit = kind.units.first()
         val canonical = BigDecimal.valueOf(selected.convert(entered, canonicalUnit)).setScale(12, RoundingMode.HALF_EVEN).stripTrailingZeros().toDouble()
         val analysis = if (kind.needsAnalysisProvenance) requireNotNull(analysisDetails[kind]) { "Record the analysis method and time for ${kind.title}." } else null
+        // Without recorded provenance, only a field method category establishes stage and time.
+        val fieldAtSampling = analysis == null && test.establishesFieldAnalysis
         CanonicalMeasurement(
             id = CanonicalIds.measurement(revisionId, requireNotNull(spec.parameterCode)),
             kind = kind,
@@ -213,10 +221,10 @@ fun ObservationDraft.toCanonicalSnapshot(ownerUid: String, appVersion: String, s
             enteredUnit = selected.menuTitle,
             value = canonical,
             unitCode = requireNotNull(spec.canonicalUnit),
-            analysisStage = analysis?.stage?.name ?: AnalysisStage.FIELD.name,
+            analysisStage = analysis?.stage?.name ?: AnalysisStage.FIELD.name.takeIf { fieldAtSampling },
             analysisMethod = analysis?.method?.trim() ?: methodName,
             analysisInstrument = (analysis?.instrument ?: instrumentName).trim().ifEmpty { null },
-            analyzedAt = analysis?.let { requireNotNull(it.analyzedAt) } ?: collectedAt,
+            analyzedAt = analysis?.let { requireNotNull(it.analyzedAt) } ?: collectedAt.takeIf { fieldAtSampling },
             fieldExceptionReason = fieldExceptionReason(kind),
         )
     }.sortedBy { it.kind.ordinal }
@@ -263,42 +271,50 @@ object FirestoreObservationMapper {
         "mobile_app_version" to snapshot.appVersion,
     )
 
-    fun revision(snapshot: CanonicalObservationSnapshot, status: String): Map<String, Any?> = mapOf(
-        "revision_id" to snapshot.revisionId.value,
-        "revision_no" to snapshot.revisionNo,
-        "submission_id" to snapshot.submissionId.value,
-        "event_id" to snapshot.eventId.value,
-        "collector_user_id" to snapshot.ownerUid,
-        "site_id" to snapshot.siteId.value,
-        "revision_status" to status,
-        "created_at" to Timestamp(Date(snapshot.createdAt)),
-        "submitted_at" to submittedAt(status),
-        "collected_at" to Timestamp(Date(snapshot.collectedAt)),
-        "time_known" to true,
-        "time_imputed" to false,
-        "latitude" to snapshot.latitude,
-        "longitude" to snapshot.longitude,
-        "location" to GeoPoint(snapshot.latitude, snapshot.longitude),
-        "gps_accuracy_m" to snapshot.gpsAccuracyM,
-        "site_distance_m" to null,
-        "weather_condition" to snapshot.weatherCondition,
-        "water_color" to snapshot.waterColor,
-        "flow_condition" to snapshot.flowCondition,
-        "collection_stage" to snapshot.collectionStage,
-        "data_collected_by" to snapshot.collectorDisplayName,
-        "test_type" to snapshot.testType,
-        "test_type_other" to snapshot.testTypeOther,
-        "method_name" to snapshot.methodName,
-        "instrument_name" to snapshot.instrumentName.ifBlank { null },
-        "instrument_other" to null,
-        "temp_entered_value" to snapshot.temperatureEnteredValue,
-        "temp_entered_unit" to snapshot.temperatureEnteredUnit,
-        "temp_c" to snapshot.tempC,
-        "temp_f" to snapshot.tempF,
-        "field_notes_original" to snapshot.fieldNotes,
-        "schema_version" to schemaVersion(snapshot),
-        "mobile_app_version" to snapshot.appVersion,
-    )
+    fun revision(snapshot: CanonicalObservationSnapshot, status: String): Map<String, Any?> {
+        val legacy = schemaVersion(snapshot) == LEGACY_SCHEMA_VERSION
+        // A 0.1.0 revision predates the collection stage and may predate the visual observations: an
+        // observation the old build never recorded is written as null, not as a placeholder (as on iOS).
+        fun observed(value: String): String? = if (legacy) value.ifBlank { null } else value
+        val fields = linkedMapOf<String, Any?>(
+            "revision_id" to snapshot.revisionId.value,
+            "revision_no" to snapshot.revisionNo,
+            "submission_id" to snapshot.submissionId.value,
+            "event_id" to snapshot.eventId.value,
+            "collector_user_id" to snapshot.ownerUid,
+            "site_id" to snapshot.siteId.value,
+            "revision_status" to status,
+            "created_at" to Timestamp(Date(snapshot.createdAt)),
+            "submitted_at" to submittedAt(status),
+            "collected_at" to Timestamp(Date(snapshot.collectedAt)),
+            "time_known" to true,
+            "time_imputed" to false,
+            "latitude" to snapshot.latitude,
+            "longitude" to snapshot.longitude,
+            "location" to GeoPoint(snapshot.latitude, snapshot.longitude),
+            "gps_accuracy_m" to snapshot.gpsAccuracyM,
+            "site_distance_m" to null,
+            "weather_condition" to observed(snapshot.weatherCondition),
+            "water_color" to observed(snapshot.waterColor),
+            "flow_condition" to observed(snapshot.flowCondition),
+            "collection_stage" to snapshot.collectionStage,
+            "data_collected_by" to snapshot.collectorDisplayName,
+            "test_type" to snapshot.testType,
+            "test_type_other" to snapshot.testTypeOther,
+            "method_name" to snapshot.methodName,
+            "instrument_name" to snapshot.instrumentName.ifBlank { null },
+            "instrument_other" to null,
+            "temp_entered_value" to snapshot.temperatureEnteredValue,
+            "temp_entered_unit" to snapshot.temperatureEnteredUnit,
+            "temp_c" to snapshot.tempC,
+            "temp_f" to snapshot.tempF,
+            "field_notes_original" to snapshot.fieldNotes,
+            "schema_version" to schemaVersion(snapshot),
+            "mobile_app_version" to snapshot.appVersion,
+        )
+        if (legacy) fields.remove("collection_stage")
+        return fields
+    }
 
     fun measurement(snapshot: CanonicalObservationSnapshot, value: CanonicalMeasurement): Map<String, Any?> =
         if (schemaVersion(snapshot) == LEGACY_SCHEMA_VERSION) legacyMeasurement(snapshot, value) else mapOf(
@@ -313,10 +329,11 @@ object FirestoreObservationMapper {
         "instrument_name" to value.analysisInstrument?.ifBlank { null },
         "qualifier" to null,
         "notes" to null,
-        // entered_at stays the sampling time on both platforms; analyzed_at carries the analysis time.
+        // entered_at stays the sampling time on both platforms; analyzed_at carries the analysis time
+        // (null with a null stage when the method category does not establish where it was analyzed).
         "entered_at" to Timestamp(Date(snapshot.collectedAt)),
         "analysis_stage" to value.analysisStage,
-        "analyzed_at" to Timestamp(Date(value.analyzedAt)),
+        "analyzed_at" to value.analyzedAt?.let { Timestamp(Date(it)) },
         "field_exception_reason" to value.fieldExceptionReason,
     )
 
