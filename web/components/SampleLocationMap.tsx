@@ -233,8 +233,9 @@ export default function SampleLocationMap(props: Props) {
         <div
           ref={host}
           className="location-map"
-          role="img"
-          aria-label={`Map. ${describeLocation(distanceM, toleranceM, gpsAccuracyM)}`}
+          // A region, not an image: the ArcGIS view inside is keyboard-focusable for panning and zooming.
+          role="region"
+          aria-label={`Sample location map. ${describeLocation(distanceM, toleranceM, gpsAccuracyM)}`}
         />
         <div className="location-map-zoom" role="group" aria-label="Zoom">
           <button type="button" aria-label="Zoom in" title="Zoom in" onClick={() => zoomRef.current?.(1)}>+</button>

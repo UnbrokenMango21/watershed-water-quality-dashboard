@@ -620,7 +620,7 @@ export default function RecordView({ detail, user }: { detail: SubmissionDetail;
             <KV label="Weather">{formatText(currentRevision?.weather_condition, NOT_RECORDED)}</KV>
             <KV label="Water color">{formatText(currentRevision?.water_color, NOT_RECORDED)}</KV>
             <KV label="Flow condition">{formatText(currentRevision?.flow_condition, NOT_RECORDED)}</KV>
-            <KV label="Collection stage">{formatText(currentRevision?.collection_stage, NOT_RECORDED)}</KV>
+            <KV label="Collection stage">{currentRevision?.collection_stage ? humanizeCode(currentRevision.collection_stage) : NOT_RECORDED}</KV>
             <KV label="Time recorded">
               {currentRevision?.time_known === false || currentRevision?.time_imputed ? (
                 <Badge tone="warning" icon="alert">

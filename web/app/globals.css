@@ -1140,7 +1140,8 @@ textarea:focus-visible {
 
 .badge-ok {
   background: var(--ok-bg);
-  color: var(--ok);
+  /* Fern text on the approved tint is about 4.2:1; small badge text needs 4.5:1. */
+  color: var(--pww-status-approved-text);
   border-color: var(--ok-border);
 }
 
@@ -2208,6 +2209,7 @@ button {
 
 input[type="email"],
 input[type="password"],
+input[type="text"],
 textarea {
   width: 100%;
   font: inherit;
@@ -2221,7 +2223,29 @@ textarea {
 
 input[type="email"]:hover:not(:disabled),
 input[type="password"]:hover:not(:disabled),
+input[type="text"]:hover:not(:disabled),
 textarea:hover:not(:disabled) {
+  border-color: var(--brand-500);
+}
+
+/* Form controls inside labelled fields (account, discussion, coordinate and observation forms). */
+.field input:not([type]),
+.field input[type="number"],
+.field select {
+  width: 100%;
+  min-height: 40px;
+  font: inherit;
+  font-size: var(--fs-base);
+  padding: 8px 11px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-sm);
+  background: var(--surface-field);
+  color: var(--text);
+}
+
+.field input:not([type]):hover:not(:disabled),
+.field input[type="number"]:hover:not(:disabled),
+.field select:hover:not(:disabled) {
   border-color: var(--brand-500);
 }
 
@@ -2393,6 +2417,12 @@ textarea:disabled {
 
 .notice > .icon {
   margin-top: 2px;
+}
+
+/* The icon and border carry the tone; the message itself stays high-contrast body text
+   (tinted text on the tinted backgrounds falls below 4.5:1). */
+.notice > span {
+  color: var(--text);
 }
 
 .notice-error {

@@ -14,6 +14,11 @@ function MyObservations() {
   const [records, setRecords] = useState<SubmissionDoc[] | null>(null);
   const [selectedId, setSelectedId] = useState('');
   const [error, setError] = useState('');
+  const [siteNames, setSiteNames] = useState<Record<string, string>>({});
+  // Friendly names come from the private site catalog; the exact site ID stays visible as provenance.
+  useEffect(() => onSnapshot(collection(clientDb(), 'siteCatalog'), snapshot => {
+    setSiteNames(Object.fromEntries(snapshot.docs.map(document => [document.id, String(document.get('site_name_display') ?? document.id)])));
+  }, () => setSiteNames({})), []);
   useEffect(() => onSnapshot(query(collection(clientDb(), 'submissions'), where('collector_user_id', '==', user.uid)), snapshot => {
     setRecords(snapshot.docs.map(document => ({ ...document.data(), submission_id: document.id }) as SubmissionDoc)
       .sort((a, b) => (b.latest_collected_at?.toMillis() ?? 0) - (a.latest_collected_at?.toMillis() ?? 0)));
@@ -28,11 +33,11 @@ function MyObservations() {
     {records?.length === 0 && <p>No synchronized sampling records yet. Local offline drafts remain on the device until synchronization succeeds.</p>}
     <label className="field"><span className="field-label">Sampling record</span><select value={selectedId} onChange={event => setSelectedId(event.target.value)}>
       <option value="">Choose an observation</option>
-      {records?.map(record => <option key={record.submission_id} value={record.submission_id}>{record.site_id} · {formatEastern(record.latest_collected_at)} · {record.status.toLowerCase().replaceAll('_', ' ')}</option>)}
+      {records?.map(record => <option key={record.submission_id} value={record.submission_id}>{siteNames[record.site_id] ?? record.site_id} · {formatEastern(record.latest_collected_at)} · {record.status.toLowerCase().replaceAll('_', ' ')}</option>)}
     </select></label>
     {selected && <>
       <StatusBadge status={selected.status} />
-      <p>Site ID: <code>{selected.site_id}</code> · Revision {selected.current_revision_no}</p>
+      <p>{siteNames[selected.site_id] ?? 'Monitoring site'} (<code>{selected.site_id}</code>) · Revision {selected.current_revision_no}</p>
       {selected.review_comment && <Notice kind="info">{selected.review_comment}</Notice>}
       <DiscussionPanel key={selected.submission_id} submissionId={selected.submission_id} revisionId={selected.current_revision_id} collectorUid={user.uid} />
     </>}

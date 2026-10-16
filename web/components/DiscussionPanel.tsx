@@ -6,11 +6,17 @@ import { useSession } from '@/components/AuthGate';
 import { accountAction, clientDb } from '@/lib/firebase-client';
 import { formatEastern } from '@/lib/format';
 import { Notice } from '@/components/ui';
+import { Icon, type IconName } from '@/components/icons';
 
 interface Message {
   message_id: string; revision_id: string; sender_uid: string; sender_display_name: string;
   sender_role: string; kind: string; text: string; created_at?: Timestamp;
 }
+// Each kind has its own icon and words; status is never conveyed by color alone.
+const icons: Record<string, IconName> = {
+  COLLECTOR_COMMENT: 'user', REVIEWER_QUESTION: 'help', CORRECTION_REQUEST: 'alert', REVIEW_DECISION: 'checkCircle', ADMINISTRATIVE_NOTE: 'shield',
+};
+const roleLabels: Record<string, string> = { COLLECTOR: 'Collector', QC_REVIEWER: 'QC reviewer', ADMIN: 'Administrator' };
 const labels: Record<string, string> = {
   COLLECTOR_COMMENT: 'Collector comment', REVIEWER_QUESTION: 'Reviewer question',
   CORRECTION_REQUEST: 'Request for correction', REVIEW_DECISION: 'Review decision', ADMINISTRATIVE_NOTE: 'Administrative note · review team only',
@@ -57,8 +63,8 @@ export default function DiscussionPanel({ submissionId, revisionId, collectorUid
       {messages === null && !error && <p role="status">Loading discussion…</p>}
       {messages?.length === 0 && notes.length === 0 && <p>No messages yet.</p>}
       <div aria-live="polite">{sorted.map(message => <article key={`${message.kind}-${message.message_id}`} style={{ borderBottom: '1px solid var(--border)', padding: '12px 0' }}>
-        <strong>{labels[message.kind] ?? 'Message'}</strong>
-        <p className="muted">{message.sender_display_name} · {message.sender_role.toLowerCase().replaceAll('_', ' ')} · {formatEastern(message.created_at)}</p>
+        <strong style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Icon name={icons[message.kind] ?? 'notes'} size={15} />{labels[message.kind] ?? 'Message'}</strong>
+        <p className="muted">{message.sender_display_name} · {roleLabels[message.sender_role] ?? 'Program participant'} · {formatEastern(message.created_at)}</p>
         <p style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{message.text}</p>
         <details><summary>Revision context</summary><p><code>{message.revision_id}</code></p></details>
       </article>)}</div>

@@ -28,6 +28,8 @@ export default function AccountAccessPanel({ user, refresh }: { user: User; refr
     // role and access version apply now instead of at the next hourly token refresh.
     const decision = data?.provisioning_state === 'COMPLETE' ? `${data.request_id}:${data.status}` : '';
     if (settledDecision.current !== null && decision && decision !== settledDecision.current) {
+      // The decision supersedes an earlier confirmation such as "Your request is with an administrator".
+      setMessage('');
       void refreshRef.current().catch(() => setError('Your access changed. Select Refresh access to continue.'));
     }
     settledDecision.current = decision;
@@ -63,7 +65,7 @@ export default function AccountAccessPanel({ user, refresh }: { user: User; refr
         })}>Send verification email</button>
       </> : !request || request.status === 'REJECTED' || request.status === 'REVOKED' ? <form onSubmit={submit} aria-busy={busy}>
         {request ? <p>{request.decision_reason ?? 'Your previous request was not approved.'} You may submit a new request with updated information.</p> : null}
-        <label className="field"><span className="field-label">Display name</span><input autoComplete="name" required minLength={2} maxLength={80} value={name} onChange={event => setName(event.target.value)} /></label>
+        <label className="field"><span className="field-label">Display name</span><input type="text" autoComplete="name" required minLength={2} maxLength={80} value={name} onChange={event => setName(event.target.value)} /></label>
         <button type="button" className="btn" disabled={busy || name.trim().length < 2} onClick={() => void perform(async () => {
           await accountAction('initializeMyAccount', { displayName: name }); await user.reload(); setMessage('Your collector profile is saved.');
         })}>Save collector profile</button>
