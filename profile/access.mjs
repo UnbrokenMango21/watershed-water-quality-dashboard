@@ -15,10 +15,14 @@ function identifier(value) {
   if (typeof value !== 'string' || !value || value.length > 128 || /[\/\u0000-\u001f]/.test(value)) fail('invalid-argument', 'Invalid account or request ID.');
   return value;
 }
-export async function currentAccount(auth, uid, { verified = true } = {}) {
+export async function currentAccount(auth, uid, { verified = true, allowDisabled = false } = {}) {
   if (!uid) fail('unauthenticated', 'Sign in to continue.');
-  const account = await auth.getUser(uid);
-  if (account.disabled) fail('permission-denied', 'This account is disabled.');
+  let account;
+  try { account = await auth.getUser(uid); } catch (error) {
+    if (error?.code === 'auth/user-not-found') fail('not-found', 'This account no longer exists.');
+    throw error;
+  }
+  if (account.disabled && !allowDisabled) fail('permission-denied', 'This account is disabled.');
   if (verified && !(account.emailVerified && account.email) && !account.phoneNumber) {
     fail('failed-precondition', 'Verify your email address before continuing.');
   }
@@ -102,7 +106,8 @@ export async function decideReviewerAccess({ db, auth, uid, data, serverTimestam
   if (reason.length < 5 || reason.length > 1000) fail('invalid-argument', 'Record a decision reason in 5 to 1000 characters.');
   const actor = await currentAccount(auth, uid);
   if (actor.customClaims?.role !== 'ADMIN') fail('permission-denied', 'Administrator authorization is required.');
-  const target = await currentAccount(auth, targetUid, { verified: data.status === 'APPROVED' });
+  // Suspending or revoking must also work on a disabled account; only approval needs a usable one.
+  const target = await currentAccount(auth, targetUid, { verified: data.status === 'APPROVED', allowDisabled: data.status !== 'APPROVED' });
   if (targetUid === uid || target.customClaims?.role === 'ADMIN' || target.email?.toLowerCase() === 'pzc5420@psu.edu') {
     fail('permission-denied', 'Administrator membership cannot be changed here.');
   }
@@ -137,7 +142,7 @@ export async function decideReviewerAccess({ db, auth, uid, data, serverTimestam
   if (!acquired) return { status: data.status, idempotent: true };
   const role = data.status === 'APPROVED' ? 'QC_REVIEWER' : 'COLLECTOR';
   // Preserve unrelated custom claims. Version fencing prevents an expired worker's claims from granting access.
-  const freshTarget = await currentAccount(auth, targetUid, { verified: data.status === 'APPROVED' });
+  const freshTarget = await currentAccount(auth, targetUid, { verified: data.status === 'APPROVED', allowDisabled: data.status !== 'APPROVED' });
   // Never write claims for a decision another operation has already superseded.
   const stillOwned = await db.runTransaction(async tx => (await tx.get(requestRef)).data()?.operation_id === operation);
   if (!stillOwned) fail('aborted', 'Another access decision replaced this one. Access remains closed.');

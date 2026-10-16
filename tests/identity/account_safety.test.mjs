@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { attributionReferences, classifyIdentity, identityFingerprint, identitySnapshot, PROJECT_ID, uidReferences, validateCleanupPlan, verifiedDesignatedIdentity } from '../../scripts/lib/identity_safety.mjs';
+import { bootstrapBlockers } from '../../scripts/lib/identity_safety.mjs';
 import { collectAccountInventory, privateIdentityReportPath } from '../../scripts/audit_auth_accounts.mjs';
 
 const now = new Date('2026-10-15T19:00:00.000Z');
@@ -133,4 +134,17 @@ test('read-only REST inventory paginates collections/documents and detects missi
     assert.equal(calls.length, 4);
     assert.ok(calls.every((call) => call.method === 'GET' || (call.method === 'POST' && call.url.endsWith(':listCollectionIds'))));
   } finally { globalThis.fetch = originalFetch; }
+});
+
+test('bootstrap never silently undoes a suspension, a declined/revoked request or an in-flight decision', () => {
+  const now = 1_000_000;
+  assert.deepEqual(bootstrapBlockers({ profile: { active: true }, request: { status: 'APPROVED', provisioning_state: 'COMPLETE' }, now }), []);
+  assert.deepEqual(bootstrapBlockers({ profile: undefined, request: undefined, now }), []);
+  assert.equal(bootstrapBlockers({ profile: { active: false }, now }).length, 1);
+  for (const status of ['SUSPENDED', 'REVOKED', 'REJECTED']) assert.equal(bootstrapBlockers({ profile: { active: true }, request: { status }, now }).length, 1, status);
+  assert.equal(bootstrapBlockers({ request: { status: 'PENDING', provisioning_state: 'APPLYING' }, now }).length, 1);
+  assert.equal(bootstrapBlockers({ request: { status: 'APPROVED', operation_expires_at_ms: now + 5 }, now }).length, 1);
+  // An explicit, audited lift clears suspension blockers but never an in-flight decision.
+  assert.deepEqual(bootstrapBlockers({ profile: { active: false }, request: { status: 'REVOKED' }, now, liftSuspension: true }), []);
+  assert.equal(bootstrapBlockers({ request: { status: 'SUSPENDED', provisioning_state: 'APPLYING' }, now, liftSuspension: true }).length, 1);
 });

@@ -96,9 +96,16 @@ function membershipCallable(operation) {
     if (!request.auth?.uid) throw new HttpsError('unauthenticated', 'Sign in to continue.');
     const bearer = /^Bearer\s+(.+)$/i.exec(request.rawRequest.headers.authorization ?? '');
     if (!bearer) throw new HttpsError('unauthenticated', 'Sign in again to continue.');
+    // Only the caller's own token problems mean "sign in again"; errors about other accounts
+    // (for example a missing target) are reported by the operation itself.
+    let token;
     try {
-      const token = await getAuth().verifyIdToken(bearer[1], true);
-      if (token.uid !== request.auth.uid) throw new HttpsError('unauthenticated', 'Sign in again to continue.');
+      token = await getAuth().verifyIdToken(bearer[1], true);
+    } catch {
+      throw new HttpsError('unauthenticated', 'Sign in again to continue.');
+    }
+    if (token.uid !== request.auth.uid) throw new HttpsError('unauthenticated', 'Sign in again to continue.');
+    try {
       return await operation({
         db: getFirestore(), auth: getAuth(), uid: token.uid, data: request.data,
         serverTimestamp: () => FieldValue.serverTimestamp(),
@@ -106,7 +113,6 @@ function membershipCallable(operation) {
     } catch (error) {
       if (error instanceof AccessError || error instanceof DisplayNameError) throw new HttpsError(error.code, error.message);
       if (error instanceof HttpsError) throw error;
-      if (String(error.code ?? '').startsWith('auth/')) throw new HttpsError('unauthenticated', 'Sign in again to continue.');
       logger.error('Membership operation failed', { operation: operation.name, code: error.code ?? 'unknown' });
       throw new HttpsError('internal', 'The account change could not be completed. Please try again.');
     }

@@ -59,7 +59,11 @@ test('verified registration → request → authorized decision → revoke prese
     await initializeMembership({ ...input, uid: uids[0], data: { displayName: 'Renamed Reviewer' } });
     assert.equal((await db.collection('users').doc(uids[0]).get()).data().role, 'QC_REVIEWER');
     assert.equal((await historical.get()).data().data_collected_by, 'Original Collector');
+    await assert.rejects(decideReviewerAccess({ ...input, uid: uids[1], data: { ...decision, uid: 'membership-missing-account' } }), error => error.code === 'not-found');
+    // Revocation must work even when the reviewer's Auth account has been disabled.
+    await auth.updateUser(uids[0], { disabled: true });
     await decideReviewerAccess({ ...input, uid: uids[1], data: { ...decision, status: 'REVOKED', reason: 'Project review assignment has ended.' } });
+    await auth.updateUser(uids[0], { disabled: false });
     const revoked = (await db.collection('users').doc(uids[0]).get()).data();
     assert.ok(reviewerAccessProblem({ disabled: false, claimRole: approved.customClaims.role, accessVersion: approved.customClaims.access_version, profile: revoked }));
     assert.equal((await auth.getUser(uids[0])).customClaims.role, 'COLLECTOR');

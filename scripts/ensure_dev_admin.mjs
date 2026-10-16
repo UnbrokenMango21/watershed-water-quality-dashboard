@@ -4,13 +4,13 @@ import { randomUUID } from 'node:crypto';
 import { initializeApp } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
-import { DESIGNATED_IDENTITIES, PROJECT_ID, verifiedDesignatedIdentity } from './lib/identity_safety.mjs';
+import { bootstrapBlockers, DESIGNATED_IDENTITIES, PROJECT_ID, verifiedDesignatedIdentity } from './lib/identity_safety.mjs';
 
 async function main() {
   const args = process.argv.slice(2);
   const value = (key) => args.find((arg) => arg.startsWith(`${key}=`))?.slice(key.length + 1);
-  if (args.some((arg) => arg !== '--apply' && !['--email=', '--uid=', '--confirm-grant=', '--verification-reference='].some((key) => arg.startsWith(key)))) {
-    throw new Error('Unsupported flag. Use --email, --uid, --verification-reference, --confirm-grant with = values.');
+  if (args.some((arg) => arg !== '--apply' && !['--email=', '--uid=', '--confirm-grant=', '--verification-reference=', '--lift-suspension='].some((key) => arg.startsWith(key)))) {
+    throw new Error('Unsupported flag. Use --email, --uid, --verification-reference, --confirm-grant (and only if approved, --lift-suspension) with = values.');
   }
   const email = (value('--email') ?? 'pzc5420@psu.edu').toLowerCase();
   const expectedUid = value('--uid');
@@ -35,6 +35,11 @@ async function main() {
   verifiedDesignatedIdentity(user, email, expectedUid);
   const ref = db.collection('users').doc(user.uid);
   const existing = await ref.get();
+  const liftSuspension = value('--lift-suspension') === expectedUid;
+  const blockers = bootstrapBlockers({ profile: existing.data(), request: (await db.collection('reviewerAccessRequests').doc(user.uid).get()).data(), liftSuspension });
+  if (blockers.length) {
+    throw new Error(`Refusing to bootstrap: ${blockers.join(' ')} An administrator decision must not be undone silently; use --lift-suspension=${expectedUid} only with specific approval.`);
+  }
   // Access-version fencing stops old role-bearing tokens; preserve all unrelated claims/profile fields.
   const accessVersion = randomUUID();
   await ref.set({ role, active: false, access_version: accessVersion, updated_at: FieldValue.serverTimestamp(),
@@ -42,7 +47,7 @@ async function main() {
   }, { merge: true });
   await auth.setCustomUserClaims(user.uid, { ...(user.customClaims ?? {}), role, access_version: accessVersion });
   await auth.revokeRefreshTokens(user.uid);
-  await db.collection('identityAudit').add({ event_type: 'DESIGNATED_ROLE_BOOTSTRAP', subject_uid: user.uid, role,
+  await db.collection('identityAudit').add({ event_type: 'DESIGNATED_ROLE_BOOTSTRAP', subject_uid: user.uid, role, lifted_suspension: liftSuspension,
     access_version: accessVersion, verification_reference: value('--verification-reference'), occurred_at: FieldValue.serverTimestamp() });
   await ref.set({ active: true, updated_at: FieldValue.serverTimestamp() }, { merge: true });
   if (role === 'QC_REVIEWER') {

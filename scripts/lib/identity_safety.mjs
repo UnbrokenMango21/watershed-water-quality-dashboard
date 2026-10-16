@@ -116,3 +116,20 @@ export function validateCleanupPlan({ report, reportSha256, approval, uids, curr
     return { uid, action: 'DISABLE_TEST_ACCESS', preserve_profile_and_history: true };
   });
 }
+
+/**
+ * Why a designated-role bootstrap must not proceed. A suspended profile, a declined/suspended/revoked
+ * reviewer request or an in-flight access decision is an administrator decision the bootstrap must
+ * not silently undo; lifting a suspension needs an explicit, audited operator flag.
+ */
+export function bootstrapBlockers({ profile, request, now = Date.now(), liftSuspension = false }) {
+  const blockers = [];
+  if (profile?.active === false && !liftSuspension) blockers.push('The profile is suspended (active: false).');
+  if (request && ['SUSPENDED', 'REVOKED', 'REJECTED'].includes(request.status) && !liftSuspension) {
+    blockers.push(`The reviewer access request is ${request.status}.`);
+  }
+  if (request?.provisioning_state === 'APPLYING' || Number(request?.operation_expires_at_ms ?? 0) > now) {
+    blockers.push('An access decision is still being applied.');
+  }
+  return blockers;
+}
