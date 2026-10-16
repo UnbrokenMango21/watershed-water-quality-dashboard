@@ -50,6 +50,11 @@ extension TestType {
     }
 
     static func contract(_ value: String) -> TestType? { allCases.first { $0.contractValue == value } }
+
+    /// Whether the method category itself says a non-laboratory reading was analysed in the field at
+    /// sampling. Laboratory, mixed and other categories do not say where or when a reading was analysed,
+    /// so no analysis stage or time is recorded for them.
+    var recordsFieldAnalysis: Bool { [.fieldInstrument, .fieldKit, .sonde].contains(self) }
 }
 
 enum EasternTime {
@@ -248,6 +253,9 @@ extension ObservationDraft {
         let temperatureUnit = selectedUnit(for: .temperature)
         let tempC = enteredTemperature.map { temperatureUnit.convert($0, to: .celsius) }
         let tempF = tempC.map { MeasurementUnit.celsius.convert($0, to: .fahrenheit) }
+        // A non-laboratory reading's stage and time are recorded only when the method category establishes
+        // them; laboratory parameters carry exactly what the collector entered.
+        let fieldAnalysis = testType.recordsFieldAnalysis
         let canonical = try values.compactMap { kind, raw -> CanonicalMeasurement? in
             let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
             guard kind != .temperature, !trimmed.isEmpty, !incomplete.contains(kind) else { return nil }
@@ -259,10 +267,10 @@ extension ObservationDraft {
                 id: CanonicalID.measurement(revisionID: revisionID, parameterCode: code), kind: kind,
                 parameterCode: code, displayName: String(localized: kind.title), enteredValue: entered,
                 enteredUnitID: selected.id, enteredUnit: selected.menuTitle, value: canonicalValue(entered, for: kind), unitCode: unitCode,
-                analysisStage: kind.needsAnalysisProvenance ? analysisDetails[kind]?.stage : "FIELD",
+                analysisStage: kind.needsAnalysisProvenance ? analysisDetails[kind]?.stage : (fieldAnalysis ? "FIELD" : nil),
                 analysisMethod: kind.needsAnalysisProvenance ? analysisDetails[kind]?.method.trimmingCharacters(in: .whitespacesAndNewlines) : canonicalMethod,
                 analysisInstrument: kind.needsAnalysisProvenance ? analysisDetails[kind].flatMap { Self.trimmedOrNil($0.instrument) } : canonicalInstrument,
-                analyzedAt: kind.needsAnalysisProvenance ? analysisDetails[kind]?.analyzedAt : date,
+                analyzedAt: kind.needsAnalysisProvenance ? analysisDetails[kind]?.analyzedAt : (fieldAnalysis ? date : nil),
                 fieldExceptionReason: fieldExceptionReason(for: kind)
             )
         }.sorted { MeasurementKind.allCases.firstIndex(of: $0.kind)! < MeasurementKind.allCases.firstIndex(of: $1.kind)! }
@@ -438,7 +446,8 @@ enum FirebaseMapper {
             "entered_value": item.enteredValue, "entered_unit_code": item.enteredUnitID,
             "method_name": item.analysisMethod ?? value.method,
             "instrument_name": instrument.isEmpty ? NSNull() : instrument,
-            "analysis_stage": item.analysisStage ?? "FIELD", "analyzed_at": Timestamp(date: item.analyzedAt ?? value.collectedAt),
+            // An unknown stage or analysis time is recorded as null, never assumed to be field analysis.
+            "analysis_stage": item.analysisStage ?? NSNull(), "analyzed_at": item.analyzedAt.map { Timestamp(date: $0) as Any } ?? NSNull(),
             "field_exception_reason": item.fieldExceptionReason ?? NSNull(),
             "qualifier": NSNull(), "notes": NSNull(), "entered_at": Timestamp(date: value.collectedAt),
         ]
@@ -791,7 +800,15 @@ private struct DraftPayload: Codable {
                 }
                 let measurements = (temperature.map { [$0] } ?? []) + snapshot.measurements.map { measurement in
                     let unit = measurement.kind.unitOptions.first(where: { $0.id == measurement.enteredUnitID }) ?? measurement.kind.defaultUnit
-                    return MeasurementValue(id: measurement.id, kind: measurement.kind, value: Self.entry(measurement.enteredValue), unit: unit)
+                    // The laboratory analysis details the collector entered travel with the record so a
+                    // correction keeps them. Other parameters' provenance follows from the test type.
+                    let analysis = measurement.kind.needsAnalysisProvenance ? measurement.analysisStage.map { stage in
+                        AnalysisProvenance(
+                            stage: stage, method: measurement.analysisMethod ?? "", instrument: measurement.analysisInstrument ?? "",
+                            analyzedAt: measurement.analyzedAt, fieldExceptionReason: measurement.fieldExceptionReason ?? ""
+                        )
+                    } : nil
+                    return MeasurementValue(id: measurement.id, kind: measurement.kind, value: Self.entry(measurement.enteredValue), unit: unit, analysis: analysis)
                 }
                 let history = try revisions.map { revision -> RevisionSummary in
                     let value = try decoder.decode(CanonicalSnapshot.self, from: revision.snapshot)
@@ -890,8 +907,9 @@ enum ProfileCallable {
 
     /// Posts `{"data": ...}` with the caller's ID token. A rejected call throws `CallableFailure.server`
     /// carrying the server's own human-readable message, so screens can show exactly why it failed.
-    @discardableResult
-    static func call(_ function: String, data: [String: Any], user: User, timeout: TimeInterval = 20) async throws -> Any? {
+    /// Callers need only success or failure, so the (non-Sendable) result is validated here and not
+    /// returned across actor boundaries.
+    static func call(_ function: String, data: [String: Any], user: User, timeout: TimeInterval = 20) async throws {
         guard let projectID = FirebaseApp.app()?.options.projectID else { throw URLError(.badURL) }
         let url = FirebaseEnvironment.usesEmulators
             ? URL(string: "http://\(FirebaseEnvironment.emulatorHost):5001/\(projectID)/\(region)/\(function)")!
@@ -902,7 +920,7 @@ enum ProfileCallable {
         request.setValue("Bearer \(try await user.getIDToken())", forHTTPHeaderField: "Authorization")
         request.httpBody = try JSONSerialization.data(withJSONObject: ["data": data])
         let (body, response) = try await URLSession.shared.data(for: request)
-        return try CallableResponse.result(statusCode: (response as? HTTPURLResponse)?.statusCode, body: body)
+        _ = try CallableResponse.result(statusCode: (response as? HTTPURLResponse)?.statusCode, body: body)
     }
 }
 

@@ -482,6 +482,8 @@ struct MeasurementValue: Identifiable, Hashable {
     let kind: MeasurementKind
     let value: String
     let unit: MeasurementUnit
+    /// Laboratory analysis details recorded for chloride, sulfate, nitrate and phosphate; nil otherwise.
+    var analysis: AnalysisProvenance? = nil
 
     var displayValue: String {
         guard kind == .temperature, let number = Double(value) else {
@@ -1025,6 +1027,18 @@ final class AppModel {
             if connection == .online { retrySync(recordID: record.id) }
             return false
         }
+        let correction = Self.correctionDraft(from: record)
+        draft = correction
+        attachAutosave(to: correction)
+        saveDraft(correction)
+        workflowState = .needsCorrection
+        syncState = .savedLocally
+        return true
+    }
+
+    /// Revision N+1 of a record, starting from everything the collector recorded in revision N, including
+    /// laboratory analysis details. Revision N itself is never changed.
+    static func correctionDraft(from record: ObservationRecord) -> ObservationDraft {
         let correction = ObservationDraft(
             id: record.id, eventID: record.eventID, revisionID: UUID(), revisionNumber: record.revision + 1,
             ownerUID: record.ownerUID
@@ -1043,15 +1057,11 @@ final class AppModel {
         correction.notes = record.notes
         correction.values = Dictionary(uniqueKeysWithValues: record.measurements.map { ($0.kind, $0.value) })
         correction.selectedUnits = Dictionary(uniqueKeysWithValues: record.measurements.map { ($0.kind, $0.unit) })
+        correction.analysisDetails = Dictionary(uniqueKeysWithValues: record.measurements.compactMap { value in value.analysis.map { (value.kind, $0) } })
         correction.isCorrection = true
         correction.baseRevision = record.revision
         correction.correctionReason = record.correctionReason
-        draft = correction
-        attachAutosave(to: correction)
-        saveDraft(correction)
-        workflowState = .needsCorrection
-        syncState = .savedLocally
-        return true
+        return correction
     }
 
     func resubmitCorrection(recordID: UUID) {

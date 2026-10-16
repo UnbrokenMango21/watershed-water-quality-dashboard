@@ -72,7 +72,7 @@ final class WorkflowUITests: XCTestCase {
         XCTAssertTrue(app.navigationBars["Visit Details"].waitForExistence(timeout: 5), "Continue did not open Visit Details")
         let next = app.buttons["flow.next"]
         XCTAssertTrue(next.waitForExistence(timeout: 10))
-        XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS 'from the site location'")).firstMatch.waitForExistence(timeout: 20))
+        waitForSiteDistance()
         snapshot("06-visit-details")
         next.tap()
 
@@ -222,7 +222,7 @@ final class WorkflowUITests: XCTestCase {
         let next = app.buttons["flow.next"]
         XCTAssertTrue(next.waitForExistence(timeout: 10))
         // Visit Details correctly blocks until a GPS fix exists.
-        XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS 'from the site location'")).firstMatch.waitForExistence(timeout: 20))
+        waitForSiteDistance()
         snapshot("ax-05-visit-details")
         XCTAssertTrue(next.isHittable)
         next.tap()
@@ -288,7 +288,7 @@ final class WorkflowUITests: XCTestCase {
 
     private func type(_ text: String, into element: XCUIElement) {
         XCTAssertTrue(element.waitForExistence(timeout: 5), "Missing \(element)")
-        element.tap()
+        focus(element)
         dismissKeyboardTip()
         element.typeText(text)
         if !((element.value as? String) ?? "").contains(text) {
@@ -298,6 +298,27 @@ final class WorkflowUITests: XCTestCase {
             element.typeText(text)
         }
         XCTAssertTrue(((element.value as? String) ?? "").contains(text), "Typed text did not reach \(element)")
+    }
+
+    /// A tap can land while a just-closed menu is still animating away (the visual-observation
+    /// selectors sit right above the measurements), so wait for the keyboard and tap again if needed.
+    private func focus(_ element: XCUIElement) {
+        for _ in 0..<3 {
+            element.tap()
+            if app.keyboards.firstMatch.waitForExistence(timeout: 2) { return }
+        }
+        XCTFail("\(element) never received keyboard focus")
+    }
+
+    /// Waits for Visit Details to show the GPS distance. The simulator occasionally reports an
+    /// unavailable fix on a fresh launch; the app offers Reacquire GPS for exactly that, so use it once.
+    private func waitForSiteDistance() {
+        let distance = app.staticTexts.containing(NSPredicate(format: "label CONTAINS 'from the site location'")).firstMatch
+        if distance.waitForExistence(timeout: 20) { return }
+        let reacquire = app.buttons.containing(NSPredicate(format: "label CONTAINS 'Reacquire GPS'")).firstMatch
+        XCTAssertTrue(reacquire.waitForExistence(timeout: 2), "No GPS fix and no Reacquire GPS action")
+        reacquire.tap()
+        XCTAssertTrue(distance.waitForExistence(timeout: 20), "GPS fix did not arrive after Reacquire GPS")
     }
 
     /// Signed simulator builds offer an automatic strong password on `.newPassword` fields; decline it

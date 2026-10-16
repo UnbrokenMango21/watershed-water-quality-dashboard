@@ -491,6 +491,131 @@ final class ModelTests: XCTestCase {
         XCTAssertTrue(FirebaseMapper.measurement(nitrate, in: snapshot)["instrument_name"] is NSNull)
     }
 
+    /// A non-laboratory reading records analysis stage and time only when the method category establishes
+    /// them: field categories were analysed in the field at sampling; laboratory, mixed and other categories
+    /// record null rather than an assumed stage or time.
+    @MainActor
+    func testNonLaboratoryProvenanceFollowsTheMethodCategory() throws {
+        let fieldCategories: Set<TestType> = [.fieldInstrument, .fieldKit, .sonde]
+        for testType in TestType.allCases {
+            let draft = temperatureOnlyDraft(testType: testType)
+            draft[valueFor: .ph] = "7.2"
+            let snapshot = try draft.canonicalSnapshot()
+            let ph = try XCTUnwrap(snapshot.measurements.first { $0.parameterCode == "PH" })
+            let fields = FirebaseMapper.measurement(ph, in: snapshot)
+            XCTAssertTrue(fields["field_exception_reason"] is NSNull, "\(testType): pH never carries a field exception")
+            XCTAssertEqual((fields["entered_at"] as? Timestamp)?.dateValue(), draft.date, "\(testType): entered_at stays the sampling time")
+            if fieldCategories.contains(testType) {
+                XCTAssertEqual(ph.analysisStage, "FIELD", "\(testType)")
+                XCTAssertEqual(ph.analyzedAt, draft.date, "\(testType)")
+                XCTAssertEqual(fields["analysis_stage"] as? String, "FIELD", "\(testType)")
+                XCTAssertEqual((fields["analyzed_at"] as? Timestamp)?.dateValue(), draft.date, "\(testType): analysed at sampling")
+            } else {
+                XCTAssertNil(ph.analysisStage, "\(testType)")
+                XCTAssertNil(ph.analyzedAt, "\(testType)")
+                XCTAssertTrue(fields["analysis_stage"] is NSNull, "\(testType): never assume field analysis")
+                XCTAssertTrue(fields["analyzed_at"] is NSNull, "\(testType): never assume an analysis time")
+            }
+            // The stored snapshot replays the same provenance after a round trip through the device store.
+            let replayed = try JSONDecoder().decode(CanonicalSnapshot.self, from: try JSONEncoder().encode(snapshot))
+            XCTAssertEqual(try XCTUnwrap(replayed.measurements.first { $0.parameterCode == "PH" }), ph)
+        }
+    }
+
+    @MainActor
+    func testPennStateLabPHRecordsNullProvenanceAndFieldKitPHRecordsSampling() throws {
+        let lab = temperatureOnlyDraft(testType: .pennStateLab)
+        lab[valueFor: .ph] = "7.2"
+        let labSnapshot = try lab.canonicalSnapshot()
+        let labPH = FirebaseMapper.measurement(try XCTUnwrap(labSnapshot.measurements.first), in: labSnapshot)
+        XCTAssertEqual(labPH["parameter_code"] as? String, "PH")
+        XCTAssertTrue(labPH["analysis_stage"] is NSNull)
+        XCTAssertTrue(labPH["analyzed_at"] is NSNull)
+        XCTAssertTrue(labPH["field_exception_reason"] is NSNull)
+
+        let kit = temperatureOnlyDraft(testType: .fieldKit)
+        kit[valueFor: .ph] = "7.2"
+        let kitSnapshot = try kit.canonicalSnapshot()
+        let kitPH = FirebaseMapper.measurement(try XCTUnwrap(kitSnapshot.measurements.first), in: kitSnapshot)
+        XCTAssertEqual(kitPH["analysis_stage"] as? String, "FIELD")
+        XCTAssertEqual((kitPH["analyzed_at"] as? Timestamp)?.dateValue(), kit.date)
+        XCTAssertTrue(kitPH["field_exception_reason"] is NSNull)
+    }
+
+    /// Laboratory parameters always carry exactly what the collector entered, whatever the method category.
+    @MainActor
+    func testLaboratoryProvenanceIsIndependentOfTheMethodCategory() throws {
+        for testType in TestType.allCases {
+            let draft = temperatureOnlyDraft(testType: testType)
+            draft[valueFor: .nitrate] = "1.2"
+            draft[valueFor: .chloride] = "30"
+            let analyzed = draft.date.addingTimeInterval(3_600)
+            draft.analysisDetails[.nitrate] = AnalysisProvenance(stage: "LAB", method: "Ion chromatography", instrument: "IC-2", analyzedAt: analyzed)
+            draft.analysisDetails[.chloride] = AnalysisProvenance(stage: "FIELD", method: "Titration kit", instrument: "", analyzedAt: draft.date, fieldExceptionReason: "Program-approved field kit protocol.")
+            let snapshot = try draft.canonicalSnapshot()
+            let nitrate = FirebaseMapper.measurement(try XCTUnwrap(snapshot.measurements.first { $0.parameterCode == "NITRATE_MG_L" }), in: snapshot)
+            XCTAssertEqual(nitrate["analysis_stage"] as? String, "LAB", "\(testType)")
+            XCTAssertEqual(nitrate["method_name"] as? String, "Ion chromatography", "\(testType)")
+            XCTAssertEqual(nitrate["instrument_name"] as? String, "IC-2", "\(testType)")
+            XCTAssertEqual((nitrate["analyzed_at"] as? Timestamp)?.dateValue(), analyzed, "\(testType)")
+            XCTAssertTrue(nitrate["field_exception_reason"] is NSNull, "\(testType)")
+            let chloride = FirebaseMapper.measurement(try XCTUnwrap(snapshot.measurements.first { $0.parameterCode == "CHLORIDE_MG_L" }), in: snapshot)
+            XCTAssertEqual(chloride["analysis_stage"] as? String, "FIELD", "\(testType)")
+            XCTAssertEqual((chloride["analyzed_at"] as? Timestamp)?.dateValue(), draft.date, "\(testType)")
+            XCTAssertEqual(chloride["field_exception_reason"] as? String, "Program-approved field kit protocol.", "\(testType)")
+        }
+    }
+
+    /// A correction (revision N+1) starts from the laboratory analysis details the collector recorded in
+    /// revision N, still editable, and revision N is unchanged.
+    @MainActor
+    func testCorrectionKeepsLaboratoryAnalysisDetails() throws {
+        let container = try MobileModelContainer.make(inMemory: true)
+        let store = LocalMobileStore(context: container.mainContext)
+        let original = temperatureOnlyDraft(testType: .pennStateLab)
+        original[valueFor: .ph] = "7.2"
+        original[valueFor: .nitrate] = "1.2"
+        original[valueFor: .chloride] = "30"
+        let nitrateAnalysis = AnalysisProvenance(stage: "LAB", method: "Ion chromatography", instrument: "IC-2", analyzedAt: original.date.addingTimeInterval(86_400))
+        let chlorideAnalysis = AnalysisProvenance(stage: "FIELD", method: "Titration kit", instrument: "", analyzedAt: original.date.addingTimeInterval(600), fieldExceptionReason: "Program-approved field kit protocol.")
+        original.analysisDetails = [.nitrate: nitrateAnalysis, .chloride: chlorideAnalysis]
+        try store.persist(try original.canonicalSnapshot(), workflow: .submitted, sync: .waiting, note: "Original submission")
+        try store.updateRemoteState(ownerUID: original.ownerUID, submissionID: original.id, workflow: .needsCorrection, sync: .synced, correctionReason: "Verify nitrate", validation: nil, flags: [])
+
+        let record = try XCTUnwrap(store.loadRecords(ownerUID: original.ownerUID).first)
+        XCTAssertEqual(record.measurements.first { $0.kind == .nitrate }?.analysis, nitrateAnalysis)
+        XCTAssertEqual(record.measurements.first { $0.kind == .chloride }?.analysis, chlorideAnalysis)
+        XCTAssertNil(record.measurements.first { $0.kind == .ph }?.analysis, "a field parameter's provenance follows from the test type")
+
+        let correction = AppModel.correctionDraft(from: record)
+        XCTAssertEqual(correction.id, original.id); XCTAssertEqual(correction.revisionNumber, 2); XCTAssertTrue(correction.isCorrection)
+        XCTAssertNotEqual(correction.revisionID, original.revisionID)
+        XCTAssertEqual(correction.analysisDetails, [.nitrate: nitrateAnalysis, .chloride: chlorideAnalysis])
+        XCTAssertEqual(correction.values[.nitrate], "1.2")
+
+        // The carried details submit unchanged; editing one changes only the new revision.
+        correction.revisionNote = "Rechecked the laboratory sheet."
+        correction[valueFor: .nitrate] = "1.3"
+        let corrected = try correction.canonicalSnapshot()
+        let nitrate = FirebaseMapper.measurement(try XCTUnwrap(corrected.measurements.first { $0.parameterCode == "NITRATE_MG_L" }), in: corrected)
+        XCTAssertEqual(nitrate["analysis_stage"] as? String, "LAB")
+        XCTAssertEqual(nitrate["method_name"] as? String, "Ion chromatography")
+        XCTAssertEqual(nitrate["instrument_name"] as? String, "IC-2")
+        XCTAssertEqual((nitrate["analyzed_at"] as? Timestamp)?.dateValue(), nitrateAnalysis.analyzedAt)
+        let chloride = FirebaseMapper.measurement(try XCTUnwrap(corrected.measurements.first { $0.parameterCode == "CHLORIDE_MG_L" }), in: corrected)
+        XCTAssertEqual(chloride["analysis_stage"] as? String, "FIELD")
+        XCTAssertEqual(chloride["field_exception_reason"] as? String, "Program-approved field kit protocol.")
+        correction.analysisDetails[.nitrate]?.method = "Colorimetric autoanalyzer"
+        XCTAssertEqual(try correction.canonicalSnapshot().measurements.first { $0.parameterCode == "NITRATE_MG_L" }?.analysisMethod, "Colorimetric autoanalyzer")
+        try store.persist(corrected, workflow: .resubmitted, sync: .waiting, note: correction.revisionNote)
+        let stored = try container.mainContext.fetch(FetchDescriptor<LocalRevisionEntity>())
+            .sorted { $0.revisionNumber < $1.revisionNumber }
+            .map { try JSONDecoder().decode(CanonicalSnapshot.self, from: $0.snapshot) }
+        XCTAssertEqual(stored.count, 2)
+        XCTAssertEqual(stored[0].measurements.first { $0.parameterCode == "NITRATE_MG_L" }?.value, 1.2, "revision N is immutable")
+        XCTAssertEqual(stored[1].measurements.first { $0.parameterCode == "NITRATE_MG_L" }?.value, 1.3)
+    }
+
     /// Once a revision is persisted for submission, the cloud draft sync must leave it to the submission
     /// sync; a correction draft (a new revision) still synchronizes.
     @MainActor
