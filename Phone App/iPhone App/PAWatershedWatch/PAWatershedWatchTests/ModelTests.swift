@@ -185,7 +185,7 @@ final class ModelTests: XCTestCase {
 
     func testSharedGoldenFixtureRemainsAvailableToBothNativeSuites() throws {
         let json = try Self.goldenFixture()
-        XCTAssertEqual(json["fixtureVersion"] as? String, "1.0.0")
+        XCTAssertEqual(json["fixtureVersion"] as? String, "1.1.0")
         XCTAssertEqual((json["testTypes"] as? [String])?.count, 7)
         XCTAssertEqual((json["serializationCases"] as? [[String: Any]])?.count, 3)
     }
@@ -368,9 +368,30 @@ final class ModelTests: XCTestCase {
         XCTAssertThrowsError(try restored.canonicalSnapshot())
         XCTAssertEqual(try restored.canonicalSnapshot(forDraft: true).collectionStage, "LAB_PENDING")
         restored[valueFor: .nitrate] = "1.2"; restored.labResultsPending = false; restored.collectionStage = .labCompleted; restored.labCompletedAt = .now
+        // A lab value without its analysis method and time cannot be submitted, and a cloud draft omits it
+        // (it stays on the phone) instead of failing the whole synchronization.
+        XCTAssertThrowsError(try restored.canonicalSnapshot())
+        XCTAssertTrue(try restored.canonicalSnapshot(forDraft: true).measurements.isEmpty)
+        let sampled = restored.date
+        restored.analysisDetails[.nitrate] = AnalysisProvenance(stage: "LAB", method: "Ion chromatography", instrument: "", analyzedAt: sampled.addingTimeInterval(-60))
+        XCTAssertThrowsError(try restored.canonicalSnapshot(), "analysis cannot precede sampling")
+        restored.analysisDetails[.nitrate] = AnalysisProvenance(stage: "LAB", method: "Ion chromatography", instrument: "", analyzedAt: sampled.addingTimeInterval(86_400), fieldExceptionReason: "left over from an edit")
         let final = try restored.canonicalSnapshot()
         XCTAssertEqual(final.submissionID, draft.id); XCTAssertEqual(final.revisionID, draft.revisionID)
         XCTAssertNil(final.tempC); XCTAssertEqual(final.measurements.first?.parameterCode, "NITRATE_MG_L")
+        let lab = FirebaseMapper.measurement(try XCTUnwrap(final.measurements.first), in: final)
+        XCTAssertEqual(lab["analysis_stage"] as? String, "LAB")
+        XCTAssertEqual(lab["method_name"] as? String, "Ion chromatography")
+        XCTAssertTrue(lab["instrument_name"] is NSNull)
+        XCTAssertTrue(lab["field_exception_reason"] is NSNull, "laboratory results never carry a field exception")
+        XCTAssertEqual((lab["analyzed_at"] as? Timestamp)?.dateValue(), sampled.addingTimeInterval(86_400))
+        XCTAssertEqual((lab["entered_at"] as? Timestamp)?.dateValue(), sampled, "entered_at stays the sampling time on both platforms")
+        // Field analysis of a laboratory parameter is an explicit, documented exception.
+        restored.analysisDetails[.nitrate] = AnalysisProvenance(stage: "FIELD", method: "Colorimetric field kit", instrument: "", analyzedAt: sampled)
+        XCTAssertThrowsError(try restored.canonicalSnapshot())
+        restored.analysisDetails[.nitrate]?.fieldExceptionReason = "  Program-approved field kit protocol. "
+        let field = FirebaseMapper.measurement(try XCTUnwrap(try restored.canonicalSnapshot().measurements.first), in: final)
+        XCTAssertEqual(field["field_exception_reason"] as? String, "Program-approved field kit protocol.")
     }
 
     @MainActor

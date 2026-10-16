@@ -193,6 +193,14 @@ extension ObservationDraft {
         return range.bounds.contains(canonicalValue(entered, for: kind)) ? nil : range.message(for: name)
     }
 
+    /// The documented exception for a laboratory parameter analyzed in the field. Laboratory results and
+    /// field parameters carry none: the rules accept a reason only for that one documented case.
+    func fieldExceptionReason(for kind: MeasurementKind) -> String? {
+        guard kind.needsAnalysisProvenance, let analysis = analysisDetails[kind], analysis.stage == "FIELD" else { return nil }
+        let reason = analysis.fieldExceptionReason.trimmingCharacters(in: .whitespacesAndNewlines)
+        return reason.isEmpty ? nil : reason
+    }
+
     /// Every unusable entry in display order, so the screen can show a banner and focus the first one.
     var measurementProblems: [(kind: MeasurementKind, message: String)] {
         (requiredMeasurements + optionalMeasurements).compactMap { kind in
@@ -211,17 +219,22 @@ extension ObservationDraft {
         guard testType != .other || !testTypeOther.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw CanonicalizationError.invalid("Describe the other test type", section: .testMethod) }
         guard visualObservationsComplete else { throw CanonicalizationError.invalid("Choose weather, water color, and flow condition. Unknown is allowed.", section: .measurements) }
         guard forDraft || !labResultsPending else { throw CanonicalizationError.invalid("Complete laboratory results before submitting for review.", section: .measurements) }
-        if let problem = measurementProblems.first {
+        let problems = measurementProblems
+        if !forDraft, let problem = problems.first {
             throw CanonicalizationError.invalid(problem.message, section: .measurements, measurement: problem.kind)
         }
-        let temperatureRaw = values[.temperature, default: ""].trimmingCharacters(in: .whitespacesAndNewlines)
+        // A cloud draft carries only values that are already complete. Anything still unusable — a lab
+        // result without its analysis time, say — stays in the local draft until it is finished, so one
+        // incomplete entry never blocks synchronizing the rest of the field record.
+        let incomplete = forDraft ? Set(problems.map(\.kind)) : []
+        let temperatureRaw = incomplete.contains(.temperature) ? "" : values[.temperature, default: ""].trimmingCharacters(in: .whitespacesAndNewlines)
         let enteredTemperature = temperatureRaw.isEmpty ? nil : Double(temperatureRaw)
         let temperatureUnit = selectedUnit(for: .temperature)
         let tempC = enteredTemperature.map { temperatureUnit.convert($0, to: .celsius) }
         let tempF = tempC.map { MeasurementUnit.celsius.convert($0, to: .fahrenheit) }
         let canonical = try values.compactMap { kind, raw -> CanonicalMeasurement? in
             let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard kind != .temperature, !trimmed.isEmpty else { return nil }
+            guard kind != .temperature, !trimmed.isEmpty, !incomplete.contains(kind) else { return nil }
             let spec = kind.productionSpec
             guard let code = spec.code, let unitCode = spec.unit, let entered = Double(trimmed), entered.isFinite
             else { throw CanonicalizationError.invalid("\(String(localized: kind.title)) could not be recorded.", section: .measurements, measurement: kind) }
@@ -234,7 +247,7 @@ extension ObservationDraft {
                 analysisMethod: kind.needsAnalysisProvenance ? analysisDetails[kind]?.method.trimmingCharacters(in: .whitespacesAndNewlines) : canonicalMethod,
                 analysisInstrument: kind.needsAnalysisProvenance ? analysisDetails[kind]?.instrument : canonicalInstrument,
                 analyzedAt: kind.needsAnalysisProvenance ? analysisDetails[kind]?.analyzedAt : date,
-                fieldExceptionReason: analysisDetails[kind]?.fieldExceptionReason
+                fieldExceptionReason: fieldExceptionReason(for: kind)
             )
         }.sorted { MeasurementKind.allCases.firstIndex(of: $0.kind)! < MeasurementKind.allCases.firstIndex(of: $1.kind)! }
         for attachment in attachments {
@@ -392,7 +405,7 @@ enum FirebaseMapper {
             "instrument_name": (item.analysisInstrument ?? value.instrument).isEmpty ? NSNull() : (item.analysisInstrument ?? value.instrument),
             "analysis_stage": item.analysisStage ?? "FIELD", "analyzed_at": Timestamp(date: item.analyzedAt ?? value.collectedAt),
             "field_exception_reason": item.fieldExceptionReason ?? NSNull(),
-            "qualifier": NSNull(), "notes": NSNull(), "entered_at": Timestamp(date: value.submittedAt),
+            "qualifier": NSNull(), "notes": NSNull(), "entered_at": Timestamp(date: value.collectedAt),
         ]
     }
 
