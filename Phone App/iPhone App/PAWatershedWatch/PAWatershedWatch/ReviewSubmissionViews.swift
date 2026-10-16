@@ -59,7 +59,14 @@ struct ReviewContent: View {
                     }
                 }
                 ReviewCard(title: "Method", systemImage: "testtube.2", edit: { edit(.testMethod, step: 3) }) {
-                    if let type = draft.testType {
+                    VStack(alignment: .leading, spacing: FieldTheme.s) {
+                    Text("Site observations").font(.headline)
+                    ReviewDetailRow(label: "Weather Conditions", value: draft.weatherCondition)
+                    ReviewDetailRow(label: "Water Color", value: draft.waterColor)
+                    ReviewDetailRow(label: "Flow Condition", value: draft.flowCondition)
+                    if draft.labResultsPending { Text("Laboratory results pending").foregroundStyle(FieldTheme.alert) }
+                }.fieldCard()
+                if let type = draft.testType {
                         Text(type.title).font(.headline)
                         if type == .other && !draft.testTypeOther.isEmpty {
                             Text(verbatim: draft.testTypeOther).font(.subheadline)

@@ -1,4 +1,7 @@
 import SwiftUI
+@preconcurrency import FirebaseAuth
+import FirebaseCore
+@preconcurrency import FirebaseFirestore
 
 struct RecentObservationsView: View {
     let model: AppModel
@@ -158,6 +161,9 @@ struct ObservationDetailContent: View {
                 DetailVisitSection(record: record)
                 DetailNotesMediaSection(notes: record.notes, attachments: record.attachments)
                 RevisionHistorySection(revisions: record.revisions)
+                if record.sync == .synced {
+                    SubmissionDiscussionSection(submissionID: record.id, revisionID: record.currentRevisionID)
+                }
             }
             .padding(.horizontal, FieldTheme.m)
             .padding(.top, FieldTheme.s)
@@ -541,5 +547,126 @@ struct OriginalValuePanel: View {
             }
         }
         .fieldCard(fill: FieldTheme.surfaceRaised)
+    }
+}
+
+private struct DiscussionEntry: Identifiable, Sendable {
+    let id: String
+    let name: String
+    let role: String
+    let kind: String
+    let text: String
+    let revision: String
+    let date: Date?
+}
+
+/// The same private, server-owned conversation used by the QC console and collector website.
+/// Messages never edit submitted science or review state. Administrative notes are not queried.
+struct SubmissionDiscussionSection: View {
+    let submissionID: UUID
+    let revisionID: UUID
+    @State private var entries: [DiscussionEntry] = []
+    @State private var listener: ListenerRegistration?
+    @State private var loading = true
+    @State private var text = ""
+    @State private var failure: String?
+    @State private var sending = false
+    @State private var retryID: UUID?
+    @State private var retryText = ""
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: FieldTheme.m) {
+            FieldSectionHeader(title: "Discussion and Corrections")
+            Text("Messages stay with this sampling record. Scientific corrections create a new revision.")
+                .font(.subheadline).foregroundStyle(FieldTheme.inkMuted)
+            if loading { ProgressView("Loading discussion…") }
+            if let failure { Text(failure).font(.subheadline).foregroundStyle(.red).accessibilityAddTraits(.updatesFrequently) }
+            if !loading && entries.isEmpty && failure == nil { Text("No messages yet.").foregroundStyle(FieldTheme.inkMuted) }
+            ForEach(entries) { entry in
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(kindLabel(entry.kind)).font(.subheadline.bold())
+                    Text("\(entry.name) · \(entry.role.replacingOccurrences(of: "_", with: " ").localizedCapitalized)")
+                        .font(.caption).foregroundStyle(FieldTheme.inkMuted)
+                    if let date = entry.date { Text(date.fieldTimestamp).font(.caption).foregroundStyle(FieldTheme.inkMuted) }
+                    Text(entry.text).textSelection(.enabled)
+                    DisclosureGroup("Revision context") { Text(entry.revision).font(.caption.monospaced()).textSelection(.enabled) }
+                }
+                CardDivider()
+            }
+            TextField("Message to reviewer", text: $text, axis: .vertical)
+                .lineLimit(3...8).textFieldStyle(.roundedBorder)
+                .accessibilityIdentifier("discussion.message")
+            Button(sending ? "Sending…" : "Send Message") { Task { await send() } }
+                .buttonStyle(.borderedProminent)
+                .disabled(sending || text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || text.count > 4000)
+                .accessibilityIdentifier("discussion.send")
+            if text.count > 4000 { Text("Keep your message to 4,000 characters or fewer.").font(.caption).foregroundStyle(.red) }
+        }
+        .fieldCard()
+        .onAppear { listen() }
+        .onDisappear { listener?.remove(); listener = nil }
+    }
+
+    private func kindLabel(_ value: String) -> String {
+        switch value {
+        case "COLLECTOR_COMMENT": "Collector comment"
+        case "REVIEWER_QUESTION": "Reviewer question"
+        case "CORRECTION_REQUEST": "Request for correction"
+        case "REVIEW_DECISION": "Review decision"
+        default: "Message"
+        }
+    }
+    private func listen() {
+        listener?.remove()
+        listener = Firestore.firestore().collection("submissions").document(submissionID.uuidString.lowercased())
+            .collection("messages").addSnapshotListener { snapshot, error in
+                var values: [DiscussionEntry] = []
+                for document in snapshot?.documents ?? [] {
+                    let data = document.data()
+                    let name = data["sender_display_name"] as? String ?? "Program participant"
+                    let role = data["sender_role"] as? String ?? ""
+                    let kind = data["kind"] as? String ?? ""
+                    let text = data["text"] as? String ?? ""
+                    let revision = data["revision_id"] as? String ?? ""
+                    let date = (data["created_at"] as? Timestamp)?.dateValue()
+                    values.append(DiscussionEntry(id: document.documentID, name: name, role: role,
+                        kind: kind, text: text, revision: revision, date: date))
+                }
+                let loaded = values.sorted { ($0.date ?? .distantPast) < ($1.date ?? .distantPast) }
+                let unavailable = error != nil
+                Task { @MainActor in
+                    loading = false
+                    if unavailable { failure = "Discussion is unavailable. Check your connection and account access." }
+                    else { entries = loaded; failure = nil }
+                }
+            }
+    }
+    @MainActor private func send() async {
+        guard let user = Auth.auth().currentUser, let projectID = FirebaseApp.app()?.options.projectID else {
+            failure = "Sign in again before sending a message."; return
+        }
+        sending = true; failure = nil
+        defer { sending = false }
+        if retryID == nil || retryText != text { retryID = UUID(); retryText = text }
+        let url = FirebaseEnvironment.usesEmulators
+            ? URL(string: "http://\(FirebaseEnvironment.emulatorHost):5001/\(projectID)/us-east4/sendSubmissionMessage")!
+            : URL(string: "https://us-east4-\(projectID).cloudfunctions.net/sendSubmissionMessage")!
+        do {
+            var request = URLRequest(url: url, timeoutInterval: 25)
+            request.httpMethod = "POST"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.setValue("Bearer \(try await user.getIDToken())", forHTTPHeaderField: "Authorization")
+            request.httpBody = try JSONSerialization.data(withJSONObject: ["data": [
+                "submissionId": submissionID.uuidString.lowercased(), "revisionId": revisionID.uuidString.lowercased(),
+                "messageId": retryID!.uuidString.lowercased(), "kind": "COLLECTOR_COMMENT", "text": text
+            ]])
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard (response as? HTTPURLResponse)?.statusCode == 200 else {
+                let body = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+                let message = (body?["error"] as? [String: Any])?["message"] as? String
+                failure = message ?? "The message could not be sent. Your text is preserved for retry."; return
+            }
+            text = ""; retryID = nil; retryText = ""
+        } catch { failure = "The message could not be sent. Check your connection and retry; your text is preserved." }
     }
 }

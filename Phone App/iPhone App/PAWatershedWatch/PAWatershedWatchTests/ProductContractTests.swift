@@ -72,6 +72,7 @@ final class ProductContractTests: XCTestCase {
         draft.site = retired
         draft.date = Date(timeIntervalSince1970: 1_754_684_200)
         draft.collector = "Maya Chen"
+        draft.weatherCondition = "Unknown"; draft.waterColor = "Unknown"; draft.flowCondition = "Unknown"
         draft.latitude = 40.8; draft.longitude = -77.8; draft.accuracyMeters = 5
         draft.testType = .fieldInstrument; draft.method = "Direct reading"; draft.instrument = "Meter"
         draft[valueFor: .temperature] = "18"
@@ -94,7 +95,7 @@ final class ProductContractTests: XCTestCase {
         XCTAssertTrue(offered.allSatisfy { $0.productionSpec.support == .fullySupported })
         XCTAssertFalse(offered.contains(.turbidity))
         XCTAssertFalse(offered.contains(.salinity))
-        XCTAssertEqual(draft.requiredMeasurements, [.temperature])
+        XCTAssertEqual(draft.requiredMeasurements, [])
 
         // An older draft that already holds a gated value keeps the row so the value can be cleared.
         draft[valueFor: .turbidity] = "4"
@@ -129,14 +130,14 @@ final class ProductContractTests: XCTestCase {
         let draft = ObservationDraft(ownerUID: "collector-a")
         XCTAssertThrowsError(try draft.canonicalSnapshot())
         let ids = Set(draft.blockingIssues.map(\.id))
-        XCTAssertTrue(ids.isSuperset(of: ["site", "gps", "collector", "testType", "required-temperature"]))
+        XCTAssertTrue(ids.isSuperset(of: ["site", "gps", "collector", "testType", "visual-observations"]))
 
         let ready = readyDraft()
         XCTAssertTrue(ready.blockingIssues.isEmpty)
         XCTAssertNoThrow(try ready.canonicalSnapshot())
 
-        ready.method = "  "
-        XCTAssertEqual(ready.blockingIssues.map(\.id), ["method"])
+        ready.weatherCondition = "  "
+        XCTAssertEqual(ready.blockingIssues.map(\.id), ["visual-observations"])
         XCTAssertThrowsError(try ready.canonicalSnapshot())
     }
 
@@ -270,6 +271,7 @@ final class ProductContractTests: XCTestCase {
         draft.site = Site(id: "site-a", name: "Spring Creek", county: "Centre", watershed: "Spring Creek", latitude: 40.7934, longitude: -77.86, toleranceMeters: 30)
         draft.date = Date(timeIntervalSince1970: 1_754_684_200)
         draft.collector = "Maya Chen"
+        draft.weatherCondition = "Unknown"; draft.waterColor = "Unknown"; draft.flowCondition = "Unknown"
         draft.latitude = 40.7934; draft.longitude = -77.86; draft.accuracyMeters = 4
         draft.testType = .fieldInstrument
         draft.method = "Direct reading"

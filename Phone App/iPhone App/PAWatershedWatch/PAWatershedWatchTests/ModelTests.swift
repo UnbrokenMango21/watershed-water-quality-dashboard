@@ -75,8 +75,8 @@ final class ModelTests: XCTestCase {
         )]
 
         let snapshot = try draft.canonicalSnapshot(submittedAt: submittedAt)
-        XCTAssertEqual(snapshot.tempC, 20, accuracy: 0.0000001)
-        XCTAssertEqual(snapshot.tempF, 68, accuracy: 0.0000001)
+        XCTAssertEqual(try XCTUnwrap(snapshot.tempC), 20, accuracy: 0.0000001)
+        XCTAssertEqual(try XCTUnwrap(snapshot.tempF), 68, accuracy: 0.0000001)
         XCTAssertEqual(snapshot.testType, "In-situ / Field Instrument")
         XCTAssertEqual(snapshot.measurements.first { $0.parameterCode == "PH" }?.id.uuidString.lowercased(), "f890767f-9220-5b4e-aafd-77f053f17390")
         XCTAssertEqual(snapshot.measurements.first { $0.parameterCode == "DO_MG_L" }?.id.uuidString.lowercased(), "3c684016-17ac-5891-ad9b-7280b67d9e6a")
@@ -294,18 +294,15 @@ final class ModelTests: XCTestCase {
         XCTAssertTrue(try store.loadRecords(ownerUID: "collector-b").isEmpty)
     }
 
-    /// Water Temperature is the only required measurement, for every test type, without exception —
-    /// see docs/PHASE_11_SUPERVISOR_DECISIONS.md. This supersedes the prior session's four-measurement
-    /// requirement for "In-situ / Field Instrument", "Continuous Sensor / Sonde", and "Mixed In-situ +
-    /// Lab", and the hidden "one more result" minimum for every other test type.
+    /// Supervisor protocol v0.2 keeps every numerical field optional for every method category.
     @MainActor
-    func testRequiredMeasurementsIsTemperatureOnlyForEveryTestType() {
+    func testNumericalMeasurementsAreOptionalForEveryTestType() {
         for testType in TestType.allCases {
             let draft = ObservationDraft()
             draft.testType = testType
-            XCTAssertEqual(draft.requiredMeasurements, [.temperature], "\(testType.contractValue) must require only Water Temperature")
+            XCTAssertEqual(draft.requiredMeasurements, [], "\(testType.contractValue) must keep numerical measurements optional")
             // Optional = every other parameter the production contract enables; planned parameters are hidden.
-            XCTAssertEqual(Set(draft.optionalMeasurements), Set(MeasurementKind.allCases.filter { $0 != .temperature && $0.productionSpec.support == .fullySupported }))
+            XCTAssertEqual(Set(draft.optionalMeasurements), Set(MeasurementKind.allCases.filter { $0.productionSpec.support == .fullySupported }))
         }
     }
 
@@ -322,6 +319,7 @@ final class ModelTests: XCTestCase {
     @MainActor
     func testBlankOptionalMeasurementsNeverBlockSubmission() throws {
         let draft = temperatureOnlyDraft(testType: .fieldInstrument)
+        draft.values = [:]
         for kind in draft.optionalMeasurements where kind.productionSpec.support == .fullySupported {
             XCTAssertEqual(draft[valueFor: kind], "")
         }
@@ -341,11 +339,58 @@ final class ModelTests: XCTestCase {
     /// A minimal valid draft with Water Temperature as the only measurement filled in — the shape every
     /// test type must now accept.
     @MainActor
+    func testVisualOnlyDraftPreservesNullNumericsAndRequiresHonestVisualResponses() throws {
+        let draft = temperatureOnlyDraft(testType: .fieldInstrument)
+        draft.values = [:]
+        draft.method = ""; draft.instrument = ""
+        let snapshot = try draft.canonicalSnapshot()
+        XCTAssertNil(snapshot.temperatureEnteredValue); XCTAssertNil(snapshot.tempC); XCTAssertNil(snapshot.tempF)
+        XCTAssertTrue(snapshot.measurements.isEmpty)
+        XCTAssertEqual(snapshot.method, "In-situ / Field Instrument")
+        XCTAssertTrue(FirebaseMapper.revision(snapshot, status: "DRAFT")["temp_c"] is NSNull)
+        draft.waterColor = ""
+        XCTAssertThrowsError(try draft.canonicalSnapshot())
+        draft.waterColor = "Unknown"
+        XCTAssertNoThrow(try draft.canonicalSnapshot())
+    }
+
+    @MainActor
+    func testFieldAndLabDraftPersistsSameIdentityAndNeverSubmitsPendingWork() throws {
+        let container = try MobileModelContainer.make(inMemory: true)
+        let store = LocalMobileStore(context: container.mainContext)
+        let draft = temperatureOnlyDraft(testType: .pennStateLab)
+        draft.values = [:]; draft.collectionStage = .labPending; draft.labResultsPending = true; draft.fieldCollectedAt = .now
+        try store.replaceSites([try XCTUnwrap(draft.site)])
+        try store.save(draft)
+        let restored = try XCTUnwrap(store.loadDraft(ownerUID: draft.ownerUID, sites: try store.cachedSites()))
+        XCTAssertEqual(restored.id, draft.id); XCTAssertEqual(restored.revisionID, draft.revisionID)
+        XCTAssertEqual(restored.collectionStage, .labPending); XCTAssertTrue(restored.labResultsPending)
+        XCTAssertThrowsError(try restored.canonicalSnapshot())
+        XCTAssertEqual(try restored.canonicalSnapshot(forDraft: true).collectionStage, "LAB_PENDING")
+        restored[valueFor: .nitrate] = "1.2"; restored.labResultsPending = false; restored.collectionStage = .labCompleted; restored.labCompletedAt = .now
+        let final = try restored.canonicalSnapshot()
+        XCTAssertEqual(final.submissionID, draft.id); XCTAssertEqual(final.revisionID, draft.revisionID)
+        XCTAssertNil(final.tempC); XCTAssertEqual(final.measurements.first?.parameterCode, "NITRATE_MG_L")
+    }
+
+    @MainActor
+    func testWaterDepthConvertsLengthAndRejectsNegativeDepth() throws {
+        let draft = temperatureOnlyDraft(testType: .fieldInstrument)
+        draft.values = [:]; draft[valueFor: .waterDepth] = "30"; draft.selectedUnits[.waterDepth] = .centimeters
+        let depth = try XCTUnwrap(draft.canonicalSnapshot().measurements.first)
+        XCTAssertEqual(depth.parameterCode, "WATER_DEPTH_M"); XCTAssertEqual(depth.value, 0.3, accuracy: 1e-12)
+        XCTAssertEqual(depth.enteredValue, 30); XCTAssertEqual(depth.enteredUnitID, "cm")
+        draft[valueFor: .waterDepth] = "-1"
+        XCTAssertThrowsError(try draft.canonicalSnapshot())
+    }
+
+    @MainActor
     private func temperatureOnlyDraft(testType: TestType) -> ObservationDraft {
         let draft = ObservationDraft(ownerUID: "collector-a")
         draft.site = Site(id: "SITE-TEST-001", name: "Spring Creek at Houserville Road Bridge", county: "Centre County", watershed: "Spring Creek", latitude: 40.79, longitude: -77.86)
         draft.date = Date(timeIntervalSince1970: 1_754_684_200)
         draft.collector = "Maya Chen"
+        draft.weatherCondition = "Unknown"; draft.waterColor = "Unknown"; draft.flowCondition = "Unknown"
         draft.latitude = 40.7934; draft.longitude = -77.86; draft.accuracyMeters = 4.2; draft.gpsState = .good
         draft.testType = testType
         if testType == .other { draft.testTypeOther = "Custom protocol" }
@@ -365,6 +410,7 @@ final class ModelTests: XCTestCase {
         draft.site = Site(id: "SITE-TEST-001", name: "Spring Creek at Houserville Road Bridge", county: "Centre County", watershed: "Spring Creek", latitude: 40.79, longitude: -77.86)
         draft.date = Date(timeIntervalSince1970: 1_754_684_200)
         draft.collector = "Maya Chen"
+        draft.weatherCondition = "Unknown"; draft.waterColor = "Unknown"; draft.flowCondition = "Unknown"
         draft.latitude = 40.7934; draft.longitude = -77.86; draft.accuracyMeters = 4.2; draft.gpsState = .good
         draft.testType = .fieldInstrument
         draft.method = "Calibrated multiparameter field meter"

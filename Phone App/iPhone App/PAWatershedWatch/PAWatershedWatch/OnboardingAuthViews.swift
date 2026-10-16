@@ -25,21 +25,10 @@ struct WelcomeView: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 VStack(alignment: .leading, spacing: FieldTheme.l) {
-                    WelcomeStep(
-                        systemImage: "mappin.and.ellipse",
-                        title: "Record in the field",
-                        detail: "Choose a site, capture your position, and enter readings. Everything saves on your phone, even offline."
-                    )
-                    WelcomeStep(
-                        systemImage: "checkmark.seal",
-                        title: "Checked and reviewed",
-                        detail: "Automated checks run first, then the research team reviews each submission."
-                    )
-                    WelcomeStep(
-                        systemImage: "person.text.rectangle",
-                        title: "Attributed to you",
-                        detail: "The research team sees your name with your observations. It never appears on the public dashboard."
-                    )
+                    WelcomeStep(systemImage: "mappin.and.ellipse", title: "Choose a site", detail: "Select your monitoring site and record the sampling time and position.")
+                    WelcomeStep(systemImage: "eye", title: "Observe and measure", detail: "Record weather, water color, and flow. Add measurements and notes when available; Unknown is an honest response.")
+                    WelcomeStep(systemImage: "testtube.2", title: "Complete laboratory analysis", detail: "Save field collection on this phone, then reopen the same draft to enter laboratory results. Numerical readings can stay blank.")
+                    WelcomeStep(systemImage: "checkmark.seal", title: "Submit and respond", detail: "Submit the completed record for review. If corrections are requested, respond with a new revision; earlier records stay unchanged.")
                 }
                 .fieldCard()
             }

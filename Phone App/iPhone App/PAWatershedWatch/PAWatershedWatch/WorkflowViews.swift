@@ -325,7 +325,7 @@ struct TestMethodContent: View {
                         .font(.title2.bold())
                         .foregroundStyle(FieldTheme.ink)
                         .accessibilityAddTraits(.isHeader)
-                    Text("Choose how you measured, then note what you used.")
+                    Text("Choose the method used for this visit. You can choose a different method next time.")
                         .font(.subheadline)
                         .foregroundStyle(FieldTheme.inkMuted)
                 }
@@ -335,6 +335,7 @@ struct TestMethodContent: View {
                     NoticeBanner(title: "Fix This to Continue", verbatimMessage: error, systemImage: "exclamationmark.circle.fill", tone: .error)
                 }
                 TestTypeList(options: typeOptions, selected: draft.testType) { type in
+                    if draft.testType != type { draft.method = ""; draft.instrument = ""; draft.testTypeOther = "" }
                     draft.testType = type
                     showValidation = false
                 }
@@ -450,27 +451,14 @@ struct MethodDetailsCard: View {
 
     var body: some View {
         @Bindable var draft = draft
-        VStack(alignment: .leading, spacing: FieldTheme.m) {
-            FieldSectionHeader(title: "Method details", detail: "Reviewers use this to trace each value.")
-            if type == .other {
-                MethodField(
-                    title: "Describe the approach", prompt: "What kind of measurement was this?",
+        if type == .other {
+            VStack(alignment: .leading, spacing: FieldTheme.m) {
+                MethodField(title: "Method / Instrument", prompt: "Describe what you used",
                     text: $draft.testTypeOther, suggestions: [], missing: showValidation,
-                    focus: focusedField, field: .other
-                )
+                    focus: focusedField, field: .other)
             }
-            MethodField(
-                title: type.sourceLabel, prompt: type.sourcePrompt,
-                text: $draft.instrument, suggestions: suggestions.sources, missing: showValidation,
-                focus: focusedField, field: .source
-            )
-            MethodField(
-                title: type.methodLabel, prompt: type.methodPrompt,
-                text: $draft.method, suggestions: suggestions.methods, missing: showValidation,
-                focus: focusedField, field: .method
-            )
+            .fieldCard()
         }
-        .fieldCard()
     }
 }
 
@@ -549,13 +537,8 @@ struct MeasurementsContent: View {
                 if showValidation {
                     MeasurementValidationBanner(draft: draft)
                 }
-                MeasurementGroup(
-                    title: "Required Measurements",
-                    kinds: draft.requiredMeasurements,
-                    draft: draft,
-                    focused: $focusedMeasurement,
-                    showsProgress: true
-                )
+                VisualObservationsCard(draft: draft)
+                LaboratoryDraftCard(model: model, draft: draft)
                 MeasurementGroup(
                     title: "Optional Measurements",
                     kinds: draft.optionalMeasurements,
@@ -592,7 +575,7 @@ struct MeasurementsContent: View {
     }
 
     private var measurementsAreValid: Bool {
-        draft.measurementProblems.isEmpty && draft.completedRequiredCount == draft.requiredMeasurements.count
+        draft.measurementProblems.isEmpty && draft.visualObservationsComplete
     }
 
     /// Entry order of the fields the collector can actually type into.
@@ -616,6 +599,52 @@ struct MeasurementsContent: View {
     }
 }
 
+struct VisualObservationsCard: View {
+    let draft: ObservationDraft
+    var body: some View {
+        @Bindable var draft = draft
+        VStack(alignment: .leading, spacing: FieldTheme.m) {
+            FieldSectionHeader(title: "Site observations", detail: "Choose Unknown when a condition was not observed.", isRequired: true)
+            choice("Weather Conditions", value: $draft.weatherCondition, choices: FieldObservationVocabulary.weather)
+            choice("Water Color", value: $draft.waterColor, choices: FieldObservationVocabulary.waterColor)
+            choice("Flow Condition", value: $draft.flowCondition, choices: FieldObservationVocabulary.flow)
+        }.fieldCard()
+    }
+    private func choice(_ title: String, value: Binding<String>, choices: [String]) -> some View {
+        Picker(title, selection: value) {
+            Text("Choose…").tag("")
+            ForEach(choices, id: \.self) { Text($0).tag($0) }
+        }.pickerStyle(.menu).accessibilityIdentifier("observations.\(title)")
+    }
+}
+
+struct LaboratoryDraftCard: View {
+    let model: AppModel
+    let draft: ObservationDraft
+    var body: some View {
+        @Bindable var draft = draft
+        VStack(alignment: .leading, spacing: FieldTheme.m) {
+            Text("Field collection and laboratory work").font(.headline)
+            Toggle("Laboratory results pending", isOn: $draft.labResultsPending)
+                .onChange(of: draft.labResultsPending) { _, pending in
+                    draft.collectionStage = pending ? .labPending : .labCompleted
+                    draft.labCompletedAt = pending ? nil : .now
+                }
+                .accessibilityIdentifier("lab.pending")
+            Text("Chloride, sulfate, nitrate, and phosphate may be added after analysis. The same draft saves on this phone and synchronizes when online. Unfinished laboratory work cannot be submitted.")
+                .font(.subheadline).foregroundStyle(FieldTheme.inkMuted)
+            Button("Save field collection for later") {
+                model.saveFieldCollection()
+            }
+            .disabled(!draft.visualObservationsComplete)
+            .accessibilityIdentifier("lab.saveFieldCollection")
+            if let date = draft.fieldCollectedAt {
+                Text("Field collection saved on this phone \(date.fieldTimestamp)").font(.caption)
+            }
+        }.fieldCard()
+    }
+}
+
 struct MeasurementValidationBanner: View {
     let draft: ObservationDraft
 
@@ -625,7 +654,7 @@ struct MeasurementValidationBanner: View {
         } else if let problem = draft.measurementProblems.first {
             NoticeBanner(title: "Check This Entry", verbatimMessage: problem.message, systemImage: "exclamationmark.circle.fill", tone: .error)
         } else {
-            NoticeBanner(title: "Measurements Required", message: "Complete all required measurements.", systemImage: "exclamationmark.circle.fill", tone: .error)
+            NoticeBanner(title: "Field Observations Required", message: "Choose weather, water color, and flow condition. Unknown is allowed.", systemImage: "exclamationmark.circle.fill", tone: .error)
         }
     }
 }
@@ -651,8 +680,38 @@ struct MeasurementGroup: View {
             }
             ForEach(kinds) { kind in
                 MeasurementEntryRow(kind: kind, isRequired: draft.requiredMeasurements.contains(kind), draft: draft, focused: focused)
+                if kind.needsAnalysisProvenance && !draft[valueFor: kind].trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    AnalysisProvenanceFields(draft: draft, kind: kind)
+                }
             }
         }
+    }
+}
+
+struct AnalysisProvenanceFields: View {
+    let draft: ObservationDraft
+    let kind: MeasurementKind
+    private var value: Binding<AnalysisProvenance> {
+        Binding(get: { draft.analysisDetails[kind] ?? AnalysisProvenance() }, set: { draft.analysisDetails[kind] = $0 })
+    }
+    var body: some View {
+        VStack(alignment: .leading, spacing: FieldTheme.m) {
+            Text("Analysis provenance").font(.subheadline.bold())
+            Picker("Analysis location", selection: value.stage) {
+                Text("Laboratory").tag("LAB")
+                Text("Field — documented protocol").tag("FIELD")
+            }.pickerStyle(.menu)
+            TextField("Analysis method / protocol", text: value.method).textFieldStyle(.roundedBorder)
+            TextField("Instrument or laboratory (optional)", text: value.instrument).textFieldStyle(.roundedBorder)
+            DatePicker("Analysis date and time", selection: Binding(get: { value.wrappedValue.analyzedAt ?? draft.date }, set: { date in var next = value.wrappedValue; next.analyzedAt = date; value.wrappedValue = next }))
+            if value.wrappedValue.analyzedAt == nil {
+                Button("Confirm analysis time shown") { var next = value.wrappedValue; next.analyzedAt = draft.date; value.wrappedValue = next }
+            }
+            if value.wrappedValue.stage == "FIELD" {
+                TextField("Field protocol / exception reason", text: value.fieldExceptionReason, axis: .vertical).textFieldStyle(.roundedBorder)
+            }
+            Text("Describe the method actually used. A field exception records your protocol; it does not claim program approval.").font(.caption).foregroundStyle(FieldTheme.inkMuted)
+        }.fieldCard()
     }
 }
 

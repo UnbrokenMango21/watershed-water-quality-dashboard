@@ -76,18 +76,19 @@ final class WorkflowUITests: XCTestCase {
         snapshot("06-visit-details")
         next.tap()
 
-        // Method: nothing pre-filled; details entered explicitly.
+        // One method choice; instrument details are not invented or required.
         app.buttons["method.type.fieldInstrument"].tap()
-        let source = app.textFields["method.source"]
-        let method = app.textFields["method.method"]
-        XCTAssertEqual(source.value as? String ?? "", "Make and model you used", "Instrument must not be pre-filled")
-        type("Handheld multiparameter meter", into: source)
-        type("Direct reading at mid-channel", into: method)
+        XCTAssertFalse(app.textFields["method.source"].exists)
         snapshot("07-method")
-        dismissKeyboard()
         next.tap()
 
         // Measurements: only contract-enabled parameters are offered.
+        for label in ["Weather Conditions", "Water Color", "Flow Condition"] {
+            let picker = app.buttons["observations.\(label)"]
+            XCTAssertTrue(picker.waitForExistence(timeout: 5))
+            picker.tap()
+            app.buttons["Unknown"].tap()
+        }
         let temperature = app.textFields["measurement.temperature"]
         XCTAssertTrue(temperature.waitForExistence(timeout: 5))
         XCTAssertFalse(app.textFields["measurement.turbidity"].exists)

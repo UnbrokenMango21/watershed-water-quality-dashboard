@@ -209,6 +209,24 @@ struct Site: Identifiable, Hashable {
 
 /// How an observation was measured. Display labels are plain language; the stored value is always
 /// `contractValue`, which the Firestore rules and validation engine enumerate exactly.
+enum FieldObservationVocabulary {
+    static let weather = ["Clear", "Partly Cloudy", "Cloudy", "Overcast", "Light Rain", "Heavy Rain", "Snow", "Windy", "Other", "Unknown"]
+    static let waterColor = ["Clear", "Light Brown", "Dark Brown", "Greenish", "Turbid/Murky", "Other", "Unknown"]
+    static let flow = ["No Visible Flow", "Low", "Moderate", "High", "Unknown"]
+}
+
+struct AnalysisProvenance: Codable, Hashable {
+    var stage = "LAB"
+    var method = ""
+    var instrument = ""
+    var analyzedAt: Date? = nil
+    var fieldExceptionReason = ""
+}
+
+enum CollectionStage: String, Codable {
+    case draft = "DRAFT", fieldCollected = "FIELD_COLLECTED", labPending = "LAB_PENDING", labCompleted = "LAB_COMPLETED", readyForReview = "READY_FOR_REVIEW"
+}
+
 enum TestType: String, CaseIterable, Identifiable, Hashable, Codable {
     case fieldInstrument, pennStateLab, externalLab, fieldKit, sonde, mixed, other
     var id: Self { self }
@@ -353,6 +371,9 @@ struct MeasurementUnit: Identifiable, Hashable {
     static let milligramsPhosphatePerLiter = unit("mg-po4-l", "mg PO₄³⁻", per: "L", title: "mg/L as PO₄", spoken: "milligrams per liter as phosphate", scale: 0.326315789)
     static let microgramsPhosphatePerLiter = unit("ug-po4-l", "µg PO₄³⁻", per: "L", title: "µg/L as PO₄", spoken: "micrograms per liter as phosphate", scale: 0.000326315789)
 
+    static let meters = unit("m", "m", title: "Meters (m)", spoken: "meters")
+    static let centimeters = unit("cm", "cm", title: "Centimeters (cm)", spoken: "centimeters", scale: 0.01)
+    static let feet = unit("ft", "ft", title: "Feet (ft)", spoken: "feet", scale: 0.3048)
     static let cubicMetersPerSecond = unit("m3-s", "m³", per: "s", title: "m³/s", spoken: "cubic meters per second")
     static let litersPerSecond = unit("l-s", "L", per: "s", title: "L/s", spoken: "liters per second", scale: 0.001)
     static let cubicFeetPerSecond = unit("ft3-s", "ft³", per: "s", title: "ft³/s (cfs)", spoken: "cubic feet per second", scale: 0.028316846592)
@@ -372,7 +393,7 @@ struct MeasurementUnit: Identifiable, Hashable {
 }
 
 enum MeasurementKind: String, CaseIterable, Identifiable, Hashable, Codable {
-    case temperature, ph, dissolvedOxygen, dissolvedOxygenSaturation, conductivity, tds, orp, chloride, sulfate, nitrate, phosphate, flow
+    case temperature, ph, dissolvedOxygen, dissolvedOxygenSaturation, conductivity, tds, orp, chloride, sulfate, nitrate, phosphate, flow, waterDepth
     case turbidity, salinity, totalSuspendedSolids, alkalinity, hardness, ammoniaNitrogen, nitriteNitrogen, totalPhosphorus, chlorophyllA, eColi
     var id: Self { self }
     var title: LocalizedStringResource {
@@ -389,6 +410,7 @@ enum MeasurementKind: String, CaseIterable, Identifiable, Hashable, Codable {
         case .nitrate: "Nitrate"
         case .phosphate: "Phosphate"
         case .flow: "Discharge / Flow"
+        case .waterDepth: "Water Depth"
         case .turbidity: "Turbidity"
         case .salinity: "Salinity"
         case .totalSuspendedSolids: "Total Suspended Solids"
@@ -413,6 +435,7 @@ enum MeasurementKind: String, CaseIterable, Identifiable, Hashable, Codable {
         case .chloride, .sulfate: [.milligramsPerLiter, .microgramsPerLiter]
         case .nitrate: [.milligramsNitrogenPerLiter, .microgramsNitrogenPerLiter, .milligramsNitratePerLiter, .microgramsNitratePerLiter]
         case .phosphate: [.milligramsPhosphorusPerLiter, .microgramsPhosphorusPerLiter, .milligramsPhosphatePerLiter, .microgramsPhosphatePerLiter]
+        case .waterDepth: [.meters, .centimeters, .feet]
         case .flow: [.cubicMetersPerSecond, .litersPerSecond, .cubicFeetPerSecond, .gallonsPerMinute]
         case .turbidity: [.ntu, .fnu]
         case .salinity: [.practicalSalinity, .partsPerThousand]
@@ -424,6 +447,8 @@ enum MeasurementKind: String, CaseIterable, Identifiable, Hashable, Codable {
         case .eColi: [.cfuPer100Milliliters, .mpnPer100Milliliters]
         }
     }
+
+    var needsAnalysisProvenance: Bool { [.chloride, .sulfate, .nitrate, .phosphate].contains(self) }
 
     var defaultUnit: MeasurementUnit { unitOptions[0] }
 
@@ -440,6 +465,7 @@ enum MeasurementKind: String, CaseIterable, Identifiable, Hashable, Codable {
         case .orp: "plusminus.circle"
         case .chloride, .sulfate, .nitrate, .phosphate: "testtube.2"
         case .flow: "water.waves"
+        case .waterDepth: "ruler"
         case .turbidity: "aqi.medium"
         case .salinity: "waterbottle.fill"
         case .totalSuspendedSolids: "circle.grid.2x2.fill"
@@ -547,6 +573,7 @@ struct ObservationRecord: Identifiable, Hashable {
     var accuracyMeters: Double?
     var validation: ValidationSummary? = nil
     var validationFlags: [ValidationFlag] = []
+    var weatherCondition = "", waterColor = "", flowCondition = ""
 
     var hasAudio: Bool { attachments.contains(where: \.isAudio) }
 }
@@ -569,6 +596,23 @@ final class ObservationDraft {
     var gpsState: GPSState = .locating { didSet { touch() } }
     var testType: TestType? { didSet { touch() } }
     var testTypeOther = "" { didSet { touch() } }
+    var weatherCondition = "" { didSet { touch() } }
+    var waterColor = "" { didSet { touch() } }
+    var flowCondition = "" { didSet { touch() } }
+    var collectionStage: CollectionStage = .draft { didSet { touch() } }
+    var labResultsPending = false { didSet { touch() } }
+    var analysisDetails: [MeasurementKind: AnalysisProvenance] = [:] { didSet { touch() } }
+    var fieldCollectedAt: Date? { didSet { touch() } }
+    var labCompletedAt: Date? { didSet { touch() } }
+
+    var visualObservationsComplete: Bool {
+        FieldObservationVocabulary.weather.contains(weatherCondition)
+            && FieldObservationVocabulary.waterColor.contains(waterColor)
+            && FieldObservationVocabulary.flow.contains(flowCondition)
+    }
+    var canonicalMethod: String { testType == .other ? testTypeOther.trimmingCharacters(in: .whitespacesAndNewlines) : (method.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? testType?.contractValue ?? "" : method.trimmingCharacters(in: .whitespacesAndNewlines)) }
+    var canonicalInstrument: String { testType == .other ? testTypeOther.trimmingCharacters(in: .whitespacesAndNewlines) : instrument.trimmingCharacters(in: .whitespacesAndNewlines) }
+
     var method = "" { didSet { touch() } }
     var instrument = "" { didSet { touch() } }
     var values: [MeasurementKind: String] = [:] { didSet { touch() } }
@@ -598,9 +642,8 @@ final class ObservationDraft {
         onChange?()
     }
 
-    /// Water Temperature is the only required measurement, for every test type, without exception —
-    /// see docs/PHASE_11_SUPERVISOR_DECISIONS.md. Every other supported measurement is optional.
-    var requiredMeasurements: [MeasurementKind] { [.temperature] }
+    /// Supervisor protocol v0.2: numerical measurements are optional, including water temperature.
+    var requiredMeasurements: [MeasurementKind] { [] }
 
     /// Optional measurements the production contract enables. A parameter that is not enabled is never
     /// shown to collectors — unless an older draft already holds a value for it, in which case the row
@@ -622,8 +665,7 @@ final class ObservationDraft {
     }
 
     /// Progress text for the Required Measurements header: the ratio of required fields entered.
-    /// Temperature is the only required measurement, so this reaches "1/1" the moment it is filled,
-    /// with no further condition.
+    /// Numerical fields are optional; required visual observations have their own completion gate.
     var measurementProgressText: String { "\(completedRequiredCount)/\(requiredMeasurements.count)" }
 
     var temperatureConversion: String? {
@@ -875,6 +917,25 @@ final class AppModel {
         homePath = [.selectSite]
     }
 
+    func saveFieldCollection() {
+        guard let draft else { return }
+        draft.fieldCollectedAt = .now
+        draft.collectionStage = draft.labResultsPending ? .labPending : .fieldCollected
+        draft.currentStep = 4
+        saveDraft(draft)
+        homePath = []
+        synchronizeFieldDraft()
+    }
+
+    private func synchronizeFieldDraft() {
+        guard let draft, draft.fieldCollectedAt != nil, let remote, connection == .online,
+              let snapshot = try? draft.canonicalSnapshot(forDraft: true) else { return }
+        Task {
+            do { try await remote.saveFieldDraft(snapshot); syncState = .synced }
+            catch { syncState = .failed; workflowError = "Field collection remains saved on this phone. Reconnect and save again to synchronize it." }
+        }
+    }
+
     func resumeObservation() {
         guard let draft else { startNewObservation(); return }
         let route: HomeRoute = switch draft.currentStep {
@@ -953,6 +1014,7 @@ final class AppModel {
         correction.site = record.site
         correction.date = record.date
         correction.collector = record.collector
+        correction.weatherCondition = record.weatherCondition; correction.waterColor = record.waterColor; correction.flowCondition = record.flowCondition
         correction.latitude = record.latitude
         correction.longitude = record.longitude
         correction.accuracyMeters = record.accuracyMeters
@@ -1042,7 +1104,7 @@ final class AppModel {
             } catch { self.workflowError = error.localizedDescription }
         }
         refreshSites()
-        if connection == .online { retrySync() }
+        if connection == .online { retrySync(); synchronizeFieldDraft() }
     }
 
     private static let identityKeyPrefix = "identityConfirmed."
@@ -1105,7 +1167,7 @@ final class AppModel {
                 guard let self else { return }
                 let wasOffline = self.connection != .online
                 self.connection = online ? .online : .offline
-                if online && wasOffline { self.refreshSites(); self.retrySync() }
+                if online && wasOffline { self.refreshSites(); self.retrySync(); self.synchronizeFieldDraft() }
             }
         }
         monitor.start(queue: monitorQueue)
