@@ -7,6 +7,8 @@ export const parameterDefinitions: Array<{
   shortLabel: string;
   glyph: string;
   decimals: number;
+  /** Charted from the approved measurement table only; the public latest-condition view has no field for it. */
+  seriesOnly?: boolean;
 }> = [
   { key: "waterTemperature", label: "Water Temperature", shortLabel: "Temperature", glyph: "°C", decimals: 1 },
   { key: "ph", label: "pH", shortLabel: "pH", glyph: "pH", decimals: 2 },
@@ -20,7 +22,7 @@ export const parameterDefinitions: Array<{
   { key: "sulfate", label: "Sulfate", shortLabel: "Sulfate", glyph: "SO₄", decimals: 2 },
   { key: "phosphate", label: "Phosphate (as P)", shortLabel: "Phosphate", glyph: "P", decimals: 2 },
   { key: "discharge", label: "Discharge / Flow", shortLabel: "Discharge", glyph: "Q", decimals: 3 },
-  { key: "waterDepth", label: "Water Depth", shortLabel: "Water Depth", glyph: "m", decimals: 3 },
+  { key: "waterDepth", label: "Water Depth", shortLabel: "Water Depth", glyph: "m", decimals: 3, seriesOnly: true },
 ];
 
 export const ranges = ["7D", "30D", "90D", "1Y", "All"] as const;
@@ -59,12 +61,15 @@ export function rangeStart(range: RangeName, timestamps: string[]) {
   return latest - days * 24 * 60 * 60 * 1000;
 }
 
+/** Parameters the latest-condition view can report; series-only parameters appear in charts instead. */
+export const latestParameterDefinitions = parameterDefinitions.filter((parameter) => !parameter.seriesOnly);
+
 export function completenessFor(condition: LatestSiteCondition | null | undefined) {
   if (!condition) return "missing" as const;
   const primaryCount = condition.measurements.filter((measurement) =>
-    parameterDefinitions.some((parameter) => parameter.key === measurement.parameter),
+    latestParameterDefinitions.some((parameter) => parameter.key === measurement.parameter),
   ).length;
-  return primaryCount >= parameterDefinitions.length ? "complete" as const : "partial" as const;
+  return primaryCount >= latestParameterDefinitions.length ? "complete" as const : "partial" as const;
 }
 
 export function completenessLabel(completeness: "complete" | "partial" | "missing") {

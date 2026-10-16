@@ -10,7 +10,7 @@
  * actually enforced by firebase/firestore.rules and writes by the API route's own
  * Admin-SDK token verification. Hiding the UI proves nothing on its own.
  */
-import { createContext, useCallback, useContext, useEffect, useState, type FormEvent, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { createUserWithEmailAndPassword, onIdTokenChanged, sendEmailVerification, sendPasswordResetEmail, signInWithEmailAndPassword, signOut, type User } from 'firebase/auth';
 import AccountAccessPanel from '@/components/AccountAccessPanel';
 
@@ -128,6 +128,8 @@ function AppBar({ session }: { session: ReviewerSession | null }) {
 
 export default function AuthGate({ children, allowCollector = false }: { children: ReactNode; allowCollector?: boolean }) {
   const [state, setState] = useState<GateState>({ kind: 'loading' });
+  const stateRef = useRef<GateState>(state);
+  stateRef.current = state;
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [signingIn, setSigningIn] = useState(false);
@@ -180,6 +182,7 @@ export default function AuthGate({ children, allowCollector = false }: { childre
         },
         isCurrent,
         apply: (next) => setState({ kind: next.kind, user, role: next.role }),
+        keepOnError: stateRef.current.kind === 'ready' && stateRef.current.user.uid === user.uid,
       });
     });
     return () => {
@@ -316,7 +319,9 @@ export default function AuthGate({ children, allowCollector = false }: { childre
     );
   }
 
-  const session: ReviewerSession = { user: state.user, role: state.role };
+  // Pages that also admit collectors see the effective role: a stale or suspended reviewer claim
+  // never makes a collector page behave like the reviewer workspace.
+  const session: ReviewerSession = { user: state.user, role: state.kind === 'ready' ? state.role : 'COLLECTOR' };
   return (
     <SessionContext.Provider value={session}>
       <div className="app">

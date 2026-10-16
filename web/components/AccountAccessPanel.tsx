@@ -21,15 +21,21 @@ export default function AccountAccessPanel({ user, refresh }: { user: User; refr
   const refreshRef = useRef(refresh);
   refreshRef.current = refresh;
   const settledDecision = useRef<string | null>(null);
+  const refreshedFor = useRef(new Set<string>());
   useEffect(() => onSnapshot(doc(clientDb(), 'reviewerAccessRequests', user.uid), snapshot => {
     const data = snapshot.exists() ? snapshot.data() : null;
     setRequest(data);
     // When an administrator's decision finishes provisioning, fetch a fresh ID token so the new
     // role and access version apply now instead of at the next hourly token refresh.
     const decision = data?.provisioning_state === 'COMPLETE' ? `${data.request_id}:${data.status}` : '';
-    if (settledDecision.current !== null && decision && decision !== settledDecision.current) {
+    const changed = settledDecision.current !== null && decision !== '' && decision !== settledDecision.current;
+    // This panel only shows while the gate denies review, so a settled approval means the cached token
+    // predates it (for example, approved while the applicant was away): refresh once per decision.
+    const approvedButLocked = data?.status === 'APPROVED' && decision !== '';
+    if ((changed || approvedButLocked) && !refreshedFor.current.has(decision)) {
+      refreshedFor.current.add(decision);
       // The decision supersedes an earlier confirmation such as "Your request is with an administrator".
-      setMessage('');
+      if (changed) setMessage('');
       void refreshRef.current().catch(() => setError('Your access changed. Select Refresh access to continue.'));
     }
     settledDecision.current = decision;

@@ -196,7 +196,8 @@ export function DashboardShell() {
 
         <section className="center-column">
           <MapSurface
-            sites={sites}
+            // The map shows the same sites as the filtered list, so a filter never hides a mapped site.
+            sites={filteredSites}
             conditions={conditions}
             selectedSite={selectedSite}
             hoveredSite={hoveredSite}

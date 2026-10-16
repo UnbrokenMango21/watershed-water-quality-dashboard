@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import type { DashboardSite, LatestSiteCondition } from "@/lib/data/DashboardDataSource";
-import { CalciteIcon, completenessFor, completenessLabel, formatDateTime, parameterDefinitions } from "./dashboard-utils";
+import { CalciteIcon, completenessFor, completenessLabel, formatDateTime, latestParameterDefinitions as parameterDefinitions } from "./dashboard-utils";
 import { ParameterRow } from "./ParameterRow";
 
 export function SiteDetail({ site, condition }: { site: DashboardSite | null; condition: LatestSiteCondition | null }) {

@@ -81,3 +81,16 @@ test('a failed lookup shows not authorized only while it is still current', asyn
   await pending;
   assert.equal(h.states.at(-1).kind, 'signed-out');
 });
+
+test('a transient lookup failure on a token refresh keeps an authorized reviewer; definitive results still downgrade', async () => {
+  const states = [];
+  const apply = (next) => states.push(next.kind);
+  const failing = { readRole: async () => 'QC_REVIEWER', readProfile: async () => { throw new Error('client is offline'); } };
+  await resolveReviewerGate({ user: { uid: 'u1' }, ...failing, isCurrent: () => true, apply, keepOnError: true });
+  assert.deepEqual(states, [], 'an already-authorized reviewer is not unmounted by a network blip');
+  await resolveReviewerGate({ user: { uid: 'u1' }, ...failing, isCurrent: () => true, apply });
+  assert.deepEqual(states, ['unauthorized'], 'a first sign-in still fails closed on errors');
+  await resolveReviewerGate({ user: { uid: 'u1' }, readRole: async () => 'QC_REVIEWER', readProfile: async () => ({ active: false, role: 'QC_REVIEWER' }), isCurrent: () => true, apply, keepOnError: true });
+  await resolveReviewerGate({ user: { uid: 'u1' }, readRole: async () => 'COLLECTOR', readProfile: async () => null, isCurrent: () => true, apply, keepOnError: true });
+  assert.deepEqual(states, ['unauthorized', 'unauthorized', 'unauthorized'], 'suspension and role removal are definitive');
+});

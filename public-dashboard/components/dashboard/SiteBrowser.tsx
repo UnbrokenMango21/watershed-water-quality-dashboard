@@ -39,7 +39,7 @@ export function SiteBrowser(props: {
         <input
           className="site-search-input"
           type="search"
-          placeholder="Search sites, county, or watershed"
+          placeholder="Search sites or watersheds"
           value={search}
           onChange={(event) => onSearch(event.target.value)}
           disabled={loading || sites.length === 0}

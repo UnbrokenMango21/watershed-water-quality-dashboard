@@ -13,6 +13,29 @@ interface Proposal {
   proposed_coordinates: { latitude: number; longitude: number };
   original_coordinates: { latitude: number; longitude: number } | null; decision_reason?: string;
 }
+interface DecisionValues { reason: string; name: string; code: string; tolerance: string }
+
+// Each pending proposal owns its decision fields, so one card's site name, code or tolerance can
+// never be submitted as another card's decision; the fields clear after a saved decision.
+function DecisionForm({ proposal, busy, onDecide }: {
+  proposal: Proposal; busy: boolean; onDecide: (proposal: Proposal, status: string, values: DecisionValues) => Promise<boolean>;
+}) {
+  const empty: DecisionValues = { reason: '', name: proposal.proposed_site_name ?? '', code: '', tolerance: '' };
+  const [values, setValues] = useState<DecisionValues>(empty);
+  const update = (key: keyof DecisionValues) => (event: { target: { value: string } }) => setValues(current => ({ ...current, [key]: event.target.value }));
+  async function decide(status: string) { if (await onDecide(proposal, status, values)) setValues(empty); }
+  return <div>
+    <label className="field"><span className="field-label">Coordinate decision reason</span><textarea value={values.reason} maxLength={1000} onChange={update('reason')} /></label>
+    {proposal.kind === 'NEW_SITE' && <>
+      <label className="field"><span className="field-label">Approved site name</span><input value={values.name} onChange={update('name')} /></label>
+      <label className="field"><span className="field-label">Approved site code</span><input value={values.code} onChange={update('code')} /></label>
+      <label className="field"><span className="field-label">Approved site tolerance in meters</span><input type="number" min={0} value={values.tolerance} onChange={update('tolerance')} /></label>
+    </>}
+    <button type="button" className="btn btn-primary" disabled={busy || values.reason.trim().length < 5} onClick={() => void decide('APPROVED')}>Approve coordinates</button>{' '}
+    <button type="button" className="btn" disabled={busy || values.reason.trim().length < 5} onClick={() => void decide('REJECTED')}>Reject proposal</button>
+  </div>;
+}
+
 function Locations() {
   const { user, role } = useSession();
   const reviewer = ['QC_REVIEWER', 'ADMIN'].includes(role);
@@ -25,10 +48,6 @@ function Locations() {
   const [longitude, setLongitude] = useState('');
   const [accuracy, setAccuracy] = useState('');
   const [reason, setReason] = useState('');
-  const [decisionReason, setDecisionReason] = useState('');
-  const [siteCode, setSiteCode] = useState('');
-  const [approvedName, setApprovedName] = useState('');
-  const [tolerance, setTolerance] = useState('');
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
@@ -54,14 +73,16 @@ function Locations() {
       attempt.current = null; setReason(''); setMessage('Coordinate proposal saved. Approved site coordinates remain unchanged until a separate reviewer approves it.');
     });
   }
-  async function decide(proposal: Proposal, status: string) {
+  async function decide(proposal: Proposal, status: string, values: DecisionValues): Promise<boolean> {
+    let saved = false;
     await perform(async () => {
       await accountAction('decideSiteCoordinates', {
-        proposalId: proposal.proposal_id, status, reason: decisionReason,
-        ...(proposal.kind === 'NEW_SITE' && status === 'APPROVED' ? { siteName: approvedName, siteCode, siteToleranceM: Number(tolerance) } : {}),
+        proposalId: proposal.proposal_id, status, reason: values.reason,
+        ...(proposal.kind === 'NEW_SITE' && status === 'APPROVED' ? { siteName: values.name, siteCode: values.code, siteToleranceM: Number(values.tolerance) } : {}),
       });
-      setMessage('Coordinate decision saved with its audit history.'); setDecisionReason('');
+      setMessage('Coordinate decision saved with its audit history.'); saved = true;
     });
+    return saved;
   }
   const current = sites.find(site => site.site_id === siteId);
   return <main className="record-inner" style={{ maxWidth: 1000, margin: '0 auto', overflow: 'auto' }}>
@@ -89,16 +110,7 @@ function Locations() {
       <p>Original approved coordinates: {proposal.original_coordinates ? `${proposal.original_coordinates.latitude}, ${proposal.original_coordinates.longitude}` : 'New site; no approved coordinates yet'}</p>
       <p>Proposed coordinates: <strong>{proposal.proposed_coordinates.latitude}, {proposal.proposed_coordinates.longitude}</strong></p>
       <p>{proposal.reason}</p>{proposal.decision_reason && <p>Decision: {proposal.decision_reason}</p>}
-      {reviewer && proposal.status === 'PENDING' && proposal.submitted_by_uid !== user.uid && <div>
-        <label className="field"><span className="field-label">Coordinate decision reason</span><textarea value={decisionReason} maxLength={1000} onChange={event => setDecisionReason(event.target.value)} /></label>
-        {proposal.kind === 'NEW_SITE' && <>
-          <label className="field"><span className="field-label">Approved site name</span><input value={approvedName} onChange={event => setApprovedName(event.target.value)} /></label>
-          <label className="field"><span className="field-label">Approved site code</span><input value={siteCode} onChange={event => setSiteCode(event.target.value)} /></label>
-          <label className="field"><span className="field-label">Approved site tolerance in meters</span><input type="number" min={0} value={tolerance} onChange={event => setTolerance(event.target.value)} /></label>
-        </>}
-        <button type="button" className="btn btn-primary" disabled={busy || decisionReason.trim().length < 5} onClick={() => void decide(proposal, 'APPROVED')}>Approve coordinates</button>{' '}
-        <button type="button" className="btn" disabled={busy || decisionReason.trim().length < 5} onClick={() => void decide(proposal, 'REJECTED')}>Reject proposal</button>
-      </div>}
+      {reviewer && proposal.status === 'PENDING' && proposal.submitted_by_uid !== user.uid && <DecisionForm proposal={proposal} busy={busy} onDecide={decide} />}
     </div></section>)}
   </main>;
 }

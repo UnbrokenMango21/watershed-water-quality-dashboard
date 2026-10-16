@@ -208,7 +208,7 @@ function SiteTooltip({ x, y, flip, site, condition, parameter }: {
           <span>Latest sample {formatDateTime(condition.observedAt)}</span>
           {definition && (
             <span className="map-site-tooltip-reading">
-              {definition.label}: {reading ? `${reading.value.toFixed(definition.decimals)}${reading.unit === "pH" ? "" : ` ${reading.unit}`}` : "Not recorded"}
+              {definition.label}: {reading ? `${reading.value.toFixed(definition.decimals)}${reading.unit === "pH" ? "" : ` ${reading.unit}`}` : definition.seriesOnly ? "See the time series" : "Not recorded"}
             </span>
           )}
         </>

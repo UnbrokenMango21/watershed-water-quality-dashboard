@@ -81,6 +81,12 @@ export async function fetchQueue(options: QueueQueryOptions = {}): Promise<Queue
   if (status) constraints.push(where('status', '==', status));
   if (options.siteId?.trim()) constraints.push(where('site_id', '==', options.siteId.trim()));
   if (options.collectorUid?.trim()) constraints.push(where('collector_user_id', '==', options.collectorUid.trim()));
+  // The default pending queue pages in wait order (status + updated_at index), so the longest-waiting
+  // submissions are always on the first page. Filtered and history views page by document ID, which
+  // also keeps legacy records that lack dates.
+  if (options.mode !== 'history' && !options.siteId?.trim() && !options.collectorUid?.trim()) {
+    constraints.push(orderBy('updated_at', 'asc'));
+  }
   constraints.push(orderBy(documentId(), 'asc'));
   if (options.cursor) constraints.push(startAfter(options.cursor));
   constraints.push(limit(pageSize + 1));

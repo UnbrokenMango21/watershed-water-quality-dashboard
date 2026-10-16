@@ -34,9 +34,12 @@ export function createAuthSequence() {
  *   readProfile: () => Promise<{ active?: unknown, role?: unknown } | null>,
  *   isCurrent: () => boolean,
  *   apply: (state: { kind: 'ready' | 'unauthorized', user: any, role: string }) => void,
+ *   keepOnError?: boolean,
  * }} input
+ * `keepOnError`: when this user is already authorized (an hourly token refresh), a transient lookup
+ * failure keeps the current state; only a definitive claim/profile result changes it.
  */
-export async function resolveReviewerGate({ user, readRole, readProfile, isCurrent, apply }) {
+export async function resolveReviewerGate({ user, readRole, readProfile, isCurrent, apply, keepOnError = false }) {
   let role = 'UNKNOWN';
   try {
     const claim = await readRole();
@@ -51,6 +54,6 @@ export async function resolveReviewerGate({ user, readRole, readProfile, isCurre
     const active = profile != null && profile.active === true && profile.role === role;
     apply({ kind: active ? 'ready' : 'unauthorized', user, role });
   } catch {
-    if (isCurrent()) apply({ kind: 'unauthorized', user, role });
+    if (isCurrent() && !keepOnError) apply({ kind: 'unauthorized', user, role });
   }
 }
