@@ -290,3 +290,24 @@ test('water depth uses length units without inventing discharge or an upper scie
   assert.ok(validateObservation({ revision: revision(), measurements: [{ ...depth, value: -0.3048, entered_value: -1 }], site, now: NOW }).flags.some((flag) => flag.rule_code === 'DEPTH_NEGATIVE'));
   assert.ok(validateObservation({ revision: revision(), measurements: [{ ...depth, value: 1 }], site, now: NOW }).flags.some((flag) => flag.rule_code === 'MEAS_CONVERSION_MISMATCH'));
 });
+
+test('v0.2 analysis provenance: lab results later than collection, field exceptions documented, never before sampling', () => {
+  const record = revision({ schema_version: '0.2.0', weather_condition: 'Clear', water_color: 'Clear', flow_condition: 'Low', collection_stage: 'LAB_COMPLETED', submitted_at: '2026-08-09T12:00:00-04:00' });
+  const field = (code, value, unit) => measurement(code, value, unit, { analysis_stage: 'FIELD', analyzed_at: '2026-08-08T16:30:00-04:00', field_exception_reason: null });
+  const lab = measurement('NITRATE_MG_L', 1.2, 'mg/L as N', { entered_value: 1.2, entered_unit_code: 'mg-n-l', analysis_stage: 'LAB', analyzed_at: '2026-08-09T10:15:00-04:00', field_exception_reason: null });
+  const clean = validateObservation({ revision: record, measurements: [field('PH', 7.2, 'pH'), lab], site, now: NOW });
+  assert.equal(clean.blocking, false, JSON.stringify(clean.flags));
+  const codes = (measurements) => validateObservation({ revision: record, measurements, site, now: NOW }).flags.map((flag) => flag.rule_code);
+  assert.ok(codes([{ ...lab, analysis_stage: undefined }]).includes('ANALYSIS_PROVENANCE_MISSING'));
+  assert.ok(codes([{ ...lab, analyzed_at: null }]).includes('ANALYSIS_PROVENANCE_MISSING'));
+  assert.ok(codes([{ ...lab, analyzed_at: '2026-08-08T12:00:00-04:00' }]).includes('ANALYSIS_BEFORE_COLLECTION'));
+  assert.ok(codes([{ ...lab, analyzed_at: '2026-08-10T12:00:00-04:00' }]).includes('ANALYSIS_AFTER_SUBMISSION'));
+  const fieldNitrate = { ...lab, analysis_stage: 'FIELD', analyzed_at: '2026-08-08T16:30:00-04:00' };
+  assert.ok(codes([fieldNitrate]).includes('LAB_PARAMETER_FIELD_EXCEPTION_MISSING'));
+  const documented = validateObservation({ revision: record, measurements: [{ ...fieldNitrate, field_exception_reason: 'Program-approved field kit protocol.' }], site, now: NOW });
+  assert.equal(documented.blocking, false);
+  assert.equal(documented.flags.find((flag) => flag.rule_code === 'LAB_PARAMETER_FIELD_EXCEPTION')?.severity, 'INFO');
+  assert.equal(documented.scores.overall_quality_score, clean.scores.overall_quality_score, 'a documented exception is visible but not penalized');
+  // Legacy 0.1.0 records predate analysis provenance and are not retroactively flagged.
+  assert.equal(validateObservation({ revision: revision(), measurements: core(), site, now: NOW }).flags.some((flag) => flag.rule_code.startsWith('ANALYSIS_')), false);
+});

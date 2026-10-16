@@ -200,8 +200,8 @@ function MeasurementsTable({ measurements }: { measurements: MeasurementDoc[] })
             <th scope="col">Parameter</th>
             <th scope="col">Entered</th>
             <th scope="col">Canonical</th>
-            <th scope="col">Method &amp; instrument</th>
-            <th scope="col">Entered at</th>
+            <th scope="col">Analysis, method &amp; instrument</th>
+            <th scope="col">Analyzed</th>
           </tr>
         </thead>
         <tbody>
@@ -242,19 +242,42 @@ function MeasurementsTable({ measurements }: { measurements: MeasurementDoc[] })
                       </span>
                     )}
                   </td>
-                  <td data-label="Method">
+                  <td data-label="Analysis and method">
+                    {measurement.analysis_stage ? (
+                      <span style={{ display: 'flex', marginBottom: 3 }}>
+                        <Badge tone={measurement.analysis_stage === 'LAB' ? 'brand' : 'neutral'}>
+                          {measurement.analysis_stage === 'LAB' ? 'Laboratory analysis' : 'Field analysis'}
+                        </Badge>
+                      </span>
+                    ) : null}
                     <span className="cell-sub" style={{ color: 'var(--text-secondary)' }}>
                       {formatText(measurement.method_name, NOT_RECORDED)}
                     </span>
                     <span className="cell-sub">{formatText(measurement.instrument_name, NOT_RECORDED)}</span>
                   </td>
-                  <td data-label="Entered at" className="nowrap">
+                  <td data-label="Analyzed" className="nowrap">
+                    {/* Legacy 0.1.0 measurements have no analysis time; show when they were entered instead. */}
                     <span className="cell-sub" style={{ color: 'var(--text-secondary)' }}>
-                      {formatEasternDate(measurement.entered_at)}
+                      {formatEasternDate(measurement.analyzed_at ?? measurement.entered_at)}
                     </span>
-                    <span className="cell-sub">{formatEasternTime(measurement.entered_at)}</span>
+                    <span className="cell-sub">
+                      {formatEasternTime(measurement.analyzed_at ?? measurement.entered_at)}
+                      {measurement.analyzed_at ? null : ' (entered)'}
+                    </span>
                   </td>
                 </tr>
+                {measurement.field_exception_reason ? (
+                  <tr className="note-row">
+                    <td colSpan={5}>
+                      <span className="note-body">
+                        <Icon name="notes" size={13} />
+                        <span>
+                          <strong>Field analysis exception:</strong> {measurement.field_exception_reason}
+                        </span>
+                      </span>
+                    </td>
+                  </tr>
+                ) : null}
                 {measurement.notes ? (
                   <tr className="note-row">
                     <td colSpan={5}>

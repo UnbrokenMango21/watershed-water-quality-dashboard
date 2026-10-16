@@ -1,5 +1,5 @@
 {
-  "fixtureVersion": "1.0.0",
+  "fixtureVersion": "1.1.0",
   "schemaVersion": "0.1.0",
   "idAlgorithm": "measurement_id = UUID-shaped first 128 bits of SHA-256(revision_id + '|' + parameter_code), with RFC 4122 version/variant bits",
   "testTypes": [
@@ -150,7 +150,10 @@
             "instrument_name": "YSI ProDSS \u00b7 Unit 4412",
             "qualifier": null,
             "notes": null,
-            "entered_at": "2026-08-08T20:30:00Z"
+            "entered_at": "2026-08-08T20:30:00Z",
+            "analysis_stage": "FIELD",
+            "analyzed_at": "2026-08-08T20:30:00Z",
+            "field_exception_reason": null
           },
           {
             "measurement_id": "3c684016-17ac-5891-ad9b-7280b67d9e6a",
@@ -164,7 +167,10 @@
             "instrument_name": "YSI ProDSS \u00b7 Unit 4412",
             "qualifier": null,
             "notes": null,
-            "entered_at": "2026-08-08T20:30:00Z"
+            "entered_at": "2026-08-08T20:30:00Z",
+            "analysis_stage": "FIELD",
+            "analyzed_at": "2026-08-08T20:30:00Z",
+            "field_exception_reason": null
           },
           {
             "measurement_id": "f401d76c-ee63-5631-8092-63cd32d5d8e6",
@@ -178,7 +184,10 @@
             "instrument_name": "YSI ProDSS \u00b7 Unit 4412",
             "qualifier": null,
             "notes": null,
-            "entered_at": "2026-08-08T20:30:00Z"
+            "entered_at": "2026-08-08T20:30:00Z",
+            "analysis_stage": "FIELD",
+            "analyzed_at": "2026-08-08T20:30:00Z",
+            "field_exception_reason": null
           },
           {
             "measurement_id": "ef444e2f-c39e-50d4-86ad-70baffda1508",
@@ -192,7 +201,10 @@
             "instrument_name": "YSI ProDSS \u00b7 Unit 4412",
             "qualifier": null,
             "notes": null,
-            "entered_at": "2026-08-08T20:30:00Z"
+            "entered_at": "2026-08-08T20:30:00Z",
+            "analysis_stage": "FIELD",
+            "analyzed_at": "2026-08-08T20:30:00Z",
+            "field_exception_reason": null
           }
         ],
         "attachments": [

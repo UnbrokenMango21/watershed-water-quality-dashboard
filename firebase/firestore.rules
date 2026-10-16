@@ -228,6 +228,17 @@ service cloud.firestore {
         && validOptionalTemperature(data);
     }
 
+    // Installed 0.1.0 app builds keep their original contract (temperature and instrument
+    // required, no visual observations) until they are retired; 0.2.0 never falls back to it.
+    function validLegacyScience(data) {
+      return data.schema_version == "0.1.0"
+        && nonEmptyString(data.instrument_name)
+        && data.temp_entered_value is number
+        && data.temp_c is number
+        && data.temp_f is number
+        && data.temp_entered_unit in ["C", "F"];
+    }
+
     function validCollectorRevisionCreate(submissionId, revisionId) {
       return request.resource.data.keys().hasOnly(collectorRevisionAllowedKeys())
         && request.resource.data.keys().hasAll(collectorRevisionRequiredKeys())
@@ -259,7 +270,7 @@ service cloud.firestore {
         && nonEmptyString(request.resource.data.method_name)
         && (request.resource.data.instrument_name == null || request.resource.data.instrument_name is string)
         && validOptionalTemperature(request.resource.data)
-        && request.resource.data.schema_version == "0.2.0"
+        && (request.resource.data.schema_version == "0.2.0" || validLegacyScience(request.resource.data))
         && nonEmptyString(request.resource.data.mobile_app_version)
         && (
           (get(submissionPath(submissionId)).data.status == "DRAFT" && request.resource.data.revision_no == 1)
@@ -279,10 +290,12 @@ service cloud.firestore {
         && request.resource.data.collector_user_id == resource.data.collector_user_id
         && request.resource.data.site_id == resource.data.site_id
         && request.resource.data.created_at == resource.data.created_at
+        && request.resource.data.schema_version == resource.data.schema_version
         && request.resource.data.revision_status in ["DRAFT", "SUBMITTED"]
         && (request.resource.data.revision_status == "DRAFT"
           ? request.resource.data.submitted_at == null
-          : request.resource.data.submitted_at == request.time && validSubmittedScience(request.resource.data))
+          : request.resource.data.submitted_at == request.time
+            && (validSubmittedScience(request.resource.data) || validLegacyScience(request.resource.data)))
         && request.resource.data.latitude is number
         && request.resource.data.longitude is number
         && request.resource.data.gps_accuracy_m is number
@@ -302,8 +315,32 @@ service cloud.firestore {
         "instrument_name",
         "qualifier",
         "notes",
-        "entered_at"
+        "entered_at",
+        "analysis_stage",
+        "analyzed_at",
+        "field_exception_reason"
       ];
+    }
+
+    // Chloride, sulfate, nitrate and phosphate are normally laboratory analyses. A field
+    // analysis of one of them is allowed only as an explicitly documented exception.
+    function labDependentParameter(parameterCode) {
+      return parameterCode in ["CHLORIDE_MG_L", "SULFATE_MG_L", "NITRATE_MG_L", "PHOSPHATE_MG_L"];
+    }
+
+    // 0.2.0 measurements record where and when each value was analyzed. Legacy 0.1.0
+    // measurements predate the fields and must not carry them.
+    function validAnalysisProvenance(data, schemaVersion) {
+      let stage = data.get("analysis_stage", null);
+      let analyzedAt = data.get("analyzed_at", null);
+      let reason = data.get("field_exception_reason", null);
+      return schemaVersion == "0.2.0"
+        ? stage in ["FIELD", "LAB"]
+          && analyzedAt is timestamp
+          && (reason == null || (reason is string && reason.size() <= 1000))
+          && (stage == "LAB" ? reason == null
+            : (labDependentParameter(data.parameter_code) ? reason is string && reason.trim().size() > 0 : reason == null))
+        : stage == null && analyzedAt == null && reason == null;
     }
 
     function validParameterUnit(parameterCode, unitCode) {
@@ -334,7 +371,7 @@ service cloud.firestore {
         || (parameterCode == "DISCHARGE_M3_S" && enteredUnitCode in ["m3-s", "l-s", "ft3-s", "gal-min"]);
     }
 
-    function validMeasurement(measurementId) {
+    function validMeasurement(submissionId, revisionId, measurementId) {
       return request.resource.data.keys().hasOnly(measurementAllowedKeys())
         && request.resource.data.keys().hasAll([
           "measurement_id",
@@ -357,7 +394,9 @@ service cloud.firestore {
         && nonEmptyString(request.resource.data.method_name)
         && (request.resource.data.instrument_name == null || request.resource.data.instrument_name is string)
         && (request.resource.data.parameter_code != "WATER_DEPTH_M" || request.resource.data.value >= 0)
-        && request.resource.data.entered_at is timestamp;
+        && request.resource.data.entered_at is timestamp
+        && validAnalysisProvenance(request.resource.data,
+          get(revisionPath(submissionId, revisionId)).data.get("schema_version", null));
     }
 
     function attachmentAllowedKeys() {
@@ -451,7 +490,7 @@ service cloud.firestore {
         && request.resource.data.created_at is timestamp
         && request.resource.data.updated_at is timestamp
         && request.resource.data.submitted_at == null
-        && request.resource.data.schema_version == "0.2.0"
+        && request.resource.data.schema_version in ["0.1.0", "0.2.0"]
         && nonEmptyString(request.resource.data.mobile_app_version)
         && request.resource.data.keys().hasOnly([
           "submission_id",
@@ -513,7 +552,7 @@ service cloud.firestore {
 
           allow create, update: if ownsSubmission(submissionId)
             && revisionIsDraft(submissionId, revisionId)
-            && validMeasurement(measurementId);
+            && validMeasurement(submissionId, revisionId, measurementId);
 
           allow delete: if ownsSubmission(submissionId)
             && revisionIsDraft(submissionId, revisionId);

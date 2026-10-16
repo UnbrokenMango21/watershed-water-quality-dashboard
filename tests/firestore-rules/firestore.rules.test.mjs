@@ -120,6 +120,9 @@ function measurement(id = 'm-1', overrides = {}) {
     qualifier: null,
     notes: null,
     entered_at: nowString(),
+    analysis_stage: 'FIELD',
+    analyzed_at: nowString(),
+    field_exception_reason: null,
     ...overrides
   };
 }
@@ -479,6 +482,7 @@ test('every production parameter accepts every mobile stable entered-unit id', a
         parameter_code: parameterCode,
         unit_code: unitCode,
         entered_unit_code: enteredUnitCode,
+        analysis_stage: ['CHLORIDE_MG_L', 'SULFATE_MG_L', 'NITRATE_MG_L', 'PHOSPHATE_MG_L'].includes(parameterCode) ? 'LAB' : 'FIELD',
       })));
     }
   }
@@ -633,7 +637,7 @@ test('field collection stays a mutable same-ID cloud draft until laboratory comp
   await assertFails(updateDoc(revision, { temp_c: 0 }));
   await assertSucceeds(updateDoc(revision, { collection_stage: 'LAB_COMPLETED' }));
   const nitrate = doc(db, `submissions/${submissionId}/revisions/${revisionId}/measurements/lab-nitrate`);
-  await assertSucceeds(setDoc(nitrate, measurement('lab-nitrate', { parameter_code: 'NITRATE_MG_L', display_name: 'Nitrate', value: 1.2, unit_code: 'mg/L as N', entered_value: 1.2, entered_unit_code: 'mg-n-l', method_name: 'Penn State Lab', instrument_name: null })));
+  await assertSucceeds(setDoc(nitrate, measurement('lab-nitrate', { parameter_code: 'NITRATE_MG_L', display_name: 'Nitrate', value: 1.2, unit_code: 'mg/L as N', entered_value: 1.2, entered_unit_code: 'mg-n-l', method_name: 'Penn State Lab', instrument_name: null, analysis_stage: 'LAB', analyzed_at: Timestamp.fromDate(new Date('2026-08-09T14:00:00Z')) })));
   await assertSucceeds(updateDoc(revision, { revision_status: 'SUBMITTED', submitted_at: serverTimestamp() }));
   await assertSucceeds(updateDoc(parent, { status: 'SUBMITTED', submitted_at: serverTimestamp(), updated_at: serverTimestamp() }));
   await assertFails(updateDoc(revision, { temp_c: 10 }));
@@ -652,4 +656,58 @@ test('water depth is a nonnegative length measurement and cannot use discharge u
   await assertSucceeds(setDoc(ref, depth));
   await assertFails(setDoc(ref, { ...depth, unit_code: 'm3/s' }));
   await assertFails(setDoc(ref, { ...depth, value: -0.3, entered_value: -30 }));
+});
+
+test('v0.2 measurements must record where and when each value was analyzed', async () => {
+  await seed(`submissions/${submissionId}`, draftSubmission());
+  await seed(`submissions/${submissionId}/revisions/${revisionId}`, draftRevision());
+  const db = env.authenticatedContext('collector-a').firestore();
+  const ref = doc(db, `submissions/${submissionId}/revisions/${revisionId}/measurements/m-1`);
+  const { analysis_stage, analyzed_at, ...withoutProvenance } = measurement();
+  await assertFails(setDoc(ref, withoutProvenance));
+  await assertFails(setDoc(ref, { ...measurement(), analysis_stage: 'OFFSITE' }));
+  await assertFails(setDoc(ref, { ...measurement(), analyzed_at: '2026-08-08T20:00:00Z' }));
+  await assertSucceeds(setDoc(ref, measurement('m-1', { analysis_stage: 'LAB' })));
+});
+
+test('lab-dependent parameters analyzed in the field require a documented exception', async () => {
+  await seed(`submissions/${submissionId}`, draftSubmission());
+  await seed(`submissions/${submissionId}/revisions/${revisionId}`, draftRevision());
+  const db = env.authenticatedContext('collector-a').firestore();
+  const ref = doc(db, `submissions/${submissionId}/revisions/${revisionId}/measurements/chloride`);
+  const chloride = measurement('chloride', { parameter_code: 'CHLORIDE_MG_L', display_name: 'Chloride', value: 31, unit_code: 'mg/L', entered_value: 31, entered_unit_code: 'mg-l', instrument_name: null });
+  await assertFails(setDoc(ref, chloride));
+  await assertFails(setDoc(ref, { ...chloride, field_exception_reason: '   ' }));
+  await assertSucceeds(setDoc(ref, { ...chloride, field_exception_reason: 'Program-approved chloride test strip protocol.' }));
+  await assertFails(setDoc(ref, { ...chloride, analysis_stage: 'LAB', field_exception_reason: 'Not an exception.' }));
+  await assertSucceeds(setDoc(ref, { ...chloride, analysis_stage: 'LAB' }));
+  const ph = doc(db, `submissions/${submissionId}/revisions/${revisionId}/measurements/m-1`);
+  await assertFails(setDoc(ph, measurement('m-1', { field_exception_reason: 'pH needs no exception.' })));
+});
+
+test('installed 0.1.0 clients keep their original contract during the transition', async () => {
+  const db = env.authenticatedContext('collector-a').firestore();
+  const parent = doc(db, `submissions/${submissionId}`);
+  const revision = doc(db, `submissions/${submissionId}/revisions/${revisionId}`);
+  const { water_color, flow_condition, collection_stage, ...legacyRevision } = draftRevision({ schema_version: '0.1.0', weather_condition: '' });
+  await assertSucceeds(setDoc(parent, draftSubmission({ schema_version: '0.1.0' })));
+  await assertFails(setDoc(revision, { ...legacyRevision, temp_entered_value: null, temp_entered_unit: null, temp_c: null, temp_f: null }));
+  await assertFails(setDoc(revision, { ...legacyRevision, instrument_name: null }));
+  await assertSucceeds(setDoc(revision, legacyRevision));
+  const legacyMeasurement = doc(db, `submissions/${submissionId}/revisions/${revisionId}/measurements/m-1`);
+  const { analysis_stage, analyzed_at, field_exception_reason, ...legacyValue } = measurement();
+  await assertFails(setDoc(legacyMeasurement, measurement()));
+  await assertSucceeds(setDoc(legacyMeasurement, legacyValue));
+  await assertSucceeds(updateDoc(revision, { revision_status: 'SUBMITTED', submitted_at: serverTimestamp() }));
+  await assertSucceeds(updateDoc(parent, { status: 'SUBMITTED', submitted_at: serverTimestamp(), updated_at: serverTimestamp() }));
+  await assertFails(setDoc(doc(db, 'submissions/unknown-schema'), draftSubmission({ submission_id: 'unknown-schema', schema_version: '0.3.0' })));
+});
+
+test('a revision cannot change schema version to escape its contract', async () => {
+  await seed(`submissions/${submissionId}`, draftSubmission());
+  await seed(`submissions/${submissionId}/revisions/${revisionId}`, draftRevision({ water_color: '' }));
+  const db = env.authenticatedContext('collector-a').firestore();
+  const revision = doc(db, `submissions/${submissionId}/revisions/${revisionId}`);
+  await assertFails(updateDoc(revision, { schema_version: '0.1.0', revision_status: 'SUBMITTED', submitted_at: serverTimestamp() }));
+  await assertFails(updateDoc(revision, { schema_version: '0.1.0' }));
 });

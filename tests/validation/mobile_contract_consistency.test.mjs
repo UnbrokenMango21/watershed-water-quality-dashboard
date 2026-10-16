@@ -86,3 +86,28 @@ test('mobile golden fixtures use exact test types and deterministic retry-stable
     }
   }
 });
+
+// Both native golden tests compare their Firestore payloads byte-for-byte with this fixture, so
+// checking the fixture against the rules allowlists keeps either app from writing a field the
+// rules would reject (every measurement write would otherwise be denied in production).
+test('golden mobile payloads use only keys the Firestore rules allow and include every required key', () => {
+  const rules = readFileSync(new URL('../../firebase/firestore.rules', import.meta.url), 'utf8');
+  const list = (name) => {
+    const match = new RegExp(`function ${name}\\(\\) \\{\\s*return \\[([^\\]]*)\\]`).exec(rules);
+    assert.ok(match, `${name} must be a literal key list in firebase/firestore.rules`);
+    return new Set([...match[1].matchAll(/"([a-z_]+)"/g)].map(([, key]) => key));
+  };
+  const measurementKeys = list('measurementAllowedKeys');
+  const revisionKeys = list('collectorRevisionAllowedKeys');
+  const requiredRevisionKeys = list('collectorRevisionRequiredKeys');
+  for (const fixture of golden.serializationCases.filter(({ expected }) => expected)) {
+    for (const measurement of fixture.expected.measurements) {
+      assert.deepEqual(Object.keys(measurement).filter((key) => !measurementKeys.has(key)), [], `${fixture.name} measurement keys`);
+      assert.ok(['FIELD', 'LAB'].includes(measurement.analysis_stage), `${fixture.name} records analysis stage`);
+      assert.ok(measurement.analyzed_at, `${fixture.name} records analysis time`);
+    }
+    const revision = fixture.expected.revision;
+    assert.deepEqual(Object.keys(revision).filter((key) => !revisionKeys.has(key)), [], `${fixture.name} revision keys`);
+    assert.deepEqual([...requiredRevisionKeys].filter((key) => !(key in revision)), [], `${fixture.name} required revision keys`);
+  }
+});

@@ -133,6 +133,12 @@ export interface MeasurementDoc {
   qualifier: Nullable<string>;
   notes: Nullable<string>;
   entered_at: Nullable<Timestamp>;
+  /** Schema 0.2.0: where the value was analyzed. Absent on legacy 0.1.0 measurements. */
+  analysis_stage?: Nullable<'FIELD' | 'LAB'>;
+  /** Schema 0.2.0: when the value was analyzed (laboratory results are usually later than collection). */
+  analyzed_at?: Nullable<Timestamp>;
+  /** Documented protocol exception when a laboratory parameter was analyzed in the field. */
+  field_exception_reason?: Nullable<string>;
 }
 
 export interface ValidationFlagDoc {

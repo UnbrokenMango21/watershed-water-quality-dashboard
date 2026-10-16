@@ -705,6 +705,38 @@ function overallQuality(components, quality, historicalEffectiveWeight, hasError
   return entries.reduce((sum, [score, weight]) => sum + score * weight, 0) / denominator;
 }
 
+// 0.2.0 measurements record where and when each value was analyzed. Laboratory parameters may be
+// analyzed in the field only as a documented exception; reviewers see that exception, it is not penalized.
+function validateAnalysisProvenance(revision, measurements, rules, flags) {
+  if (revision?.schema_version !== '0.2.0') return;
+  const cfg = rules.analysisProvenance || {};
+  const labParameters = new Set(cfg.labDependentParameters || []);
+  const collected = parseDate(revision.collected_at);
+  const submitted = parseDate(revision.submitted_at);
+  const toleranceMs = (cfg.clockToleranceSeconds ?? 300) * 1000;
+  for (const m of measurements || []) {
+    const code = m.parameter_code || null;
+    const analyzed = parseDate(m.analyzed_at);
+    if (!['FIELD', 'LAB'].includes(m.analysis_stage) || !analyzed) {
+      flags.push(createFlag('ANALYSIS_PROVENANCE_MISSING', 'ERROR', 'COMPLETENESS', 'Record whether the value was analyzed in the field or laboratory, and when.', code, { affectsQualityComponent: 'method' }));
+      continue;
+    }
+    if (collected && analyzed.getTime() + toleranceMs < collected.getTime()) {
+      flags.push(createFlag('ANALYSIS_BEFORE_COLLECTION', 'ERROR', 'TEMPORAL', 'Analysis time occurs before the sample was collected.', code, { affectsQualityComponent: 'temporal' }));
+    }
+    if (submitted && analyzed.getTime() > submitted.getTime() + toleranceMs) {
+      flags.push(createFlag('ANALYSIS_AFTER_SUBMISSION', 'ERROR', 'TEMPORAL', 'Analysis time is later than the submission time.', code, { affectsQualityComponent: 'temporal' }));
+    }
+    if (labParameters.has(code) && m.analysis_stage === 'FIELD') {
+      if (nonBlank(m.field_exception_reason)) {
+        flags.push(createFlag('LAB_PARAMETER_FIELD_EXCEPTION', 'INFO', 'COMPLETENESS', `Analyzed in the field under a documented exception: ${m.field_exception_reason.trim()}`, code));
+      } else {
+        flags.push(createFlag('LAB_PARAMETER_FIELD_EXCEPTION_MISSING', 'ERROR', 'COMPLETENESS', 'A laboratory parameter analyzed in the field needs a documented protocol exception.', code, { affectsQualityComponent: 'method' }));
+      }
+    }
+  }
+}
+
 export function validateObservation(input, configs = loadDefaultConfigs()) {
   const { rules, quality } = configs;
   const revision = input?.revision || {};
@@ -715,6 +747,7 @@ export function validateObservation(input, configs = loadDefaultConfigs()) {
   const completeness = validateCompleteness(revision, measurements, rules, flags);
   validateTemperature(revision, rules, flags);
   validateMeasurements(measurements, rules, flags);
+  validateAnalysisProvenance(revision, measurements, rules, flags);
   validateCrossParameter(revision, measurements, rules, flags);
   const location = scoreLocation(revision, input?.site || null, rules, flags);
   const temporal = validateTemporal(revision, rules, now, flags);
