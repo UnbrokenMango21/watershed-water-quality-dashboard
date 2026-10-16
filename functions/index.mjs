@@ -6,6 +6,9 @@ import { defineBoolean, defineSecret, defineString } from 'firebase-functions/pa
 import { onDocumentUpdated } from 'firebase-functions/v2/firestore';
 import { HttpsError, onCall } from 'firebase-functions/v2/https';
 import { DisplayNameError, updateOwnDisplayName } from '../profile/display_name.mjs';
+import { proposeCoordinates, decideCoordinates } from '../profile/coordinate_proposals.mjs';
+import { AccessError, initializeMembership, requestReviewerAccess, decideReviewerAccess } from '../profile/access.mjs';
+import { postSubmissionMessage } from '../profile/discussion.mjs';
 import { publishApprovedSubmission, shouldHandleApprovalEvent } from '../publication/orchestrator.mjs';
 import { runValidationForSubmission } from '../validation/orchestrator.mjs';
 
@@ -85,6 +88,38 @@ export const updateMyDisplayName = onCall(
   { region: 'us-east4', maxInstances: 5, timeoutSeconds: 30 },
   async (request) => handleDisplayNameUpdate({ auth: request.auth, data: request.data }),
 );
+
+// Membership changes always recheck revocation and current Auth state. A caller cannot
+// supply another UID or a role through a registration/access-request payload.
+function membershipCallable(operation) {
+  return onCall({ region: 'us-east4', maxInstances: 5, timeoutSeconds: 60 }, async request => {
+    if (!request.auth?.uid) throw new HttpsError('unauthenticated', 'Sign in to continue.');
+    const bearer = /^Bearer\s+(.+)$/i.exec(request.rawRequest.headers.authorization ?? '');
+    if (!bearer) throw new HttpsError('unauthenticated', 'Sign in again to continue.');
+    try {
+      const token = await getAuth().verifyIdToken(bearer[1], true);
+      if (token.uid !== request.auth.uid) throw new HttpsError('unauthenticated', 'Sign in again to continue.');
+      return await operation({
+        db: getFirestore(), auth: getAuth(), uid: token.uid, data: request.data,
+        serverTimestamp: () => FieldValue.serverTimestamp(),
+      });
+    } catch (error) {
+      if (error instanceof AccessError || error instanceof DisplayNameError) throw new HttpsError(error.code, error.message);
+      if (error instanceof HttpsError) throw error;
+      if (String(error.code ?? '').startsWith('auth/')) throw new HttpsError('unauthenticated', 'Sign in again to continue.');
+      logger.error('Membership operation failed', { operation: operation.name, code: error.code ?? 'unknown' });
+      throw new HttpsError('internal', 'The account change could not be completed. Please try again.');
+    }
+  });
+}
+
+export const initializeMyAccount = membershipCallable(initializeMembership);
+export const requestMyReviewerAccess = membershipCallable(requestReviewerAccess);
+export const decideReviewerMembership = membershipCallable(decideReviewerAccess);
+
+export const proposeSiteCoordinates = membershipCallable(proposeCoordinates);
+export const decideSiteCoordinates = membershipCallable(decideCoordinates);
+export const sendSubmissionMessage = membershipCallable(postSubmissionMessage);
 
 export const validateSubmittedObservation = onDocumentUpdated(
   {

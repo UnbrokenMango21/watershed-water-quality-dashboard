@@ -28,7 +28,10 @@ service cloud.firestore {
       let profilePath = /databases/$(database)/documents/users/$(uid());
       return exists(profilePath)
         && get(profilePath).data.active == true
-        && get(profilePath).data.role in ["QC_REVIEWER", "ADMIN"];
+        && get(profilePath).data.role == role()
+        && get(profilePath).data.role in ["QC_REVIEWER", "ADMIN"]
+        && (!('access_version' in get(profilePath).data)
+          || request.auth.token.get('access_version', null) == get(profilePath).data.access_version);
     }
 
     function isAdmin() {
@@ -370,9 +373,35 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    match /reviewerDisplayProfiles/{userId} {
+      allow read: if isReviewer() || isAdmin();
+      allow write: if false;
+    }
+
+    // Requests are private membership records. Only trusted callables may change
+    // their state or append an audit event; an application is never authorization.
+    match /reviewerAccessRequests/{userId} {
+      allow read: if signedIn() && (userId == uid() || isAdmin());
+      allow write: if false;
+      match /audit/{auditId} {
+        allow read: if signedIn() && (userId == uid() || isAdmin());
+        allow write: if false;
+      }
+
+    }
+
     match /siteCatalog/{siteId} {
       allow read: if signedIn();
       allow write: if false;
+    }
+
+    match /siteCoordinateProposals/{proposalId} {
+      allow read: if signedIn() && (resource.data.submitted_by_uid == uid() || isReviewer() || isAdmin());
+      allow write: if false;
+      match /audit/{auditId} {
+        allow read: if signedIn() && (get(/databases/$(database)/documents/siteCoordinateProposals/$(proposalId)).data.submitted_by_uid == uid() || isReviewer() || isAdmin());
+        allow write: if false;
+      }
     }
 
     match /submissions/{submissionId} {
@@ -477,6 +506,16 @@ service cloud.firestore {
 
       match /audit/{auditId} {
         allow read: if canReadSubmission(submissionId);
+        allow write: if false;
+      }
+
+      match /messages/{messageId} {
+        allow read: if canReadSubmission(submissionId);
+        allow write: if false;
+      }
+
+      match /internalNotes/{messageId} {
+        allow read: if isReviewer() || isAdmin();
         allow write: if false;
       }
     }

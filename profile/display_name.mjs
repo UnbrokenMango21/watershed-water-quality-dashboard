@@ -56,6 +56,13 @@ export async function updateOwnDisplayName({ db, auth, uid, data, serverTimestam
       ...(snapshot.exists ? {} : { created_at: serverTimestamp() }),
     }, { merge: true });
   });
-  if (auth) await auth.updateUser(uid, { displayName });
+  if (auth) {
+    const account = await auth.updateUser(uid, { displayName });
+    if ((account.emailVerified && account.email) || account.phoneNumber) {
+      await db.collection('reviewerDisplayProfiles').doc(uid).set({
+        uid, display_name: displayName, identity_verified: true, updated_at: serverTimestamp(),
+      });
+    }
+  }
   return { displayName };
 }
