@@ -10,7 +10,7 @@ The product is native SwiftUI iOS and Jetpack Compose Android field collection â
 - Collector clients cannot author validation, review, audit or publication state.
 - Only the current human-approved revision can publish. Approval is distinct from publication success.
 - Preserve entered units/values and canonical values. Use `config/production_measurement_catalog.json` for current native units; older spreadsheet catalogs describe legacy ingestion.
-- Water Temperature is the only confirmed mandatory measurement. Other requirements need stakeholder evidence.
+- Schema 0.2.0 (October 2026 supervisor directive): no numeric measurement is mandatory, including Water Temperature; Weather Conditions, Water Color and Flow Condition are required before final submission and allow Unknown. Chloride, sulfate, nitrate and phosphate record their own analysis stage, method and time; field analysis of them needs a documented exception. Installed 0.1.0 builds keep their original contract until retired. Other requirement changes need stakeholder evidence.
 - Never publish collector/reviewer identities, workflow IDs, notes, private site labels, credentials or authenticated inventory.
 - Verify actual view schemas against the exact public allowlist before sharing. Unexpected fields fail closed.
 - Production dashboard reads anonymous public-safe ArcGIS views only. Demo mode must be explicit and visibly labeled; no fallback to synthetic data.
