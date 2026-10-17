@@ -1,116 +1,99 @@
 import Link from "next/link";
+import { PublicMapPreview } from "@/components/PublicMapPreview";
 import "./landing.css";
 
 function Brand() {
-  return (
-    <Link className="ww-brand" href="/" aria-label="Watershed Watch home">
-      {/* eslint-disable-next-line @next/next/no-img-element -- repository-owned vector brand asset */}
-      <img src="/brand/pww-mark-master.svg" width="27" height="32" alt="" />
-      <span>Watershed Watch</span>
-    </Link>
-  );
+  return <Link href="/" className="ww-brand" aria-label="Watershed Watch home">
+    {/* eslint-disable-next-line @next/next/no-img-element */}
+    <img src="/brand/pww-mark-master.svg" width={28} height={34} alt="" />
+    <span>Watershed Watch</span>
+  </Link>;
 }
 
 export default function HomePage() {
-  return (
-    <div className="ww-site">
-      <a href="#main" className="ww-skip">Skip to content</a>
-      <header className="ww-header">
-        <Brand />
-        <nav aria-label="Main navigation" className="ww-nav">
-          <a href="#purpose">Our purpose</a>
-          <a href="#process">The process</a>
-          <a href="#explore">Explore</a>
-        </nav>
-        <Link href="/dashboard" className="ww-header-action">Open dashboard <span aria-hidden="true">↗</span></Link>
-      </header>
+  return <div className="ww-site">
+    <a className="ww-skip" href="#main">Skip to content</a>
+    <header className="ww-header">
+      <Brand />
+      <nav aria-label="Main navigation">
+        <a href="#approach">How it works</a>
+        <a href="#explore">Explore</a>
+        <a href="#about">About</a>
+      </nav>
+      <Link className="ww-header-link" href="/dashboard">Open dashboard <span aria-hidden="true">↗</span></Link>
+    </header>
 
-      <main id="main">
-        <section className="ww-hero" aria-labelledby="hero-title">
-          <div className="ww-hero-image" aria-hidden="true" />
-          <div className="ww-hero-content">
-            <p className="ww-overline ww-hero-overline">WATERSHED WATCH <span className="ww-overline-rule" /> PENNSYLVANIA</p>
-            <h1 id="hero-title">Know the water.<br />See the whole picture.</h1>
-            <p className="ww-hero-description">Real observations. Careful review. A clearer understanding of the waterways around us.</p>
-            <div className="ww-hero-actions">
-              <Link className="ww-action-primary" href="/dashboard">Explore the dashboard <span aria-hidden="true">↗</span></Link>
-              <a className="ww-action-secondary" href="#purpose">Discover Watershed Watch <span aria-hidden="true">↓</span></a>
-            </div>
-          </div>
-          <div className="ww-hero-bottom">
-            <span>01 / FROM THE FIELD TO THE PUBLIC</span>
-            <span className="ww-photo-label">Riffle Run, Pennsylvania · <a href="https://commons.wikimedia.org/wiki/File:Riffle_Run_(3)_(13982015223).jpg" target="_blank" rel="noopener noreferrer">Photo: Nicholas A. Tonelli</a></span>
-          </div>
-        </section>
+    <main id="main">
+      <section className="ww-intro" aria-labelledby="intro-title">
+        <div className="ww-intro-main">
+          <p className="ww-eyebrow">WATERSHED WATCH <span className="ww-separator">/</span> PENNSYLVANIA</p>
+          <h1 id="intro-title">Water quality.<br />In context.</h1>
+        </div>
+        <div className="ww-intro-side">
+          <p>Field observations, scientific review, and public information in one connected system.</p>
+          <Link className="ww-cta" href="/dashboard">Explore the dashboard <span aria-hidden="true">↗</span></Link>
+        </div>
+      </section>
 
-        <section className="ww-statement" id="purpose" aria-labelledby="purpose-title">
-          <span className="ww-overline ww-overline-dark">WHY IT MATTERS</span>
-          <h2 id="purpose-title">Every watershed has a story.<br /><span>We help you understand it.</span></h2>
-          <div className="ww-statement-detail">
-            <span className="ww-detail-index">01 / THE MISSION</span>
-            <p>Watershed Watch connects field observations, scientific quality control, and public exploration. The result is a more transparent way to understand local water quality, without losing sight of how each observation was collected and reviewed.</p>
-          </div>
-        </section>
+      <section className="ww-map-feature" aria-labelledby="map-title">
+        <div className="ww-map-topbar">
+          <div><span className="ww-map-kicker">EXPLORE THE LANDSCAPE</span><h2 id="map-title">Pennsylvania watersheds</h2></div>
+          <Link href="/dashboard">Open full explorer <span aria-hidden="true">↗</span></Link>
+        </div>
+        <PublicMapPreview />
+        <div className="ww-map-caption">
+          <p><strong>Reference geography</strong> / USGS Watershed Boundary Dataset and Esri basemaps</p>
+          <p>Monitoring observations are displayed only after review and authorized publication.</p>
+        </div>
+      </section>
 
-        <section className="ww-story" aria-labelledby="story-title">
-          <div className="ww-story-photo">
-            <span>PENNS CREEK / CENTRE COUNTY</span>
-          </div>
-          <div className="ww-story-content">
-            <span className="ww-overline ww-overline-dark">MADE FOR REAL PLACES</span>
-            <h2 id="story-title">Close to the water.<br />Connected to the science.</h2>
-            <p>From a streamside measurement to a reviewed public record, every step has a purpose. The system keeps field work practical and scientific records accountable.</p>
-            <a className="ww-inline-link" href="#process">See the process <span aria-hidden="true">↗</span></a>
-          </div>
-        </section>
+      <section id="approach" className="ww-approach">
+        <div className="ww-approach-head">
+          <p className="ww-eyebrow">THE APPROACH</p>
+          <h2>Good information<br />starts in the field.</h2>
+          <p>Every published measurement has a process behind it. Watershed Watch makes the connection between collection, quality control, and public exploration easier to understand.</p>
+        </div>
+        <div className="ww-stages">
+          <article><span>01 / COLLECT</span><h3>Observe carefully.</h3><p>Field teams record site locations, conditions, methods, and measurements using dedicated mobile tools.</p></article>
+          <article><span>02 / REVIEW</span><h3>Protect the record.</h3><p>Authorized reviewers validate observations and preserve a transparent history of corrections.</p></article>
+          <article><span>03 / SHARE</span><h3>Publish responsibly.</h3><p>Approved, public-safe records become available in the interactive monitoring dashboard.</p></article>
+        </div>
+      </section>
 
-        <section className="ww-process" id="process" aria-labelledby="process-title">
-          <div className="ww-process-heading">
-            <div>
-              <span className="ww-overline ww-overline-dark">A TRUSTWORTHY RECORD</span>
-              <h2 id="process-title">Three steps.<br />One connected system.</h2>
-            </div>
-            <p>The public view is only the final chapter. The work behind every approved observation matters just as much.</p>
-          </div>
-          <div className="ww-process-items">
-            <article><span className="ww-process-number">01</span><div><h3>Collect</h3><p>Field teams capture observations, site details, methods, and measurements in native mobile apps.</p></div></article>
-            <article><span className="ww-process-number">02</span><div><h3>Review</h3><p>Validation and authorized reviewers examine the record. Corrections preserve the original observation.</p></div></article>
-            <article><span className="ww-process-number">03</span><div><h3>Publish</h3><p>Only approved public-safe records reach ArcGIS and become available in the public explorer.</p></div></article>
-          </div>
-        </section>
+      <section className="ww-story" id="about" aria-labelledby="story-title">
+        <div className="ww-story-picture">
+          <span>THE LANDSCAPE / PENNS CREEK</span>
+        </div>
+        <div className="ww-story-copy">
+          <p className="ww-eyebrow">WHY IT MATTERS</p>
+          <h2 id="story-title">The water<br />we share.</h2>
+          <p>Understanding local waterways requires more than numbers. Location, collection methods, scientific review, and time all matter.</p>
+          <a className="ww-quiet-link" href="#explore">See the public explorer <span aria-hidden="true">↗</span></a>
+        </div>
+      </section>
 
-        <section className="ww-explore" id="explore" aria-labelledby="explore-title">
-          <div className="ww-explore-heading">
-            <div>
-              <span className="ww-overline ww-overline-dark">THE PUBLIC EXPLORER</span>
-              <h2 id="explore-title">See the data.<br />Explore the place.</h2>
-            </div>
-            <div className="ww-explore-aside">
-              <p>Explore monitoring sites, watershed boundaries, and approved water-quality records in one interactive view.</p>
-              <Link className="ww-inline-link" href="/dashboard">Open the full dashboard <span aria-hidden="true">↗</span></Link>
-            </div>
-          </div>
-          <div className="ww-explorer">
-            <div className="ww-explorer-header">
-              <span>WATERSHED WATCH / EXPLORER</span>
-              <Link href="/dashboard">FULL SCREEN ↗</Link>
-            </div>
-            <iframe title="Watershed Watch public water quality dashboard" src="/dashboard" loading="lazy" />
-          </div>
-          <p className="ww-explorer-disclaimer">Public data appears only after scientific review and authorized publication. The absence of readings is not evidence of water quality conditions.</p>
-        </section>
+      <section className="ww-explore" id="explore" aria-labelledby="explore-title">
+        <div className="ww-explore-heading">
+          <div><p className="ww-eyebrow">THE PUBLIC DASHBOARD</p><h2 id="explore-title">The full picture,<br />in one place.</h2></div>
+          <div><p>Browse monitoring sites, watershed boundaries, and approved measurement history. The panel below is the real dashboard, not a design mockup.</p><Link className="ww-quiet-link" href="/dashboard">Open full screen <span aria-hidden="true">↗</span></Link></div>
+        </div>
+        <div className="ww-dashboard-window">
+          <div className="ww-dashboard-window-bar"><span>WATERSHED WATCH / PUBLIC EXPLORER</span><Link href="/dashboard">FULL SCREEN ↗</Link></div>
+          <iframe src="/dashboard" title="Interactive Watershed Watch public monitoring dashboard" loading="lazy" />
+        </div>
+        <p className="ww-accuracy">The map displays reference geography independently of observations. Only approved, public-safe monitoring records can appear in the dashboard.</p>
+      </section>
 
-        <section className="ww-closer">
-          <span className="ww-overline">WATERSHED WATCH</span>
-          <h2>Our water deserves<br />a closer look.</h2>
-          <Link href="/dashboard" className="ww-action-primary">Explore Watershed Watch <span aria-hidden="true">↗</span></Link>
-        </section>
-      </main>
-      <footer className="ww-footer">
-        <div><Brand /><p>Built for careful monitoring and public understanding.</p></div>
-        <div className="ww-footer-links"><a href="#purpose">Purpose</a><a href="#process">Process</a><Link href="/dashboard">Public dashboard</Link><a href="#main">Back to top ↑</a></div>
-        <p className="ww-credits">Pennsylvania photographs: <a href="https://commons.wikimedia.org/wiki/File:Riffle_Run_(3)_(13982015223).jpg" target="_blank" rel="noopener noreferrer">Riffle Run</a> and <a href="https://commons.wikimedia.org/wiki/File:Flickr_-_Nicholas_T_-_Overseen.jpg" target="_blank" rel="noopener noreferrer">Penns Creek</a> by Nicholas A. Tonelli, <a href="https://creativecommons.org/licenses/by/2.0/" target="_blank" rel="noopener noreferrer">CC BY 2.0</a>. Images cropped for layout. Photographs illustrate Pennsylvania waterways, not specific monitoring observations.</p>
-      </footer>
-    </div>
-  );
+      <section className="ww-end">
+        <p className="ww-eyebrow">WATERSHED WATCH</p>
+        <h2>Explore with context.</h2>
+        <Link className="ww-cta" href="/dashboard">Open the dashboard <span aria-hidden="true">↗</span></Link>
+      </section>
+    </main>
+    <footer className="ww-footer">
+      <div className="ww-footer-main"><Brand /><span>Field data. Scientific review. Public understanding.</span></div>
+      <div className="ww-footer-nav"><a href="#approach">How it works</a><a href="#explore">Explore</a><Link href="/dashboard">Dashboard</Link><a href="#main">Back to top ↑</a></div>
+      <p className="ww-photo-credit">Penns Creek photography: <a href="https://commons.wikimedia.org/wiki/File:Flickr_-_Nicholas_T_-_Overseen.jpg" target="_blank" rel="noopener noreferrer">Nicholas A. Tonelli</a>, <a href="https://creativecommons.org/licenses/by/2.0/" target="_blank" rel="noopener noreferrer">CC BY 2.0</a>. Cropped for layout. The photograph illustrates a Pennsylvania waterway and is not a monitoring observation.</p>
+    </footer>
+  </div>;
 }
