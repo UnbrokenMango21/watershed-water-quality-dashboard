@@ -6,7 +6,7 @@ Read-only live configuration was retrieved with the Identity Platform Admin `get
 
 | Method | Live configuration | Application readiness |
 | --- | --- | --- |
-| Email/password | Enabled; password required | Existing registration, password reset, verification and sign-out flows; local-emulator browser evidence in the implementation ledger |
+| Email/password | Enabled; password required | Registration/reset/sign-out plus iPhone resend/check-verification implemented. Emulator UI proves pending/resend/link application, same UID, preserved draft and server-owned collector profile; external email delivery remains unverified |
 | Google | Enabled, OAuth client configured | Existing iOS flow retained. Native callback and Firebase project bindings inspected separately; real provider consent/collision/linking still needs a provider workflow test |
 | Microsoft/Outlook | No configured provider returned | Keep its button hidden; enablement and callbacks require an approved cloud configuration change |
 | Apple | No configured provider returned | Keep its button hidden; requires Apple capability/entitlement, service identifier, callbacks and configured Firebase provider |

@@ -852,6 +852,43 @@ final class AppModel {
         }
     }
 
+    func resendEmailVerification() {
+        guard !isAuthenticating, let uid = ownerUID, let remote else { return }
+        guard connection == .online else { authError = "Reconnect to send a verification email."; return }
+        authError = nil; authNotice = nil; isAuthenticating = true
+        Task {
+            defer { isAuthenticating = false }
+            do {
+                try await remote.resendEmailVerification()
+                guard ownerUID == uid else { return }
+                authNotice = "Verification email sent. Open the link, then return here and tap I've Verified."
+            } catch {
+                guard ownerUID == uid else { return }
+                authError = Self.authMessage(error)
+            }
+        }
+    }
+
+    func refreshAccountVerification() {
+        guard !isAuthenticating, let uid = ownerUID, let remote else { return }
+        guard connection == .online else { authError = "Reconnect to check your email verification."; return }
+        authError = nil; authNotice = nil; isAuthenticating = true
+        Task {
+            defer { isAuthenticating = false }
+            do {
+                let user = try await remote.refreshAccount()
+                guard ownerUID == uid, user.uid == uid else { return }
+                applySession(user) // Same UID preserves the local draft and existing listeners.
+                authNotice = user.isEmailVerified
+                    ? "Email verified. Your collector profile is up to date. Supervisor access still requires administrator approval."
+                    : "Your email is not verified yet. Open the verification link, then tap I've Verified again."
+            } catch {
+                guard ownerUID == uid else { return }
+                authError = "Your account could not be refreshed. Check your connection and try again."
+            }
+        }
+    }
+
     /// Changes the name that identifies new observations. Historical revisions keep the name they were
     /// submitted with; only future records and the research profile change.
     @discardableResult

@@ -18,7 +18,7 @@ struct AccountView: View {
     let model: AppModel
     @State private var confirmSignOut = false
     @State private var showAbout = false
-    @State private var showPasswordReset = false
+    @State private var showSignInResult = false
     @Environment(\.dismiss) private var dismiss
 
     private var unsyncedCount: Int { model.records.filter { $0.sync != .synced }.count }
@@ -61,8 +61,23 @@ struct AccountView: View {
                     LabeledContent("Method", value: providerText)
                     if model.signInProviders.contains(.password) {
                         LabeledContent("Email", value: model.userEmailVerified ? String(localized: "Verified") : String(localized: "Not verified"))
+                            .accessibilityIdentifier("account.emailVerification")
+                        if !model.userEmailVerified {
+                            Button("Send Verification Email") {
+                                showSignInResult = true
+                                model.resendEmailVerification()
+                            }
+                            .accessibilityIdentifier("account.resendVerification")
+                            .disabled(model.connection != .online || model.isAuthenticating)
+                            Button("I've Verified") {
+                                showSignInResult = true
+                                model.refreshAccountVerification()
+                            }
+                            .accessibilityIdentifier("account.refreshVerification")
+                            .disabled(model.connection != .online || model.isAuthenticating)
+                        }
                         Button("Send Password Reset Email") {
-                            showPasswordReset = true
+                            showSignInResult = true
                             model.sendPasswordReset(to: model.userEmail)
                         }
                         .disabled(model.connection != .online || model.isAuthenticating)
@@ -141,7 +156,7 @@ struct AccountView: View {
                     Text("Your drafts stay on this phone for when you sign back in.")
                 }
             }
-            .alert("Password Reset", isPresented: resetResultShown) {
+            .alert("Account", isPresented: signInResultShown) {
                 Button("OK") { model.authNotice = nil; model.authError = nil }
             } message: {
                 Text(verbatim: model.authNotice ?? model.authError ?? "")
@@ -158,10 +173,10 @@ struct AccountView: View {
         return names.isEmpty ? String(localized: "Email and password") : names.formatted()
     }
 
-    private var resetResultShown: Binding<Bool> {
+    private var signInResultShown: Binding<Bool> {
         Binding(
-            get: { showPasswordReset && !model.isAuthenticating && (model.authNotice != nil || model.authError != nil) },
-            set: { if !$0 { showPasswordReset = false } }
+            get: { showSignInResult && !model.isAuthenticating && (model.authNotice != nil || model.authError != nil) },
+            set: { if !$0 { showSignInResult = false } }
         )
     }
 }

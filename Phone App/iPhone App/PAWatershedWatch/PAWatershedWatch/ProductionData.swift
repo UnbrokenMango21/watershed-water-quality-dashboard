@@ -993,6 +993,8 @@ enum GoogleSignInFailure: LocalizedError {
     func signInWithGoogle(presenting viewController: UIViewController) async throws -> User
     func createAccount(fullName: String, email: String, password: String) async throws -> User
     func sendPasswordReset(email: String) async throws
+    func resendEmailVerification() async throws
+    func refreshAccount() async throws -> User
     func updateDisplayName(_ name: String) async throws
     func signOut() throws
     func fetchSites() async throws -> [Site]
@@ -1032,7 +1034,8 @@ enum GoogleSignInFailure: LocalizedError {
         let change = user.createProfileChangeRequest()
         change.displayName = fullName
         try await change.commitChanges()
-        // Verification is offered, not required: the program has not decided to gate collection on it.
+        // Local collection remains available; verified membership is initialized by the server only
+        // after the person opens the verification link and refreshes their account.
         try? await user.sendEmailVerification()
         try await ProfileCallable.updateDisplayName(fullName, user: user)
         return user
@@ -1040,6 +1043,29 @@ enum GoogleSignInFailure: LocalizedError {
 
     func sendPasswordReset(email: String) async throws {
         try await Auth.auth().sendPasswordReset(withEmail: email)
+    }
+
+    func resendEmailVerification() async throws {
+        guard let user = Auth.auth().currentUser else { throw CanonicalizationError.invalid("Sign in to verify your email.") }
+        try await user.sendEmailVerification()
+    }
+
+    func refreshAccount() async throws -> User {
+        guard let user = Auth.auth().currentUser else { throw CanonicalizationError.invalid("Sign in to refresh your account.") }
+        let uid = user.uid
+        try await user.reload()
+        _ = try await user.getIDToken(forcingRefresh: true)
+        guard Auth.auth().currentUser?.uid == uid else { throw CancellationError() }
+        if user.isEmailVerified || user.phoneNumber != nil {
+            let name = IdentityName.normalized(user.displayName ?? "")
+            guard IdentityName.problem(name) == nil else { throw CanonicalizationError.invalid("Save your full name before refreshing your collector profile.") }
+            // The server checks live verification and preserves existing roles/suspensions. No
+            // claims, role or historical attribution are accepted from this client.
+            try await ProfileCallable.call("initializeMyAccount", data: ["displayName": name], user: user)
+            _ = try await user.getIDToken(forcingRefresh: true)
+        }
+        guard Auth.auth().currentUser?.uid == uid else { throw CancellationError() }
+        return user
     }
 
     /// The server updates the research profile and mirrors the name to Firebase Auth. Report a

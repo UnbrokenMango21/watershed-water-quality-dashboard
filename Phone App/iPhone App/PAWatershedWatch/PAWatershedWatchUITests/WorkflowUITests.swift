@@ -184,6 +184,170 @@ final class WorkflowUITests: XCTestCase {
         snapshot("15-approved")
     }
 
+    /// Verification refresh must keep the existing UID and let only the trusted server initialize
+    /// collector membership. Applying the email action is isolated to the local Auth emulator.
+    func testEmailVerificationRefreshPreservesIdentity() async throws {
+        app.launch()
+        signOutIfRestored()
+        if app.buttons["welcome.continue"].waitForExistence(timeout: 5) { app.buttons["welcome.continue"].tap() }
+        XCTAssertTrue(app.buttons["auth.submit"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["Local Firebase emulators"].exists)
+        let email = "verify-\(UUID().uuidString.prefix(8).lowercased())@example.test"
+        app.segmentedControls.buttons["Create Account"].tap()
+        type("River Jordan", into: app.textFields["Full name"])
+        type(email, into: app.textFields["Email"])
+        typePassword("field-sample-2026", into: app.secureTextFields["Password"])
+        app.buttons["auth.submit"].tap()
+        XCTAssertTrue(app.buttons["Account and settings"].waitForExistence(timeout: 20))
+        app.buttons["Start New Observation"].tap()
+        let site = app.buttons["site.\(siteID)"]
+        XCTAssertTrue(site.waitForExistence(timeout: 20))
+        site.tap()
+        app.buttons["site.continue"].tap()
+        XCTAssertTrue(app.navigationBars["Visit Details"].waitForExistence(timeout: 5))
+        app.terminate()
+        app.launch()
+        XCTAssertTrue(app.buttons["Resume"].waitForExistence(timeout: 15))
+        app.buttons["Account and settings"].tap()
+
+        let refresh = app.buttons["account.refreshVerification"]
+        XCTAssertTrue(refresh.waitForExistence(timeout: 5))
+        refresh.tap()
+        XCTAssertTrue(app.alerts.staticTexts.containing(NSPredicate(format: "label BEGINSWITH 'Your email is not verified yet'")).firstMatch.waitForExistence(timeout: 10))
+        app.alerts.buttons["OK"].tap()
+        app.buttons["account.resendVerification"].tap()
+        XCTAssertTrue(app.alerts.staticTexts.containing(NSPredicate(format: "label BEGINSWITH 'Verification email sent'")).firstMatch.waitForExistence(timeout: 10))
+        app.alerts.buttons["OK"].tap()
+        snapshot("verification-pending")
+
+        let (_, before) = try await postJSON(URL(string: "\(authBase)/projects/\(projectID)/accounts:lookup")!, body: ["email": [email]], bearer: "owner")
+        let original = try XCTUnwrap((before["users"] as? [[String: Any]])?.first)
+        let uid = try XCTUnwrap(original["localId"] as? String)
+        XCTAssertEqual(original["emailVerified"] as? Bool, false)
+        let actions = try await send(URL(string: "http://127.0.0.1:9099/emulator/v1/projects/\(projectID)/oobCodes")!)
+        let code = try XCTUnwrap((actions["oobCodes"] as? [[String: Any]])?.last(where: {
+            $0["email"] as? String == email && $0["requestType"] as? String == "VERIFY_EMAIL"
+        })?["oobCode"] as? String)
+        let (applied, _) = try await postJSON(URL(string: "\(authBase)/accounts:update?key=emulator")!, body: ["oobCode": code], bearer: nil)
+        XCTAssertEqual(applied, 200)
+        refresh.tap()
+        XCTAssertTrue(app.alerts.staticTexts.containing(NSPredicate(format: "label BEGINSWITH 'Email verified. Your collector profile'")).firstMatch.waitForExistence(timeout: 15))
+        app.alerts.buttons["OK"].tap()
+        XCTAssertFalse(app.buttons["account.refreshVerification"].exists)
+        snapshot("verification-complete")
+
+        let (_, after) = try await postJSON(URL(string: "\(authBase)/projects/\(projectID)/accounts:lookup")!, body: ["email": [email]], bearer: "owner")
+        let current = try XCTUnwrap((after["users"] as? [[String: Any]])?.first)
+        XCTAssertEqual(current["localId"] as? String, uid)
+        XCTAssertEqual(current["emailVerified"] as? Bool, true)
+        XCTAssertNil(current["customAttributes"], "Self-service verification must not grant role claims")
+        let profile = try await send(URL(string: "\(base)/users/\(uid)")!)
+        let fields = try XCTUnwrap(profile["fields"] as? [String: [String: Any]])
+        XCTAssertEqual(fields["role"]?["stringValue"] as? String, "COLLECTOR")
+        XCTAssertEqual(fields["verified_email"]?["stringValue"] as? String, email)
+        XCTAssertEqual(fields["display_name"]?["stringValue"] as? String, "River Jordan")
+        app.buttons["Done"].tap()
+        XCTAssertTrue(app.buttons["Resume"].waitForExistence(timeout: 5), "Verification must preserve the collector's draft")
+        XCTAssertTrue(app.staticTexts["Spring Creek at Houserville Road Bridge"].exists)
+        app.buttons["Resume"].tap()
+        XCTAssertTrue(app.navigationBars["Visit Details"].waitForExistence(timeout: 5))
+    }
+
+    func testDeferredLaboratoryResultsStayOnSameSamplingRecord() async throws {
+        app.launch()
+        signOutIfRestored()
+        if app.buttons["welcome.continue"].waitForExistence(timeout: 5) { app.buttons["welcome.continue"].tap() }
+        XCTAssertTrue(app.buttons["auth.submit"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["Local Firebase emulators"].exists)
+        let email = "lab-\(UUID().uuidString.prefix(8).lowercased())@example.test"
+        app.segmentedControls.buttons["Create Account"].tap()
+        type("Taylor Reed", into: app.textFields["Full name"])
+        type(email, into: app.textFields["Email"])
+        typePassword("field-sample-2026", into: app.secureTextFields["Password"])
+        app.buttons["auth.submit"].tap()
+        XCTAssertTrue(app.buttons["Start New Observation"].waitForExistence(timeout: 20))
+        let (_, account) = try await postJSON(URL(string: "\(authBase)/projects/\(projectID)/accounts:lookup")!, body: ["email": [email]], bearer: "owner")
+        let uid = try XCTUnwrap((account["users"] as? [[String: Any]])?.first?["localId"] as? String)
+        app.buttons["Start New Observation"].tap()
+        let site = app.buttons["site.\(siteID)"]
+        XCTAssertTrue(site.waitForExistence(timeout: 20))
+        site.tap()
+        app.buttons["site.continue"].tap()
+        XCTAssertTrue(app.buttons["flow.next"].waitForExistence(timeout: 10))
+        waitForSiteDistance()
+        app.buttons["flow.next"].tap()
+        app.buttons["method.type.fieldInstrument"].tap()
+        app.buttons["flow.next"].tap()
+        // An untouched visual form must not advance; no numeric value is needed once these are set.
+        app.buttons["flow.next"].tap()
+        XCTAssertTrue(app.navigationBars["Measurements"].exists)
+        for label in ["Weather Conditions", "Water Color", "Flow Condition"] {
+            app.buttons["observations.\(label)"].tap()
+            app.buttons["Unknown"].tap()
+        }
+        reveal(app.switches["lab.pending"])
+        setLabPending(true)
+        app.buttons["flow.next"].tap()
+        app.buttons["flow.next"].tap()
+        XCTAssertTrue(app.buttons["review.submit"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["review.submit"].isEnabled, "Unfinished lab work must not submit")
+        snapshot("lab-review-blocked")
+        app.navigationBars.buttons.firstMatch.tap()
+        app.navigationBars.buttons.firstMatch.tap()
+        reveal(app.buttons["lab.saveFieldCollection"])
+        app.buttons["lab.saveFieldCollection"].tap()
+        XCTAssertTrue(app.buttons["Resume"].waitForExistence(timeout: 5))
+        let saved = try await waitForSubmission(status: ["DRAFT"], ownerUID: uid)
+        let revisionID = try XCTUnwrap(saved.string("current_revision_id"))
+        let draftRevisions = try await listDocuments("\(saved.name)/revisions")
+        let first = try XCTUnwrap(draftRevisions.first)
+        XCTAssertEqual(first.string("collection_stage"), "LAB_PENDING")
+        XCTAssertEqual(first.string("revision_status"), "DRAFT")
+        snapshot("lab-field-saved")
+        app.terminate()
+        app.launch()
+        XCTAssertTrue(app.buttons["Resume"].waitForExistence(timeout: 15))
+        app.buttons["Resume"].tap()
+        XCTAssertTrue(app.navigationBars["Measurements"].waitForExistence(timeout: 5))
+        reveal(app.switches["lab.pending"])
+        XCTAssertEqual(app.switches["lab.pending"].value as? String, "1")
+        setLabPending(false)
+        let chloride = app.textFields["measurement.chloride"]
+        reveal(chloride)
+        type("12.5", into: chloride)
+        dismissKeyboard()
+        let method = app.textFields["analysis.chloride.method"]
+        reveal(method)
+        type("Ion chromatography — emulator fixture", into: method)
+        dismissKeyboard()
+        XCTAssertEqual(app.keyboards.count, 0, "Done must dismiss the lab method keyboard")
+        let analysisTime = app.buttons["Use the time shown for Chloride analysis"]
+        reveal(analysisTime)
+        analysisTime.tap()
+        snapshot("lab-result-completed")
+        app.buttons["flow.next"].tap()
+        app.buttons["flow.next"].tap()
+        XCTAssertTrue(app.staticTexts["Ready to submit"].waitForExistence(timeout: 5))
+        app.buttons["review.submit"].tap()
+        app.alerts.buttons["Submit"].tap()
+        let pending = try await waitForSubmission(status: ["PENDING_REVIEW"], path: saved.name)
+        XCTAssertEqual(pending.string("current_revision_id"), revisionID)
+        XCTAssertEqual(pending.string("event_id"), saved.string("event_id"))
+        XCTAssertEqual(pending.integer("current_revision_no"), 1)
+        let revisions = try await listDocuments("\(saved.name)/revisions")
+        XCTAssertEqual(revisions.count, 1)
+        XCTAssertEqual(revisions.first?.string("collection_stage"), "LAB_COMPLETED")
+        XCTAssertNil(revisions.first?.double("temp_c"), "Blank temperature must remain absent")
+        let measurements = try await listDocuments("\(saved.name)/revisions/\(revisionID)/measurements")
+        XCTAssertEqual(measurements.count, 1, "Only the entered laboratory measurement should exist")
+        XCTAssertEqual(measurements.first?.string("parameter_code"), "CHLORIDE_MG_L")
+        XCTAssertEqual(measurements.first?.double("entered_value"), 12.5)
+        XCTAssertEqual(measurements.first?.string("analysis_stage"), "LAB")
+        XCTAssertEqual(measurements.first?.string("method_name"), "Ion chromatography — emulator fixture")
+        XCTAssertNotNil(measurements.first?.fields["analyzed_at"]?["timestampValue"])
+        snapshot("lab-submitted")
+    }
+
     /// First run through Method at an accessibility text size: every primary action must stay reachable.
     func testLargeTextFirstRunKeepsActionsReachable() async throws {
         app.launchArguments += ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityL"]
@@ -285,6 +449,30 @@ final class WorkflowUITests: XCTestCase {
     }
 
     // MARK: - UI helpers
+
+    private func reveal(_ element: XCUIElement) {
+        for _ in 0..<14 {
+            if element.exists {
+                let top = app.navigationBars.firstMatch.frame.maxY
+                let footer = app.buttons["flow.next"]
+                let bottom = footer.exists ? footer.frame.minY - 72 : app.frame.maxY
+                if element.isHittable && element.frame.minY >= top && element.frame.maxY <= bottom { return }
+                if element.frame.minY < top { app.swipeDown(); continue }
+            }
+            app.swipeUp()
+        }
+        XCTAssertTrue(element.exists && element.isHittable, "Could not reveal \(element)")
+    }
+
+    private func setLabPending(_ pending: Bool) {
+        let toggle = app.switches["lab.pending"]
+        reveal(toggle)
+        if toggle.value as? String != (pending ? "1" : "0") {
+            // A SwiftUI switch's accessibility frame includes its label; touch the actual thumb.
+            toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.93, dy: 0.5)).tap()
+        }
+        XCTAssertEqual(toggle.value as? String, pending ? "1" : "0")
+    }
 
     private func type(_ text: String, into element: XCUIElement) {
         XCTAssertTrue(element.waitForExistence(timeout: 5), "Missing \(element)")
@@ -471,11 +659,11 @@ final class WorkflowUITests: XCTestCase {
     }
 
 
-    private func waitForSubmission(status: Set<String>, path: String? = nil, timeout: TimeInterval = 45) async throws -> Document {
+    private func waitForSubmission(status: Set<String>, path: String? = nil, ownerUID: String? = nil, timeout: TimeInterval = 45) async throws -> Document {
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
             let candidates = try await listDocuments("submissions")
-                .filter { $0.string("site_id") == siteID && (path == nil || $0.name == path) }
+                .filter { $0.string("site_id") == siteID && (path == nil || $0.name == path) && (ownerUID == nil || $0.string("collector_user_id") == ownerUID) }
             if let match = candidates.first(where: { status.contains($0.string("status") ?? "") }) { return match }
             try await Task.sleep(for: .seconds(1))
         }

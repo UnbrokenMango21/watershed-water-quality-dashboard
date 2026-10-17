@@ -1,5 +1,6 @@
 import Combine
 import SwiftUI
+import UIKit
 
 // BEGIN GENERATED BRAND TOKENS: GENERATED from config/brand_tokens.json by scripts/brand-tokens.mjs. Do not edit by hand.
 enum BrandTokens {
@@ -641,7 +642,11 @@ struct KeyboardControlsRow: View {
                     .accessibilityIdentifier("keyboard.next")
             }
             Spacer()
-            Button("Done", action: onDone)
+            Button("Done") {
+                onDone()
+                // Analysis-method fields have their own text focus, separate from numeric entry.
+                UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+            }
                 .fontWeight(.semibold)
                 .accessibilityIdentifier("keyboard.done")
         }

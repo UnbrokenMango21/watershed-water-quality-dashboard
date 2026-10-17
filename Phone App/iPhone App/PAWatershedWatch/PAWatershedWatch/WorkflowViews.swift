@@ -534,7 +534,7 @@ struct MeasurementsContent: View {
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: FieldTheme.l) {
-                if showValidation {
+                if showValidation && !measurementsAreValid {
                     MeasurementValidationBanner(draft: draft)
                 }
                 VisualObservationsCard(draft: draft)
@@ -613,10 +613,18 @@ struct VisualObservationsCard: View {
         }.fieldCard()
     }
     private func choice(_ title: String, value: Binding<String>, choices: [String]) -> some View {
-        Picker(title, selection: value) {
-            Text("Choose…").tag("")
-            ForEach(choices, id: \.self) { Text($0).tag($0) }
-        }.pickerStyle(.menu).accessibilityIdentifier("observations.\(title)")
+        VStack(alignment: .leading, spacing: FieldTheme.xs) {
+            Text(title).font(.subheadline.weight(.semibold)).accessibilityHidden(true)
+            Picker(title, selection: value) {
+                Text("Choose…").tag("")
+                ForEach(choices, id: \.self) { Text($0).tag($0) }
+            }
+            .pickerStyle(.menu)
+            .labelsHidden()
+            .accessibilityLabel(title)
+            .accessibilityIdentifier("observations.\(title)")
+            .frame(minHeight: 44)
+        }
     }
 }
 
@@ -673,8 +681,7 @@ struct MeasurementGroup: View {
             HStack(alignment: .bottom) {
                 FieldSectionHeader(title: title, isRequired: showsProgress)
                 if showsProgress {
-                    // Green only once every required field is filled — Water Temperature is the only
-                    // one, so this reaches "1/1" the moment it is entered, with no further condition.
+                    // Only legacy drafts can have required numeric measurements.
                     Text(draft.measurementProgressText)
                         .font(.subheadline.weight(.bold))
                         .foregroundStyle(draft.completedRequiredCount == draft.requiredMeasurements.count ? FieldTheme.fern : FieldTheme.inkMuted)
