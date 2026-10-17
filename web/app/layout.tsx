@@ -4,6 +4,7 @@ import type { ReactNode } from 'react';
 
 import './brand-tokens.css';
 import './globals.css';
+import './reveal.css';
 
 // Brand typefaces, self-hosted (SIL OFL 1.1; licenses in ./fonts). Latin subsets from Google Fonts.
 const publicSans = localFont({ src: './fonts/PublicSans-Variable-latin.woff2', weight: '400 700', variable: '--pww-font-sans-face', display: 'swap' });

@@ -19,6 +19,7 @@ import { Notice } from '@/components/ui';
 import { doc, getDoc } from 'firebase/firestore';
 import { clientAuth, clientDb, isFirebaseConfigured } from '@/lib/firebase-client';
 import { createAuthSequence, resolveReviewerGate } from '@/lib/reviewerGate.mjs';
+import { IdentityReveal } from './IdentityReveal';
 
 
 type GateState =
@@ -216,7 +217,8 @@ export default function AuthGate({ children, allowCollector = false }: { childre
       <div className="app">
         <AppBar session={null} />
         <div className="loading-pane" role="status" aria-live="polite">
-          Loading reviewer workspace…
+          <span className="loading-mark"><IdentityReveal /></span>
+          <span>Loading reviewer workspace…</span>
         </div>
       </div>
     );

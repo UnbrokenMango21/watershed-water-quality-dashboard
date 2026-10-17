@@ -2,7 +2,8 @@
    Watershed Watch identity reveal. Add data-play="true" to a .wwr element to play it once; without it
    the lockup is drawn settled, which is also the reduced-motion presentation. */
 .wwr{--wwr-stream:#0D5C4B;--wwr-point:#A76100;--wwr-word:#0D5C4B;display:block;line-height:0}
-.wwr--dark{--wwr-stream:#F4EFE6;--wwr-point:#E6A941;--wwr-word:#F4EFE6}
+.wwr--dark,[data-theme="dark"] .wwr{--wwr-stream:#F4EFE6;--wwr-point:#E6A941;--wwr-word:#F4EFE6}
+@media (prefers-color-scheme:dark){[data-theme="system"] .wwr{--wwr-stream:#F4EFE6;--wwr-point:#E6A941;--wwr-word:#F4EFE6}}
 .wwr svg{display:block;width:100%;height:auto;overflow:visible}
 .wwr .wwr-streams{stroke:var(--wwr-stream)}.wwr .wwr-point{fill:var(--wwr-point)}.wwr .wwr-word{fill:var(--wwr-word)}
 .wwr[data-play="true"] .wwr-tributary-left{animation:wwr-draw 720ms cubic-bezier(0.25,0.46,0.45,0.94) 0ms backwards}
