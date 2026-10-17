@@ -45,6 +45,13 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         private set
     var email by mutableStateOf("")
     var password by mutableStateOf("")
+    var fullName by mutableStateOf("")
+    var creatingAccount by mutableStateOf(false)
+        private set
+    var authWorking by mutableStateOf(false)
+        private set
+    var authNotice by mutableStateOf<String?>(null)
+        private set
     var authError by mutableStateOf<String?>(null)
         private set
     var connection by mutableStateOf(ConnectionState.Online)
@@ -130,17 +137,62 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun signIn() {
+        if (authWorking) return
         if (email.isBlank() || password.isBlank()) {
-            authError = "Enter your institution email and password."
+            authError = "Enter your email and password."
             return
         }
-        authLoading = true
-        authError = null
+        if (connection != ConnectionState.Online) { authError = "Reconnect to sign in. Local field work stays on this device."; return }
+        authWorking = true
+        authError = null; authNotice = null
         viewModelScope.launch {
-            graph.auth.signIn(email, password).onFailure { error ->
-                authLoading = false
-                authError = error.authMessage()
-            }
+            try {
+                graph.auth.signIn(email, password).onSuccess { password = "" }.onFailure { authError = it.authMessage() }
+            } finally { authWorking = false }
+        }
+    }
+
+    fun selectAccountCreation(value: Boolean) {
+        if (authWorking) return
+        creatingAccount = value; authError = null; authNotice = null
+    }
+
+    fun createAccount() {
+        if (authWorking) return
+        val name = runCatching { CollectorName.normalized(fullName) }.getOrElse { authError = it.message; return }
+        if (email.isBlank() || !email.contains('@')) { authError = "Enter a valid email address."; return }
+        if (password.length < 8) { authError = "Use a password with at least 8 characters."; return }
+        if (connection != ConnectionState.Online) { authError = "Reconnect to create your account."; return }
+        authWorking = true; authError = null; authNotice = null
+        viewModelScope.launch {
+            try {
+                graph.auth.createAccount(name, email, password).onSuccess { outcome ->
+                    password = ""
+                    account = outcome.account; isSignedIn = true
+                    // The Auth listener owns local loading/listeners; don't start a second load that
+                    // could replace a draft or attach a duplicate remote listener.
+                    ensureProfile(outcome.account, force = true)
+                    if (!outcome.verificationSent) authNotice = "Account created. Use Resend Email here to request your verification link."
+                    else if (!outcome.nameSaved) authNotice = "Account created. Verify your email, then save your full name in Account."
+                    creatingAccount = false; fullName = ""
+                }.onFailure { authError = it.authMessage() }
+            } finally { authWorking = false }
+        }
+    }
+
+    fun sendPasswordReset() {
+        if (authWorking) return
+        val address = (if (isSignedIn) signedInEmail else email).trim()
+        val requestedUid = account?.uid
+        if (address.isBlank() || !address.contains('@')) { authError = "Enter the email address you sign in with."; return }
+        if (connection != ConnectionState.Online) { authError = "Reconnect to reset your password."; return }
+        authWorking = true; authError = null; authNotice = null
+        viewModelScope.launch {
+            try {
+                graph.auth.sendPasswordReset(address).onSuccess {
+                    if (account?.uid == requestedUid) authNotice = passwordResetConfirmation(address)
+                }.onFailure { if (account?.uid == requestedUid) authError = it.authMessage() }
+            } finally { authWorking = false }
         }
     }
 
@@ -230,11 +282,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     /** Saves the collector's full name through the server callables, then refreshes the profile. */
     fun saveProfileName(name: String, onDone: (Boolean) -> Unit) {
         val current = account ?: return onDone(false)
-        val trimmed = name.trim().replace(Regex("\\s+"), " ")
-        if (trimmed.length !in 2..80) {
-            profileMessage = "Enter your full name in 2 to 80 characters."
-            return onDone(false)
-        }
+        val trimmed = runCatching { CollectorName.normalized(name) }.getOrElse { profileMessage = it.message; return onDone(false) }
         if (connection != ConnectionState.Online) {
             profileMessage = "Reconnect to change your name."
             return onDone(false)
@@ -396,13 +444,20 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         stopDiscussion()
         stopProposals()
         password = ""
+        authNotice = null; authError = null
         graph.auth.signOut()
     }
 
-    fun startNewObservation() {
-        val owner = account ?: return
+    fun startNewObservation(): Boolean {
+        val owner = account ?: return false
+        val name = owner.profileName?.let { runCatching { CollectorName.normalized(it) }.getOrNull() }
+        if (name == null) {
+            profileStatus = ProfileStatus.NeedsName
+            profileMessage = "Save your full name in Account before starting an observation."
+            return false
+        }
         val previous = draft
-        val next = ObservationDraft(ownerUid = owner.uid, collector = owner.displayName, gpsState = GpsState.Acquiring)
+        val next = ObservationDraft(ownerUid = owner.uid, collector = name, gpsState = GpsState.Acquiring)
         draft = next
         viewModelScope.launch {
             saveMutex.withLock {
@@ -410,6 +465,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 runCatching { drafts.saveDraft(next) }.onFailure { localStoreError = it.message }
             }
         }
+        return true
     }
 
     fun discardDraft() {
@@ -667,7 +723,12 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     private fun Throwable.authMessage(): String = when ((this as? FirebaseAuthException)?.errorCode) {
         "ERROR_USER_DISABLED" -> "This account is disabled. Contact your watershed program administrator."
         "ERROR_INVALID_CREDENTIAL", "ERROR_WRONG_PASSWORD", "ERROR_USER_NOT_FOUND" -> "Email or password is incorrect."
+        "ERROR_EMAIL_ALREADY_IN_USE", "ERROR_ACCOUNT_EXISTS_WITH_DIFFERENT_CREDENTIAL" -> "An account already uses this email. Sign in using its existing method, or reset your password."
+        "ERROR_INVALID_EMAIL" -> "Enter a valid email address."
+        "ERROR_WEAK_PASSWORD" -> "Choose a stronger password with at least 8 characters."
+        "ERROR_TOO_MANY_REQUESTS" -> "Too many attempts. Wait a few minutes and try again."
+        "ERROR_OPERATION_NOT_ALLOWED" -> "Email registration is not enabled. Contact your program administrator."
         "ERROR_NETWORK_REQUEST_FAILED" -> "A network connection is required for sign-in. Saved field records remain on this device."
-        else -> "We couldn't sign you in. Try again or contact your program administrator."
+        else -> "We couldn't complete the account request. Try again or contact your program administrator."
     }
 }

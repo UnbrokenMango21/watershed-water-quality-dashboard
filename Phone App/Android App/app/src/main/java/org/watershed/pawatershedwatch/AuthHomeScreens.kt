@@ -199,6 +199,23 @@ fun SignInScreen(model: AppViewModel) {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.bodyLarge,
         )
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            OutlinedButton(onClick = { model.selectAccountCreation(false) }, enabled = model.creatingAccount) { Text("Sign In") }
+            OutlinedButton(onClick = { model.selectAccountCreation(true) }, enabled = !model.creatingAccount) { Text("Create Account") }
+        }
+        Spacer(Modifier.height(16.dp))
+        if (model.creatingAccount) {
+            OutlinedTextField(
+                value = model.fullName,
+                onValueChange = { model.fullName = it },
+                label = { Text("Full name") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                shape = RoundedCornerShape(16.dp),
+            )
+            Spacer(Modifier.height(14.dp))
+        }
         OutlinedTextField(
             value = model.email,
             onValueChange = { model.email = it },
@@ -220,15 +237,29 @@ fun SignInScreen(model: AppViewModel) {
             singleLine = true,
             visualTransformation = PasswordVisualTransformation(),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
-            keyboardActions = KeyboardActions(onDone = { focus.clearFocus(); model.signIn() }),
+            keyboardActions = KeyboardActions(onDone = {
+                focus.clearFocus()
+                if (model.creatingAccount) model.createAccount() else model.signIn()
+            }),
             shape = RoundedCornerShape(16.dp),
         )
         model.authError?.let {
             StatusPanel("Authentication error", it, MaterialTheme.colorScheme.error, Icons.Rounded.ErrorOutline)
             Spacer(Modifier.height(14.dp))
         }
+        model.authNotice?.let { StatusPanel("Account", it, Fern, Icons.Rounded.Check) }
         Spacer(Modifier.height(22.dp))
-        PrimaryAction("Sign In", onClick = { focus.clearFocus(); model.signIn() })
+        PrimaryAction(if (model.creatingAccount) "Create Account" else "Sign In", onClick = {
+            focus.clearFocus()
+            if (model.creatingAccount) model.createAccount() else model.signIn()
+        })
+        if (!model.creatingAccount) {
+            TextButton(onClick = { focus.clearFocus(); model.sendPasswordReset() }, modifier = Modifier.heightIn(min = 48.dp)) {
+                Text("Forgot Password?")
+            }
+        } else {
+            Text("Your account starts as a collector. Supervisor access requires separate administrator approval.", modifier = Modifier.padding(top = 12.dp), style = MaterialTheme.typography.bodyMedium)
+        }
         Text(
             "Your unfinished field work remains on this device until it can sync.",
             modifier = Modifier.padding(top = 18.dp),
@@ -268,6 +299,7 @@ fun HomeScreen(
         }
 
         ProfileStatusPanel(model, onOpenAccount)
+        model.authNotice?.let { StatusPanel("Account", it, Fern, Icons.Rounded.Check) }
 
         Surface(
             modifier = Modifier.fillMaxWidth().clickable(onClick = onStart),
@@ -445,7 +477,10 @@ fun AccountScreen(model: AppViewModel, onProposals: () -> Unit = {}) {
             Column {
                 KeyValueRow("Signed in as", model.signedInEmail)
                 KeyValueRow("Local field work", "${model.records.count { it.sync != SyncState.Synced }} waiting on this phone")
-                TextButton(onClick = model::signOut) {
+                TextButton(onClick = model::sendPasswordReset, enabled = !model.authWorking, modifier = Modifier.heightIn(min = 48.dp)) { Text("Send Password Reset Email") }
+                model.authNotice?.let { Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                model.authError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                TextButton(onClick = model::signOut, enabled = !model.authWorking) {
                     Icon(Icons.AutoMirrored.Rounded.Logout, contentDescription = null)
                     Spacer(Modifier.width(8.dp))
                     Text("Sign Out")
