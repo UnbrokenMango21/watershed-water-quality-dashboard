@@ -550,7 +550,9 @@ struct MeasurementsContent: View {
             .padding(.bottom, FieldTheme.l)
         }
         .fieldScreen()
-        .scrollDismissesKeyboard(.interactively)
+        // Keep numeric focus while SwiftUI scrolls an entry above the bottom controls.
+        // Done and the step action dismiss the keyboard explicitly.
+        .scrollDismissesKeyboard(.never)
         .navigationTitle("Measurements")
         .navigationBarTitleDisplayMode(.inline)
         .safeAreaInset(edge: .bottom) {

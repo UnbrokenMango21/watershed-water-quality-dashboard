@@ -447,7 +447,7 @@ struct CorrectionRevisionView: View {
                 .padding(.bottom, FieldTheme.xl)
             }
             .fieldScreen()
-            .scrollDismissesKeyboard(.interactively)
+            .scrollDismissesKeyboard(.never)
             .navigationTitle("Correction Revision")
             .navigationBarTitleDisplayMode(.inline)
             .safeAreaInset(edge: .bottom) {
