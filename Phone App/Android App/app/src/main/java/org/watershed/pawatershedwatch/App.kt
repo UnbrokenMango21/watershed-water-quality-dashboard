@@ -13,7 +13,10 @@ import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.Surface
 import androidx.compose.material3.TextButton
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -44,6 +47,7 @@ private object Routes {
     const val Detail = "detail/{recordId}"
     const val Correction = "correction/{recordId}"
     const val Status = "status/{recordId}"
+    const val SiteProposals = "site-proposals"
 
     fun detail(id: String) = "detail/$id"
     fun correction(id: String) = "correction/$id"
@@ -63,6 +67,11 @@ private data class Tab(val route: String, val label: String, val icon: ImageVect
 
 @Composable
 fun PAWatershedApp(model: AppViewModel) {
+    // First run: the one-page introduction comes before anything else, once.
+    if (model.onboardingVisible && !model.onboardingRevisit) {
+        OnboardingScreen(revisit = false, onDone = model::finishOnboarding)
+        return
+    }
     if (model.authLoading) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
         return
@@ -139,15 +148,23 @@ fun PAWatershedApp(model: AppViewModel) {
                     },
                     onResume = ::navigateToDraftStep,
                     onRecord = { navController.navigate(Routes.detail(it)) },
+                    onOpenAccount = {
+                        navController.navigate(Routes.Account) {
+                            popUpTo(navController.graph.findStartDestination().id) { saveState = true }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
+                    },
                 )
             }
             composable(Routes.Recent) {
                 RecentScreen(model) { navController.navigate(Routes.detail(it)) }
             }
-            composable(Routes.Account) { AccountScreen(model) }
+            composable(Routes.Account) { AccountScreen(model, onProposals = { navController.navigate(Routes.SiteProposals) }) }
             composable(Routes.SelectSite) {
-                SelectSiteScreen(model, navController::popBackStack) { navController.navigate(Routes.Visit) }
+                SelectSiteScreen(model, navController::popBackStack, onProposals = { navController.navigate(Routes.SiteProposals) }) { navController.navigate(Routes.Visit) }
             }
+            composable(Routes.SiteProposals) { SiteProposalsScreen(model, navController::popBackStack) }
             composable(Routes.Visit) {
                 VisitDetailsScreen(model, navController::popBackStack) { navController.navigate(Routes.TestMethod) }
             }
@@ -190,6 +207,13 @@ fun PAWatershedApp(model: AppViewModel) {
                     onDetail = { navController.navigate(Routes.detail(id)) },
                 )
             }
+        }
+    }
+
+    // Reopened from Account: shown over the current screen so navigation is kept.
+    if (model.onboardingVisible && model.onboardingRevisit) {
+        Dialog(onDismissRequest = model::finishOnboarding, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+            Surface(modifier = Modifier.fillMaxSize()) { OnboardingScreen(revisit = true, onDone = model::finishOnboarding) }
         }
     }
 

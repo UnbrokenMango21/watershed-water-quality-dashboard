@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "watershed_firebase": {
+      "type": "stdio",
+      "command": "bash",
+      "args": [
+        "scripts/dev.sh",
+        "firebase-mcp"
+      ]
+    }
+  }
+}

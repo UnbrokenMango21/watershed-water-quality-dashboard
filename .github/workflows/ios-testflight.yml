@@ -6,11 +6,11 @@ on:
       release_ref:
         description: Git ref to release
         required: true
-        default: release/ios-existing-app-v0.1.0-b11
+        default: release/ios-existing-app-v0.1.0-b13
       expected_sha:
         description: Exact commit SHA expected at release_ref
         required: true
-        default: a784395d4d30bd4b81803efa503e3227077b2a72
+        default: a23358ad1f3c32f5b9c12a2a10e864ca5d1ca7d7
       marketing_version:
         description: Expected CFBundleShortVersionString
         required: true
@@ -18,9 +18,7 @@ on:
       build_number:
         description: Expected CFBundleVersion
         required: true
-        default: '11'
-  issue_comment:
-    types: [created]
+        default: '13'
 
 permissions:
   contents: read
@@ -40,12 +38,6 @@ env:
 jobs:
   testflight:
     name: Build, sign, and upload to TestFlight
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      (github.event_name == 'issue_comment' &&
-       github.event.issue.number == 26 &&
-       github.event.comment.user.login == 'UnbrokenMango21' &&
-       startsWith(github.event.comment.body, '!testflight '))
     runs-on: macos-26
     timeout-minutes: 60
 
@@ -54,8 +46,6 @@ jobs:
         id: release
         shell: bash
         env:
-          EVENT_NAME: ${{ github.event_name }}
-          COMMENT_BODY: ${{ github.event.comment.body }}
           INPUT_REF: ${{ inputs.release_ref }}
           INPUT_SHA: ${{ inputs.expected_sha }}
           INPUT_VERSION: ${{ inputs.marketing_version }}
@@ -65,31 +55,18 @@ jobs:
           python3 - <<'PY' >> "$GITHUB_OUTPUT"
           import os, re
 
-          if os.environ['EVENT_NAME'] == 'issue_comment':
-              body = os.environ.get('COMMENT_BODY', '').strip()
-              match = re.fullmatch(
-                  r'!testflight ([A-Za-z0-9._/-]+) ([0-9a-f]{40}) ([0-9]+\.[0-9]+\.[0-9]+) ([0-9]+)',
-                  body,
-              )
-              if not match:
-                  raise SystemExit(
-                      'Invalid release command. Expected: '
-                      '!testflight <ref> <40-char-sha> <version> <build>'
-                  )
-              release_ref, expected_sha, version, build = match.groups()
-          else:
-              release_ref = os.environ['INPUT_REF'].strip()
-              expected_sha = os.environ['INPUT_SHA'].strip()
-              version = os.environ['INPUT_VERSION'].strip()
-              build = os.environ['INPUT_BUILD'].strip()
-              if not re.fullmatch(r'[A-Za-z0-9._/-]+', release_ref):
-                  raise SystemExit('Invalid release_ref')
-              if not re.fullmatch(r'[0-9a-f]{40}', expected_sha):
-                  raise SystemExit('expected_sha must be a full 40-character lowercase SHA')
-              if not re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+', version):
-                  raise SystemExit('marketing_version must be x.y.z')
-              if not re.fullmatch(r'[0-9]+', build):
-                  raise SystemExit('build_number must be numeric')
+          release_ref = os.environ['INPUT_REF'].strip()
+          expected_sha = os.environ['INPUT_SHA'].strip()
+          version = os.environ['INPUT_VERSION'].strip()
+          build = os.environ['INPUT_BUILD'].strip()
+          if not re.fullmatch(r'[A-Za-z0-9._/-]+', release_ref):
+              raise SystemExit('Invalid release_ref')
+          if not re.fullmatch(r'[0-9a-f]{40}', expected_sha):
+              raise SystemExit('expected_sha must be a full 40-character lowercase SHA')
+          if not re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+', version):
+              raise SystemExit('marketing_version must be x.y.z')
+          if not re.fullmatch(r'[0-9]+', build):
+              raise SystemExit('build_number must be numeric')
 
           print(f'release_ref={release_ref}')
           print(f'expected_sha={expected_sha}')

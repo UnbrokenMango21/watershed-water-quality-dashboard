@@ -130,23 +130,28 @@
             "location": "GeoPoint",
             "gps_accuracy_m": "number",
             "site_distance_m": "number|null",
-            "weather_condition": "string",
+            "weather_condition": "controlled string (required for schema 0.2.0)",
             "data_collected_by": "string",
             "test_type": "string",
             "test_type_other": "string|null",
             "method_name": "string",
-            "instrument_name": "string",
+            "instrument_name": "string|null",
             "instrument_other": "string|null",
-            "temp_entered_value": "number",
-            "temp_entered_unit": "C | F",
-            "temp_c": "number",
-            "temp_f": "number",
+            "temp_entered_value": "number|null",
+            "temp_entered_unit": "C | F | null",
+            "temp_c": "number|null",
+            "temp_f": "number|null",
             "field_notes_original": "string|null",
             "schema_version": "string",
             "mobile_app_version": "string",
-            "validation": "server-owned map|null"
+            "validation": "server-owned map|null",
+            "water_color": "controlled string (required for schema 0.2.0)",
+            "flow_condition": "controlled string (required for schema 0.2.0)",
+            "collection_stage": "DRAFT | FIELD_COLLECTED | LAB_PENDING | LAB_COMPLETED | READY_FOR_REVIEW"
           },
-          "serverOwnedFields": ["validation"],
+          "serverOwnedFields": [
+            "validation"
+          ],
           "subcollections": {
             "measurements": {
               "documentId": "measurement_id",
@@ -241,9 +246,20 @@
     ]
   },
   "reviewWorkflow": {
-    "actions": ["APPROVE", "NEEDS_CORRECTION", "REJECT"],
-    "actorRoles": ["QC_REVIEWER", "ADMIN"],
-    "reasonRequired": {"APPROVE": false, "NEEDS_CORRECTION": true, "REJECT": true},
+    "actions": [
+      "APPROVE",
+      "NEEDS_CORRECTION",
+      "REJECT"
+    ],
+    "actorRoles": [
+      "QC_REVIEWER",
+      "ADMIN"
+    ],
+    "reasonRequired": {
+      "APPROVE": false,
+      "NEEDS_CORRECTION": true,
+      "REJECT": true
+    },
     "executionPath": "Server-only (Firebase Admin SDK, Application Default Credentials). Never invoked from browser/client code.",
     "guarantees": [
       "atomic: submission patch, and audit event commit in one Firestore transaction",
@@ -261,5 +277,7 @@
     "collectorCanWriteReviewFields": false,
     "collectorCanWritePublicationFields": false,
     "collectorCanWriteRevisionValidationMap": false
-  }
+  },
+  "scientificContractVersion": "0.2.0",
+  "compatibility": "Existing submitted revisions remain immutable and readable. New revisions use visual observations and optional numerical measurements. Temperature fields are all null/absent or a complete finite group. Laboratory pending drafts cannot be submitted."
 }

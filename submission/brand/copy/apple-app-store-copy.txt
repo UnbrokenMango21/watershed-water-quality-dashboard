@@ -1,0 +1,133 @@
+PA Watershed Watch — Apple App Store Connect copy
+Source: supplied standalone brand package, 2026-09-26
+
+=== App name ===
+PA Watershed Watch
+
+=== Subtitle ===
+Water-quality field records
+
+=== Promotional text ===
+For authorized Pennsylvania watershed teams: record sampling visits in scientific units, keep drafts on the device, and submit observations for human review.
+
+=== Keywords ===
+sampling,monitoring,stream,river,creek,Pennsylvania,environmental,observation,survey,GPS,site,data
+
+=== Description (plain text) ===
+PA Watershed Watch is a field-data tool for authorized Pennsylvania watershed monitoring teams. Accounts are provisioned by your monitoring program. There is no public sign-up.
+
+IN THE FIELD
+• Sign in with the account your program provisioned for you.
+• Select the monitoring site you are sampling.
+• Record the sampling visit, including GPS location accuracy.
+• Enter water-quality measurements with their scientific units.
+• Save drafts on the device and return to them before you submit.
+
+REVIEW
+• Submit completed observations to your program's private review workflow.
+• Automated validation checks help reviewers find values that need a closer look. They support human scientific review and do not replace it.
+• Corrections are saved as new revisions. Earlier submitted revisions are preserved.
+
+PUBLICATION
+Observations that pass human review may later be published by the program to a public ArcGIS dashboard. PA Watershed Watch does not determine whether water is safe for drinking, swimming, fishing, or any other use.
+
+NOT IN THIS VERSION
+Photo, audio, and other media capture are not available yet.
+
+Questions about access? Contact your program coordinator or the support contact listed on this page.
+
+=== TestFlight: What to Test (0.1.0 (13)) ===
+Thanks for testing build 0.1.0 (13). Please use a physical iPhone and field-like conditions where you can.
+
+1. Sign in with the provisioned test account your program coordinator gave you.
+2. Select a test monitoring site and start a sampling visit. Check that GPS accuracy is shown and recorded.
+3. Enter measurements. Confirm each unit is correct and clearly labeled.
+4. Save a draft, force-quit the app, reopen it, and confirm the draft is intact.
+5. Turn on Airplane Mode, save a draft, reconnect, then submit. Note whether the sync status is clear at every step.
+6. Submit an observation and confirm it shows the expected review status.
+7. Submit a correction and confirm the earlier revision is still listed.
+
+Send anything confusing, slow, or incorrect through TestFlight feedback with a screenshot. Use test sites only unless your coordinator says otherwise.
+
+Not in this build: photo, audio, and media capture.
+
+=== App Review notes ===
+PA Watershed Watch is a field-data tool for authorized Pennsylvania watershed monitoring teams. The app has no account creation. Program administrators provision accounts; the app only offers sign-in.
+
+DEMO ACCOUNT (reviewer only)
+Username: [OWNER: reviewer account]
+Password: [OWNER: reviewer password]
+[CONFIRM: The account is limited to a test site named "[OWNER]" and its submissions go to a test review queue that is never published.]
+
+HOW TO REVIEW
+1. Sign in with the demo account.
+2. Select the test monitoring site.
+3. Start a sampling visit. The app asks for location permission to record the visit position and GPS accuracy. [CONFIRM: "While Using" only.]
+4. Enter measurements with their units.
+5. Save a draft, then submit the observation.
+6. Open the submitted observation to see its review status and revision history.
+
+NOTES
+• Automated validation assists human reviewers. It does not publish data or determine whether water is safe.
+• Approved observations may later be published by the program to a public ArcGIS dashboard. No observations are published yet.
+• Photo, audio, and media capture are not included.
+
+CONTACT: [OWNER: name, phone, email]
+
+=== Support URL page copy (proposed) ===
+PA Watershed Watch support
+
+PA Watershed Watch is used by authorized Pennsylvania watershed monitoring teams. Accounts are provisioned by [OWNER: program name]. The app does not offer public sign-up.
+
+Account access
+If you cannot sign in or need an account, contact your program coordinator or email [OWNER: support email].
+
+Report a problem
+Email [OWNER: support email] with the app version, your device model, and what happened. Never send your password.
+
+Response time
+[OWNER DECISION: e.g. within 2 business days]
+
+Questions about submitted or published data
+Contact [OWNER: data steward name and email].
+
+Privacy
+Read the privacy policy at [OWNER: privacy policy URL].
+
+=== Privacy policy page copy (proposed skeleton) ===
+PA Watershed Watch privacy policy
+DRAFT for owner and counsel review. Every bracketed item must be confirmed before publication.
+
+Who we are
+[OWNER: legal entity name, mailing address, privacy contact email].
+
+What the app collects
+• Account information provisioned by your program: [VERIFY: name, email address, user ID].
+• Sampling records you enter: monitoring site, visit date and time, measurements and units, [VERIFY: notes or other fields].
+• Device location recorded with a sampling visit, with its GPS accuracy. [VERIFY: collected only while recording a visit.]
+• [VERIFY: crash or diagnostic data, only if a diagnostics SDK is present.]
+The app does not collect photos, audio, or other media.
+
+How it is used
+To sign you in, keep drafts on your device, store submitted observations, and let authorized reviewers check them.
+
+Where it is stored
+Drafts stay on your device until you submit. Submissions are stored in Google Firebase [VERIFY: products and region].
+
+Publication
+Observations approved through human review may be published through ArcGIS to a public dashboard. [OWNER DECISION: which fields are published, for example whether collector names or exact coordinates appear.]
+
+Sharing
+[VERIFY: We do not sell data or use it for advertising.]
+
+Retention and deletion
+[OWNER DECISION: retention periods for accounts, drafts, submissions, and revision history, and how to request deletion.]
+
+Your choices
+Request access, correction, or deletion at [OWNER: contact].
+
+Intended users
+Authorized adult members of monitoring teams. [OWNER DECISION]
+
+Changes
+Effective date: [OWNER]. We will post updates on this page.

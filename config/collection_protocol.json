@@ -1,25 +1,26 @@
 {
-  "protocolVersion": "0.1.0-draft",
+  "protocolVersion": "0.2.0",
   "dashboardTitle": "Central PA Watershed Dashboard",
   "requiredStructuralFields": [
     "siteId",
     "testType",
     "dataCollectedBy",
     "measurementMethod",
-    "instrumentNameOrId",
     "collectedDate",
     "collectedTime",
     "latitude",
     "longitude",
-    "gpsAccuracyM"
+    "gpsAccuracyM",
+    "weatherCondition",
+    "waterColor",
+    "flowCondition"
   ],
-  "requiredCoreParameters": [
+  "requiredCoreParameters": [],
+  "optionalParameters": [
     "WATER_TEMP_C",
     "PH",
     "DO_MG_L",
-    "CONDUCTIVITY_US_CM"
-  ],
-  "optionalParameters": [
+    "CONDUCTIVITY_US_CM",
     "DO_PERCENT",
     "TDS_MG_L",
     "ORP_MV",
@@ -27,7 +28,8 @@
     "SULFATE_MG_L",
     "NITRATE_MG_L",
     "PHOSPHATE_MG_L",
-    "DISCHARGE_M3_S"
+    "DISCHARGE_M3_S",
+    "WATER_DEPTH_M"
   ],
   "legacyDefaults": {
     "testType": "In-situ/Penn State Lab",
@@ -45,7 +47,10 @@
   "otherRequiresText": true,
   "temperatureEntry": {
     "userChoosesUnit": true,
-    "allowedInputUnits": ["F", "C"],
+    "allowedInputUnits": [
+      "F",
+      "C"
+    ],
     "canonicalUnit": "C",
     "formulaFtoC": "(F - 32) * 5 / 9",
     "formulaCtoF": "C * 9 / 5 + 32",
@@ -92,5 +97,58 @@
     "preloadHistoricalDatasetDuringDevelopment": false,
     "finalHistoricalUploadPerformedByProjectOwner": true,
     "purpose": "End-to-end ingestion acceptance test"
+  },
+  "visualObservations": {
+    "weather_condition": [
+      "Clear",
+      "Partly Cloudy",
+      "Cloudy",
+      "Overcast",
+      "Light Rain",
+      "Heavy Rain",
+      "Snow",
+      "Windy",
+      "Other",
+      "Unknown"
+    ],
+    "water_color": [
+      "Clear",
+      "Light Brown",
+      "Dark Brown",
+      "Greenish",
+      "Turbid/Murky",
+      "Other",
+      "Unknown"
+    ],
+    "flow_condition": [
+      "No Visible Flow",
+      "Low",
+      "Moderate",
+      "High",
+      "Unknown"
+    ]
+  },
+  "numericMeasurementPolicy": "All numerical measurements are optional. Missing values remain null/absent; an entered value must satisfy its unit and conversion contract.",
+  "laboratoryPolicy": {
+    "requestedAnalytes": [
+      "CHLORIDE_MG_L",
+      "SULFATE_MG_L",
+      "NITRATE_MG_L",
+      "PHOSPHATE_MG_L"
+    ],
+    "finalSubmissionRequires": "No pending laboratory work; explicit completion recorded by the collector.",
+    "draftStates": [
+      "DRAFT",
+      "FIELD_COLLECTED",
+      "LAB_PENDING",
+      "LAB_COMPLETED",
+      "READY_FOR_REVIEW"
+    ]
+  },
+  "methodPolicy": {
+    "categoryRequired": true,
+    "otherTextLabel": "Method / Instrument",
+    "instrumentDetailsOptional": true,
+    "appliesTo": "each sampling record, never a permanent site preference"
   }
 }

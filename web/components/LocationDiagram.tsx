@@ -74,7 +74,7 @@ export default function LocationDiagram({
 
   return (
     <figure className="location-figure">
-      <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={describe(distanceM, toleranceM, gpsAccuracyM)}>
+      <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={describeLocation(distanceM, toleranceM, gpsAccuracyM)}>
         <defs>
           <pattern id="loc-grid" width="16" height="16" patternUnits="userSpaceOnUse">
             <path d="M16 0H0v16" fill="none" stroke="var(--border-soft)" strokeWidth="1" />
@@ -147,7 +147,7 @@ export default function LocationDiagram({
   );
 }
 
-function describe(
+export function describeLocation(
   distanceM: Nullable<number>,
   toleranceM: Nullable<number>,
   gpsAccuracyM: Nullable<number>,

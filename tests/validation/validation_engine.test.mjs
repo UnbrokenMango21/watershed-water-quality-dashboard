@@ -269,3 +269,57 @@ test('DO percent/mgL mismatch is a plausibility warning, not an error', () => {
   assert.ok(result.flags.some((f) => f.rule_code === 'DO_PERCENT_MGL_INCONSISTENT'));
   assert.ok(result.scores.validation_quality_score < 100);
 });
+
+test('v0.2 visual-only record accepts explicit Unknown and preserves absent numerical measurements', () => {
+  const record = revision({ schema_version: '0.2.0', weather_condition: 'Unknown', water_color: 'Unknown', flow_condition: 'Unknown', collection_stage: 'READY_FOR_REVIEW', temp_entered_value: null, temp_entered_unit: null, temp_c: null, temp_f: null, instrument_name: null });
+  const result = validateObservation({ revision: record, measurements: [], site, now: NOW });
+  assert.equal(result.blocking, false);
+  for (const field of ['weather_condition', 'water_color', 'flow_condition']) {
+    const absent = validateObservation({ revision: { ...record, [field]: '' }, measurements: [], site, now: NOW });
+    assert.ok(absent.flags.some((flag) => flag.rule_code === `VISUAL_INVALID_${field}`));
+  }
+  assert.ok(validateObservation({ revision: { ...record, collection_stage: 'LAB_PENDING' }, measurements: [], site, now: NOW }).blocking);
+  for (const invalid of [{ temp_c: 0 }, { temp_entered_value: NaN, temp_entered_unit: 'C', temp_c: 0, temp_f: 32 }]) {
+    assert.ok(validateObservation({ revision: { ...record, ...invalid }, measurements: [], site, now: NOW }).flags.some((flag) => flag.rule_code === 'TEMP_GROUP_INVALID'));
+  }
+});
+
+test('water depth uses length units without inventing discharge or an upper scientific threshold', () => {
+  const depth = measurement('WATER_DEPTH_M', 0.3048, 'm', { entered_value: 1, entered_unit_code: 'ft' });
+  assert.equal(validateObservation({ revision: revision(), measurements: [depth], site, now: NOW }).blocking, false);
+  assert.ok(validateObservation({ revision: revision(), measurements: [{ ...depth, value: -0.3048, entered_value: -1 }], site, now: NOW }).flags.some((flag) => flag.rule_code === 'DEPTH_NEGATIVE'));
+  assert.ok(validateObservation({ revision: revision(), measurements: [{ ...depth, value: 1 }], site, now: NOW }).flags.some((flag) => flag.rule_code === 'MEAS_CONVERSION_MISMATCH'));
+});
+
+test('v0.2 analysis provenance: lab results later than collection, field exceptions documented, never before sampling', () => {
+  const record = revision({ schema_version: '0.2.0', weather_condition: 'Clear', water_color: 'Clear', flow_condition: 'Low', collection_stage: 'LAB_COMPLETED', submitted_at: '2026-08-09T12:00:00-04:00' });
+  const field = (code, value, unit) => measurement(code, value, unit, { analysis_stage: 'FIELD', analyzed_at: '2026-08-08T16:30:00-04:00', field_exception_reason: null });
+  const lab = measurement('NITRATE_MG_L', 1.2, 'mg/L as N', { entered_value: 1.2, entered_unit_code: 'mg-n-l', analysis_stage: 'LAB', analyzed_at: '2026-08-09T10:15:00-04:00', field_exception_reason: null });
+  const clean = validateObservation({ revision: record, measurements: [field('PH', 7.2, 'pH'), lab], site, now: NOW });
+  assert.equal(clean.blocking, false, JSON.stringify(clean.flags));
+  const codes = (measurements) => validateObservation({ revision: record, measurements, site, now: NOW }).flags.map((flag) => flag.rule_code);
+  assert.ok(codes([{ ...lab, analysis_stage: undefined }]).includes('ANALYSIS_PROVENANCE_MISSING'));
+  // A non-laboratory value may leave provenance unrecorded, but never half-recorded.
+  assert.equal(codes([{ ...field('PH', 7.2, 'pH'), analysis_stage: null, analyzed_at: null }]).includes('ANALYSIS_PROVENANCE_MISSING'), false);
+  assert.ok(codes([{ ...field('PH', 7.2, 'pH'), analyzed_at: null }]).includes('ANALYSIS_PROVENANCE_MISSING'));
+  assert.ok(codes([{ ...lab, analyzed_at: null }]).includes('ANALYSIS_PROVENANCE_MISSING'));
+  assert.ok(codes([{ ...lab, analyzed_at: '2026-08-08T12:00:00-04:00' }]).includes('ANALYSIS_BEFORE_COLLECTION'));
+  assert.ok(codes([{ ...lab, analyzed_at: '2026-08-10T12:00:00-04:00' }]).includes('ANALYSIS_AFTER_SUBMISSION'));
+  const fieldNitrate = { ...lab, analysis_stage: 'FIELD', analyzed_at: '2026-08-08T16:30:00-04:00' };
+  assert.ok(codes([fieldNitrate]).includes('LAB_PARAMETER_FIELD_EXCEPTION_MISSING'));
+  const documented = validateObservation({ revision: record, measurements: [{ ...fieldNitrate, field_exception_reason: 'Program-approved field kit protocol.' }], site, now: NOW });
+  assert.equal(documented.blocking, false);
+  assert.equal(documented.flags.find((flag) => flag.rule_code === 'LAB_PARAMETER_FIELD_EXCEPTION')?.severity, 'INFO');
+  assert.equal(documented.scores.overall_quality_score, clean.scores.overall_quality_score, 'a documented exception is visible but not penalized');
+  // Legacy 0.1.0 records predate analysis provenance and are not retroactively flagged.
+  assert.equal(validateObservation({ revision: revision(), measurements: core(), site, now: NOW }).flags.some((flag) => flag.rule_code.startsWith('ANALYSIS_')), false);
+});
+
+test('instrument stays required on legacy measurements and optional on v0.2 measurements', () => {
+  const legacy = validateObservation({ revision: revision(), measurements: core([measurement('ORP_MV', 120, 'mV', { instrument_name: null })]), site, now: NOW });
+  assert.ok(legacy.flags.some((flag) => flag.rule_code === 'MEAS_INSTRUMENT_MISSING' && flag.severity === 'ERROR'));
+  const v2 = revision({ schema_version: '0.2.0', weather_condition: 'Clear', water_color: 'Clear', flow_condition: 'Low', collection_stage: 'READY_FOR_REVIEW' });
+  const field = { analysis_stage: 'FIELD', analyzed_at: '2026-08-08T16:30:00-04:00', field_exception_reason: null };
+  const result = validateObservation({ revision: v2, measurements: [measurement('PH', 7.2, 'pH', { ...field, instrument_name: null })], site, now: NOW });
+  assert.equal(result.flags.some((flag) => flag.rule_code === 'MEAS_INSTRUMENT_MISSING'), false);
+});

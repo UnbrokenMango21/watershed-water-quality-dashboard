@@ -1,0 +1,3 @@
+Wordmark and store-artwork text are outlined from Public Sans SemiBold (U.S. Web Design System), licensed under the SIL Open Font License 1.1: https://github.com/uswds/public-sans/blob/develop/LICENSE.md
+Reason: a fixed, license-clean wordmark that renders identically on iOS, Android, web, and print. Apps continue to use SF Pro (iOS) and Roboto/system Material 3 type (Android); no font is bundled in either app.
+Mono labels in screenshot templates: IBM Plex Mono (SIL OFL 1.1).

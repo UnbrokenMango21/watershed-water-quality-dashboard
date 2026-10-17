@@ -3,7 +3,12 @@
  */
 import type { Nullable } from './types';
 
-export const EMPTY = '—'; // em dash
+/** Missing values are said in words, never shown as placeholder punctuation. */
+export const NOT_AVAILABLE = 'Not available';
+/** For values a collector enters: the field was left blank. */
+export const NOT_RECORDED = 'Not recorded';
+/** Default for derived or system values. */
+export const EMPTY = NOT_AVAILABLE;
 
 /** All collection times are shown in the watershed's local time zone. */
 const EASTERN = 'America/New_York';
@@ -42,10 +47,10 @@ export function toDate(value: unknown): Date | null {
   return null;
 }
 
-/** "Aug 13, 2026, 4:05 PM" in America/New_York, or an em dash. */
-export function formatEastern(value: unknown): string {
+/** "Aug 13, 2026, 4:05 PM" in America/New_York, or the fallback words. */
+export function formatEastern(value: unknown, fallback: string = EMPTY): string {
   const date = toDate(value);
-  return date ? `${easternDateTime.format(date)} ET` : EMPTY;
+  return date ? `${easternDateTime.format(date)} ET` : fallback;
 }
 
 /**
@@ -53,15 +58,15 @@ export function formatEastern(value: unknown): string {
  * `formatEasternTime` so a reviewer can scan dates down a column without the
  * clock time competing for attention.
  */
-export function formatEasternDate(value: unknown): string {
+export function formatEasternDate(value: unknown, fallback: string = EMPTY): string {
   const date = toDate(value);
-  return date ? easternDateOnly.format(date) : EMPTY;
+  return date ? easternDateOnly.format(date) : fallback;
 }
 
 /** The clock half of a timestamp, e.g. "4:05 PM ET". */
-export function formatEasternTime(value: unknown): string {
+export function formatEasternTime(value: unknown, fallback: string = EMPTY): string {
   const date = toDate(value);
-  return date ? `${easternTimeOnly.format(date)} ET` : EMPTY;
+  return date ? `${easternTimeOnly.format(date)} ET` : fallback;
 }
 
 /**
@@ -104,14 +109,14 @@ export function formatElapsed(since: unknown, now: number): string {
   return `${minutes}m`;
 }
 
-/** Numbers straight from Firestore, with an em dash for null/undefined/NaN. */
-export function formatNumber(value: Nullable<number>, fractionDigits?: number): string {
-  if (value == null || typeof value !== 'number' || Number.isNaN(value)) return EMPTY;
+/** Numbers straight from Firestore, with fallback words for null/undefined/NaN. */
+export function formatNumber(value: Nullable<number>, fractionDigits?: number, fallback: string = EMPTY): string {
+  if (value == null || typeof value !== 'number' || Number.isNaN(value)) return fallback;
   return fractionDigits == null ? String(value) : value.toFixed(fractionDigits);
 }
 
-export function formatText(value: Nullable<string>): string {
-  return value != null && String(value).trim().length > 0 ? String(value) : EMPTY;
+export function formatText(value: Nullable<string>, fallback: string = EMPTY): string {
+  return value != null && String(value).trim().length > 0 ? String(value) : fallback;
 }
 
 const UNIT_LABELS: Record<string, string> = {

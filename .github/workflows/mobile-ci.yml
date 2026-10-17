@@ -9,6 +9,7 @@ on:
       - 'config/**'
       - 'firebase/**'
       - 'functions/**'
+      - 'profile/**'
       - 'tests/**'
       - 'validation/**'
       - 'scripts/**'
@@ -25,6 +26,7 @@ concurrency:
   group: pa-watershed-ci-${{ github.ref }}
   cancel-in-progress: true
 
+# Android native verification also runs for Android pull-request changes in android-deferred.yml.
 jobs:
   backend-contracts:
     name: Backend contracts and security rules
@@ -55,6 +57,8 @@ jobs:
         run: npx firebase emulators:exec --project central-pa-watershed-dev --only firestore,functions "npm run test:trigger"
       - name: QC reviewer action and lifecycle integration
         run: npx firebase emulators:exec --project central-pa-watershed-dev --only firestore "npm run test:review"
+      - name: Membership, reviewer access, coordinate proposal and discussion integration
+        run: npx firebase emulators:exec --project central-pa-watershed-dev --only firestore,auth "npm run test:profile"
 
   web:
     name: QC reviewer web app
@@ -73,36 +77,32 @@ jobs:
       - run: npm run typecheck
       - run: npm run build
 
-  android:
-    name: Android native
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: Phone App/Android App
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '17'
-      - uses: gradle/actions/setup-gradle@v4
-      - name: Unit, lint, debug, minified release, and instrumentation APKs
-        run: ./gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:assembleRelease :app:assembleDebugAndroidTest
-      - name: Room and repository instrumentation
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 34
-          arch: x86_64
-          script: cd 'Phone App/Android App' && ./gradlew :app:connectedDebugAndroidTest
-
   ios:
-    name: iOS native
-    runs-on: macos-15
+    name: iOS native (Xcode ${{ matrix.xcode }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Keep the release toolchain and its CI gate identical.
+          - runner: macos-26
+            xcode: '26.6'
+          # Stable Xcode on GitHub's current-SDK image; no beta SDK is selected.
+          - runner: xcode-27
+            xcode: '27.0'
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_${{ matrix.xcode }}.app/Contents/Developer
     defaults:
       run:
         working-directory: Phone App/iPhone App/PAWatershedWatch
     steps:
       - uses: actions/checkout@v4
+      - name: Verify selected Xcode
+        run: |
+          test -d "$DEVELOPER_DIR"
+          xcodebuild -version
+          xcrun swift --version
       - name: Select an available iPhone simulator
         shell: bash
         run: |

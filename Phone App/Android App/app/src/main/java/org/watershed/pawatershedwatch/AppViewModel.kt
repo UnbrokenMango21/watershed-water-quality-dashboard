@@ -7,6 +7,7 @@ import android.net.NetworkCapabilities
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.core.content.edit
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.firebase.auth.FirebaseAuthException
@@ -16,6 +17,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
+/** Server-owned profile (users/{uid}) as seen by this phone. */
+enum class ProfileStatus { Unknown, NeedsVerification, NeedsName, Initializing, Ready, Failed }
+
 class AppViewModel(application: Application) : AndroidViewModel(application) {
     private val graph = (application as PAWatershedApplication).graph
     private val drafts: DraftRepository = graph.local
@@ -24,6 +28,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     private var account: AuthAccount? = null
     private var remoteListener: AutoCloseable? = null
     private var preparingCorrection = false
+    private var discussionListener: AutoCloseable? = null
+    private var proposalListener: AutoCloseable? = null
+    private var initializedProfileUid: String? = null
+    private val preferences = application.getSharedPreferences("pa_watershed_watch", android.content.Context.MODE_PRIVATE)
     private val connectivity = application.getSystemService(ConnectivityManager::class.java)
     private val networkCallback = object : ConnectivityManager.NetworkCallback() {
         override fun onAvailable(network: Network) = refreshConnection()
@@ -61,6 +69,52 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         private set
     val signedInName: String get() = account?.displayName?.ifBlank { "Watershed researcher" } ?: "Watershed researcher"
     val signedInEmail: String get() = account?.email.orEmpty()
+    val signedInUid: String? get() = account?.uid
+
+    // Onboarding: shown once on first launch, reopened on request from Account.
+    var onboardingVisible by mutableStateOf(!readOnboardingComplete())
+        private set
+    var onboardingRevisit by mutableStateOf(false)
+        private set
+
+    // Server-owned profile.
+    var profileStatus by mutableStateOf(ProfileStatus.Unknown)
+        private set
+    var profileMessage by mutableStateOf<String?>(null)
+        private set
+    var profileBusy by mutableStateOf(false)
+        private set
+    val profileName: String? get() = account?.profileName
+
+    // Submission discussion (one record at a time).
+    var discussionFor by mutableStateOf<String?>(null)
+        private set
+    var discussion by mutableStateOf<List<SubmissionMessage>>(emptyList())
+        private set
+    var discussionLoading by mutableStateOf(false)
+        private set
+    var discussionError by mutableStateOf<String?>(null)
+        private set
+    var sendingMessage by mutableStateOf(false)
+        private set
+    var messageError by mutableStateOf<String?>(null)
+        private set
+    private var outgoingMessage: OutgoingMessage? = null
+
+    // Coordinate proposals.
+    var proposals by mutableStateOf<List<CoordinateProposal>>(emptyList())
+        private set
+    var proposalsLoading by mutableStateOf(false)
+        private set
+    var proposalsError by mutableStateOf<String?>(null)
+        private set
+    var submittingProposal by mutableStateOf(false)
+        private set
+    var proposalError by mutableStateOf<String?>(null)
+        private set
+    var proposalConfirmation by mutableStateOf<String?>(null)
+        private set
+    private var pendingProposal: CoordinateProposalRequest? = null
 
     init {
         connectivity.registerDefaultNetworkCallback(networkCallback)
@@ -90,9 +144,257 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun finishOnboarding() {
+        runCatching { preferences.edit { putBoolean(ONBOARDING_KEY, true) } }
+        onboardingVisible = false
+        onboardingRevisit = false
+    }
+
+    fun reopenOnboarding() {
+        onboardingRevisit = true
+        onboardingVisible = true
+    }
+
+    private fun readOnboardingComplete(): Boolean = runCatching { preferences.getBoolean(ONBOARDING_KEY, false) }.getOrDefault(false)
+
+    /**
+     * Creates or refreshes the server-owned profile (users/{uid}) through initializeMyAccount once the
+     * account is verified. The phone never writes users/{uid} itself.
+     */
+    private fun ensureProfile(value: AuthAccount, force: Boolean = false) {
+        if (!force && initializedProfileUid == value.uid) return
+        when {
+            !value.verified -> {
+                profileStatus = ProfileStatus.NeedsVerification
+                profileMessage = "Verify your email address${value.email?.let { " ($it)" }.orEmpty()} to finish setting up your account. Open the link we emailed you, then tap I've Verified. Field work still saves on this phone."
+            }
+            value.profileName == null -> {
+                profileStatus = ProfileStatus.NeedsName
+                profileMessage = "Add your full name in Account. Reviewers see it beside your submissions and messages."
+            }
+            connection != ConnectionState.Online -> {
+                profileStatus = ProfileStatus.Failed
+                profileMessage = "Your account profile will finish setting up when you are back online."
+            }
+            else -> {
+                profileStatus = ProfileStatus.Initializing
+                profileMessage = null
+                viewModelScope.launch {
+                    graph.collaboration.initializeAccount(value.profileName).onSuccess {
+                        if (account?.uid != value.uid) return@onSuccess
+                        initializedProfileUid = value.uid
+                        profileStatus = ProfileStatus.Ready
+                        profileMessage = null
+                    }.onFailure { error ->
+                        if (account?.uid != value.uid) return@onFailure
+                        profileStatus = ProfileStatus.Failed
+                        profileMessage = error.message ?: "Your account profile could not be set up. Try again."
+                    }
+                }
+            }
+        }
+    }
+
+    fun retryProfile() {
+        account?.let { ensureProfile(it, force = true) }
+    }
+
+    /** Re-reads the Auth account so a verification completed in the email link is recognized. */
+    fun checkVerification() {
+        if (profileBusy) return
+        profileBusy = true
+        viewModelScope.launch {
+            graph.auth.reload().onSuccess { refreshed ->
+                if (refreshed != null) {
+                    account = refreshed
+                    if (!refreshed.verified) profileMessage = "Your email is not verified yet. Open the link we emailed you, then try again."
+                    else ensureProfile(refreshed, force = true)
+                }
+            }.onFailure { profileMessage = "We couldn't check your verification. Reconnect and try again." }
+            profileBusy = false
+        }
+    }
+
+    fun resendVerification() {
+        if (profileBusy) return
+        profileBusy = true
+        viewModelScope.launch {
+            profileMessage = graph.auth.sendEmailVerification().fold(
+                onSuccess = { "We sent a new verification link to ${account?.email.orEmpty()}. Open it, then tap I've Verified." },
+                onFailure = { "We couldn't send a verification email right now. Wait a minute and try again." },
+            )
+            profileBusy = false
+        }
+    }
+
+    /** Saves the collector's full name through the server callables, then refreshes the profile. */
+    fun saveProfileName(name: String, onDone: (Boolean) -> Unit) {
+        val current = account ?: return onDone(false)
+        val trimmed = name.trim().replace(Regex("\\s+"), " ")
+        if (trimmed.length !in 2..80) {
+            profileMessage = "Enter your full name in 2 to 80 characters."
+            return onDone(false)
+        }
+        if (connection != ConnectionState.Online) {
+            profileMessage = "Reconnect to change your name."
+            return onDone(false)
+        }
+        if (profileBusy) return onDone(false)
+        profileBusy = true
+        viewModelScope.launch {
+            graph.collaboration.updateDisplayName(trimmed, current.verified).onSuccess {
+                val refreshed = graph.auth.reload().getOrNull() ?: current.copy(displayName = trimmed, profileName = trimmed)
+                account = refreshed
+                if (refreshed.verified) {
+                    initializedProfileUid = refreshed.uid
+                    profileStatus = ProfileStatus.Ready
+                    profileMessage = "Name saved."
+                } else ensureProfile(refreshed, force = true)
+                profileBusy = false
+                onDone(true)
+            }.onFailure { error ->
+                profileMessage = error.message ?: "Your name could not be saved. Try again."
+                profileBusy = false
+                onDone(false)
+            }
+        }
+    }
+
+    /** Live discussion for one submission, ordered by created_at. internalNotes are never requested. */
+    fun observeDiscussion(recordId: String) {
+        val record = record(recordId) ?: return
+        if (discussionFor == recordId && discussionListener != null) return
+        stopDiscussion()
+        discussionFor = recordId
+        messageError = null
+        if (record.sync != SyncState.Synced) {
+            discussionLoading = false
+            return
+        }
+        discussionLoading = true
+        discussionError = null
+        discussionListener = graph.collaboration.observeMessages(
+            recordId,
+            onChange = { messages ->
+                if (discussionFor == recordId) {
+                    discussion = messages
+                    discussionLoading = false
+                    discussionError = null
+                }
+            },
+            onError = { message ->
+                if (discussionFor == recordId) {
+                    discussionLoading = false
+                    discussionError = message
+                }
+            },
+        )
+    }
+
+    fun stopDiscussion() {
+        discussionListener?.close()
+        discussionListener = null
+        discussionFor = null
+        discussion = emptyList()
+        discussionLoading = false
+        discussionError = null
+    }
+
+    /** Sends a COLLECTOR_COMMENT; the same text retried reuses its message ID, so retries never duplicate. */
+    fun sendReply(recordId: String, text: String, onSent: () -> Unit) {
+        val record = record(recordId) ?: return
+        messageProblem(text)?.let { messageError = it; return }
+        if (sendingMessage) return
+        if (connection != ConnectionState.Online) {
+            messageError = "Reconnect to send a message. Your text stays in the box."
+            return
+        }
+        val outgoing = OutgoingMessage.next(outgoingMessage, recordId, text)
+        outgoingMessage = outgoing
+        sendingMessage = true
+        messageError = null
+        viewModelScope.launch {
+            graph.collaboration.sendCollectorComment(recordId, record.currentRevisionId.value, outgoing.messageId, outgoing.text)
+                .onSuccess {
+                    outgoingMessage = null
+                    onSent()
+                }
+                .onFailure { messageError = it.message ?: "The message was not sent. Try again." }
+            sendingMessage = false
+        }
+    }
+
+    fun observeProposals() {
+        val owner = account ?: return
+        if (proposalListener != null) return
+        proposalsLoading = true
+        proposalsError = null
+        proposalListener = graph.collaboration.observeProposals(
+            owner.uid,
+            onChange = { proposals = it; proposalsLoading = false; proposalsError = null },
+            onError = { proposalsError = it; proposalsLoading = false },
+        )
+    }
+
+    fun stopProposals() {
+        proposalListener?.close()
+        proposalListener = null
+    }
+
+    fun clearProposalFeedback() {
+        proposalError = null
+        proposalConfirmation = null
+    }
+
+    /**
+     * Sends a NEW_SITE or COORDINATE_CORRECTION proposal. A retry of the same content reuses its
+     * proposal ID; the reviewer decides in the QC Console and the site catalog is never edited here.
+     */
+    fun submitProposal(
+        kind: ProposalKind,
+        siteId: String?,
+        latitude: Double?,
+        longitude: Double?,
+        gpsAccuracyM: Double?,
+        reason: String,
+        proposedSiteName: String,
+        onSent: () -> Unit,
+    ) {
+        if (submittingProposal) return
+        val problems = coordinateProposalProblems(kind, siteId, latitude, longitude, gpsAccuracyM, reason, proposedSiteName)
+        if (problems.isNotEmpty()) {
+            proposalError = problems.first()
+            return
+        }
+        if (connection != ConnectionState.Online) {
+            proposalError = "Reconnect to send this proposal. Your entries stay on this screen."
+            return
+        }
+        val candidate = CoordinateProposalRequest(
+            CoordinateProposalRequest.newId(), kind, siteId.takeIf { kind == ProposalKind.CoordinateCorrection },
+            requireNotNull(latitude), requireNotNull(longitude), gpsAccuracyM, ProposalText.normalized(reason),
+            ProposalText.normalized(proposedSiteName).takeIf { kind == ProposalKind.NewSite },
+        )
+        val request = pendingProposal?.takeIf { candidate.sameContent(it) } ?: candidate
+        pendingProposal = request
+        submittingProposal = true
+        proposalError = null
+        proposalConfirmation = null
+        viewModelScope.launch {
+            graph.collaboration.proposeCoordinates(request).onSuccess { status ->
+                pendingProposal = null
+                proposalConfirmation = "Proposal sent · ${status.label}. A reviewer will decide; approved coordinates change only after review."
+                onSent()
+            }.onFailure { proposalError = it.message ?: "The proposal was not sent. Try again." }
+            submittingProposal = false
+        }
+    }
+
     fun signOut() {
         remoteListener?.close()
         remoteListener = null
+        stopDiscussion()
+        stopProposals()
         password = ""
         graph.auth.signOut()
     }
@@ -124,12 +426,29 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         persistDraft(next)
     }
 
+    fun saveFieldCollection() {
+        updateDraft { it.copy(fieldCollectedAt = System.currentTimeMillis(), collectionStage = if (it.labResultsPending) CollectionStage.LAB_PENDING else CollectionStage.FIELD_COLLECTED) }
+        synchronizeFieldDraft()
+    }
+
+    private fun synchronizeFieldDraft() {
+        val current = draft ?: return
+        val owner = account ?: return
+        if (current.fieldCollectedAt == null || connection != ConnectionState.Online) return
+        viewModelScope.launch {
+            runCatching {
+                saveMutex.withLock { drafts.saveDraft(current) }
+                graph.sync.saveFieldDraft(current.toCanonicalSnapshot(owner.uid, BuildConfig.VERSION_NAME, forDraft = true))
+            }.onFailure { localStoreError = "Field collection remains saved on this phone. Reconnect and save again to synchronize it." }
+        }
+    }
+
     fun setStep(step: Int) = updateDraft { it.copy(currentStep = step.coerceIn(1, 6)) }
     fun selectSite(site: Site) = updateDraft { it.copy(siteId = site.id) }
     fun selectedSite(): Site? = sites.firstOrNull { it.id == draft?.siteId }
 
     fun selectTestType(type: TestType) = updateDraft {
-        it.copy(testType = type, method = type.suggestedMethod, instrument = type.suggestedInstrument, testTypeOther = "")
+        it.copy(testType = type, method = "", instrument = "", testTypeOther = "")
     }
 
     fun setLocation(latitude: Double, longitude: Double, accuracy: Float, approximateOnly: Boolean) = updateDraft {
@@ -150,6 +469,12 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     fun setMeasurement(kind: MeasurementKind, value: String) {
         if (ProductionMeasurementCatalog.spec(kind).support != ProductionSupport.FULLY_SUPPORTED) return
         updateDraft { it.copy(values = it.values + (kind to value)) }
+    }
+
+    /** Records analysis provenance for one laboratory-dependent value; field parameters have none. */
+    fun updateAnalysis(kind: MeasurementKind, change: (AnalysisProvenance) -> AnalysisProvenance) {
+        if (!kind.needsAnalysisProvenance) return
+        updateDraft { it.copy(analysisDetails = it.analysisDetails + (kind to change(it.analysis(kind)))) }
     }
 
     fun changeUnit(kind: MeasurementKind, newUnit: UnitSpec, clearIfNeeded: Boolean = false): Boolean {
@@ -178,14 +503,11 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             if (current.latitude == 0.0 && current.longitude == 0.0) issue("Capture a valid GPS location", WorkflowStep.VisitDetails)
             if (current.testType == null) issue("Choose a test type", WorkflowStep.TestMethod)
             if (current.testType == TestType.Other && current.testTypeOther.isBlank()) issue("Describe the other test type", WorkflowStep.TestMethod)
-            if (current.method.isBlank()) issue("Enter a collection or measurement method", WorkflowStep.TestMethod)
-            if (current.instrument.isBlank()) issue("Enter an instrument or laboratory", WorkflowStep.TestMethod)
+            if (!current.visualObservationsComplete) issue("Choose weather, water color, and flow condition. Unknown is allowed.", WorkflowStep.Measurements)
+            if (current.labResultsPending) issue("Complete laboratory results before submitting for review", WorkflowStep.Measurements)
             current.requiredMeasurements.filterNot(current::isComplete).forEach { issue("Enter ${it.title}", WorkflowStep.Measurements, it) }
-            current.values.forEach { (kind, value) ->
-                if (ProductionMeasurementCatalog.spec(kind).support != ProductionSupport.FULLY_SUPPORTED && value.isNotBlank()) {
-                    issue("${kind.title} is not enabled for production submission", WorkflowStep.Measurements, kind)
-                }
-                measurementErrorMessage(kind, value, current.selectedUnit(kind))?.let { issue(it, WorkflowStep.Measurements, kind) }
+            MeasurementKind.entries.forEach { kind ->
+                current.measurementProblem(kind)?.let { issue(it, WorkflowStep.Measurements, kind) }
             }
             if (current.isCorrection && current.revisionNote.isBlank()) issue("Explain what was corrected", WorkflowStep.Review)
         }
@@ -233,10 +555,12 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         val base = ObservationDraft(
             submissionId = SubmissionId(record.id), eventId = record.eventId, revisionId = nextRevision,
             revisionNo = record.revision + 1, ownerUid = owner.uid, siteId = record.site.id, collectedAt = record.collectedAt,
+            weatherCondition = record.weatherCondition, waterColor = record.waterColor, flowCondition = record.flowCondition,
             collector = record.collector, latitude = record.latitude, longitude = record.longitude, accuracyMeters = record.accuracyMeters,
             gpsState = when { record.accuracyMeters == null -> GpsState.Unavailable; record.accuracyMeters <= 20 -> GpsState.Good; else -> GpsState.Poor },
             testType = record.testType, method = record.method, instrument = record.instrument,
             values = record.measurements.associate { it.kind to it.value }, unitIds = record.measurements.associate { it.kind to it.unitId },
+            analysisDetails = record.measurements.mapNotNull { value -> value.analysis?.let { value.kind to it } }.toMap(),
             notes = record.notes,
             currentStep = 4, isCorrection = true, sourceRecordId = record.id, baseRevision = record.revision,
             correctionReason = record.correctionReason,
@@ -282,6 +606,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             .onSuccess { sites = it; siteLoadError = null }
             .onFailure { siteLoadError = "Live sites are unavailable. Cached sites remain available." }
         sitesLoading = false
+        synchronizeFieldDraft()
+        ensureProfile(value)
         remoteListener = graph.sync.observe(value.uid) { remote ->
             viewModelScope.launch {
                 observations.updateRemoteState(
@@ -296,6 +622,14 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     private fun clearVisibleAccountData() {
         remoteListener?.close()
         remoteListener = null
+        stopDiscussion()
+        stopProposals()
+        proposals = emptyList()
+        pendingProposal = null
+        outgoingMessage = null
+        initializedProfileUid = null
+        profileStatus = ProfileStatus.Unknown
+        profileMessage = null
         draft = null
         records = emptyList()
         sites = emptyList()
@@ -308,13 +642,26 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     private fun refreshConnection() {
         val capabilities = connectivity.getNetworkCapabilities(connectivity.activeNetwork)
         val next = if (capabilities?.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) == true) ConnectionState.Online else ConnectionState.Offline
-        viewModelScope.launch(Dispatchers.Main) { connection = next }
+        viewModelScope.launch(Dispatchers.Main) {
+            val previous = connection
+            connection = next
+            if (next == ConnectionState.Online && previous != next) {
+                synchronizeFieldDraft()
+                account?.let { if (profileStatus == ProfileStatus.Failed) ensureProfile(it, force = true) }
+            }
+        }
     }
 
     override fun onCleared() {
         remoteListener?.close()
+        discussionListener?.close()
+        proposalListener?.close()
         connectivity.unregisterNetworkCallback(networkCallback)
         super.onCleared()
+    }
+
+    private companion object {
+        const val ONBOARDING_KEY = "onboarding_complete"
     }
 
     private fun Throwable.authMessage(): String = when ((this as? FirebaseAuthException)?.errorCode) {

@@ -21,6 +21,7 @@ import { NextResponse } from 'next/server';
 
 import {
   applyReviewDecision as applyReviewDecisionUntyped,
+  reviewerAccessProblem,
   ReviewConflictError,
   ReviewValidationError,
 } from '@/lib/reviewSubmission.mjs';
@@ -41,6 +42,7 @@ type ApplyReviewDecision = (input: {
   decision: string | null;
   reviewerUid: string;
   reviewerRole: string;
+  reviewerDisplayName?: string | null;
   reason?: string | null;
   now?: Date;
 }) => Promise<ReviewResult>;
@@ -50,7 +52,6 @@ const applyReviewDecision = applyReviewDecisionUntyped as unknown as ApplyReview
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-const REVIEWER_ROLES = new Set(['QC_REVIEWER', 'ADMIN']);
 
 function jsonError(message: string, status: number) {
   return NextResponse.json({ error: message }, { status });
@@ -85,12 +86,18 @@ export async function POST(request: Request, context: { params: Promise<{ submis
     return jsonError('Invalid or expired credentials.', 401);
   }
 
-  if (userRecord.disabled) {
-    return jsonError('Your account is not authorized to review submissions.', 403);
-  }
-
   const reviewerRole = typeof userRecord.customClaims?.role === 'string' ? userRecord.customClaims.role : 'COLLECTOR';
-  if (!REVIEWER_ROLES.has(reviewerRole)) {
+  // The server-owned profile must also be active: an administrator can suspend review access by
+  // deactivating users/{uid} without touching the Auth account.
+  const profileSnapshot = await adminDb().collection('users').doc(decodedToken.uid).get();
+  const accessProblem = reviewerAccessProblem({
+    disabled: userRecord.disabled,
+    claimRole: reviewerRole,
+    accessVersion: userRecord.customClaims?.access_version,
+    profile: profileSnapshot.exists ? profileSnapshot.data() : null,
+  });
+  if (accessProblem) {
+    console.warn('[review] access refused', { reviewerUid: decodedToken.uid, reason: accessProblem });
     return jsonError('Your account is not authorized to review submissions.', 403);
   }
 
@@ -110,6 +117,7 @@ export async function POST(request: Request, context: { params: Promise<{ submis
       decision: typeof body.decision === 'string' ? body.decision : null,
       reviewerUid: decodedToken.uid,
       reviewerRole,
+      reviewerDisplayName: typeof profileSnapshot.get('display_name') === 'string' ? profileSnapshot.get('display_name') : null,
       reason: typeof body.reason === 'string' ? body.reason : null,
     });
     return NextResponse.json(result, { status: 200 });

@@ -46,6 +46,12 @@ data class DraftEntity(
     @ColumnInfo(name = "correction_reason") val correctionReason: String?,
     @ColumnInfo(name = "revision_note") val revisionNote: String,
     @ColumnInfo(name = "last_saved_at") val lastSavedAt: Long,
+    @ColumnInfo(name = "weather_condition", defaultValue = "''") val weatherCondition: String = "",
+    @ColumnInfo(name = "water_color", defaultValue = "''") val waterColor: String = "",
+    @ColumnInfo(name = "flow_condition", defaultValue = "''") val flowCondition: String = "",
+    @ColumnInfo(name = "collection_stage", defaultValue = "'DRAFT'") val collectionStage: String = "DRAFT",
+    @ColumnInfo(name = "field_collected_at") val fieldCollectedAt: Long? = null,
+    @ColumnInfo(name = "lab_completed_at") val labCompletedAt: Long? = null,
 )
 
 @Entity(tableName = "observations", indices = [Index("owner_uid"), Index("sync_state")])
@@ -86,13 +92,19 @@ data class RevisionEntity(
     val method: String,
     val instrument: String,
     val notes: String?,
-    @ColumnInfo(name = "temp_entered_value") val tempEnteredValue: Double,
-    @ColumnInfo(name = "temp_entered_unit") val tempEnteredUnit: String,
-    @ColumnInfo(name = "temp_c") val tempC: Double,
-    @ColumnInfo(name = "temp_f") val tempF: Double,
+    @ColumnInfo(name = "temp_entered_value") val tempEnteredValue: Double?,
+    @ColumnInfo(name = "temp_entered_unit") val tempEnteredUnit: String?,
+    @ColumnInfo(name = "temp_c") val tempC: Double?,
+    @ColumnInfo(name = "temp_f") val tempF: Double?,
     @ColumnInfo(name = "workflow_state") val workflowState: String,
     @ColumnInfo(name = "revision_note") val revisionNote: String,
     @ColumnInfo(name = "app_version") val appVersion: String,
+    @ColumnInfo(name = "weather_condition", defaultValue = "''") val weatherCondition: String = "",
+    @ColumnInfo(name = "water_color", defaultValue = "''") val waterColor: String = "",
+    @ColumnInfo(name = "flow_condition", defaultValue = "''") val flowCondition: String = "",
+    @ColumnInfo(name = "collection_stage", defaultValue = "'DRAFT'") val collectionStage: String = "DRAFT",
+    // Rows that predate version 5 were queued by a 0.1.0 build and must replay under that contract.
+    @ColumnInfo(name = "schema_version", defaultValue = "'0.1.0'") val schemaVersion: String,
 )
 
 @Entity(tableName = "measurements", primaryKeys = ["revision_id", "kind"], indices = [Index("owner_uid")])
@@ -106,6 +118,13 @@ data class LocalMeasurementEntity(
     @ColumnInfo(name = "raw_unit_id") val rawUnitId: String,
     @ColumnInfo(name = "canonical_value") val canonicalValue: Double?,
     @ColumnInfo(name = "canonical_unit") val canonicalUnit: String?,
+    // Analysis provenance (schema 0.2.0). Null on draft rows without recorded provenance and on
+    // rows written before version 5; never back-filled with invented values.
+    @ColumnInfo(name = "analysis_stage") val analysisStage: String? = null,
+    @ColumnInfo(name = "analysis_method") val analysisMethod: String? = null,
+    @ColumnInfo(name = "analysis_instrument") val analysisInstrument: String? = null,
+    @ColumnInfo(name = "analyzed_at") val analyzedAt: Long? = null,
+    @ColumnInfo(name = "field_exception_reason") val fieldExceptionReason: String? = null,
 )
 
 @Entity(tableName = "attachments", indices = [Index("revision_id"), Index("owner_uid")])
@@ -211,7 +230,7 @@ interface MobileDao {
 
 @Database(
     entities = [DraftEntity::class, ObservationEntity::class, RevisionEntity::class, LocalMeasurementEntity::class, LocalAttachmentEntity::class, CachedSiteEntity::class, SyncQueueEntity::class, ValidationFlagEntity::class],
-    version = 4,
+    version = 5,
     exportSchema = true,
 )
 abstract class WatershedDatabase : RoomDatabase() {
@@ -245,9 +264,36 @@ abstract class WatershedDatabase : RoomDatabase() {
             }
         }
 
+        // Rebuild only the local revision table to allow genuine missing temperature. Copy every
+        // historical column unchanged; this migration never deletes observations or attribution.
+        // Every existing revision was recorded by a 0.1.0 build, so it keeps schema_version 0.1.0.
+        val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("CREATE TABLE revisions_v5 (revision_id TEXT NOT NULL PRIMARY KEY, submission_id TEXT NOT NULL, event_id TEXT NOT NULL, revision_no INTEGER NOT NULL, owner_uid TEXT NOT NULL, site_id TEXT NOT NULL, created_at INTEGER NOT NULL, collected_at INTEGER NOT NULL, submitted_at INTEGER NOT NULL, collector TEXT NOT NULL, latitude REAL NOT NULL, longitude REAL NOT NULL, accuracy_m REAL NOT NULL, test_type TEXT NOT NULL, test_type_other TEXT, method TEXT NOT NULL, instrument TEXT NOT NULL, notes TEXT, temp_entered_value REAL, temp_entered_unit TEXT, temp_c REAL, temp_f REAL, workflow_state TEXT NOT NULL, revision_note TEXT NOT NULL, app_version TEXT NOT NULL, weather_condition TEXT NOT NULL DEFAULT '', water_color TEXT NOT NULL DEFAULT '', flow_condition TEXT NOT NULL DEFAULT '', collection_stage TEXT NOT NULL DEFAULT 'DRAFT', schema_version TEXT NOT NULL DEFAULT '0.1.0')")
+                db.execSQL("INSERT INTO revisions_v5 (revision_id, submission_id, event_id, revision_no, owner_uid, site_id, created_at, collected_at, submitted_at, collector, latitude, longitude, accuracy_m, test_type, test_type_other, method, instrument, notes, temp_entered_value, temp_entered_unit, temp_c, temp_f, workflow_state, revision_note, app_version) SELECT revision_id, submission_id, event_id, revision_no, owner_uid, site_id, created_at, collected_at, submitted_at, collector, latitude, longitude, accuracy_m, test_type, test_type_other, method, instrument, notes, temp_entered_value, temp_entered_unit, temp_c, temp_f, workflow_state, revision_note, app_version FROM revisions")
+                db.execSQL("DROP TABLE revisions")
+                db.execSQL("ALTER TABLE revisions_v5 RENAME TO revisions")
+                db.execSQL("CREATE INDEX index_revisions_submission_id ON revisions(submission_id)")
+                db.execSQL("CREATE INDEX index_revisions_owner_uid ON revisions(owner_uid)")
+                db.execSQL("ALTER TABLE drafts ADD COLUMN weather_condition TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE drafts ADD COLUMN water_color TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE drafts ADD COLUMN flow_condition TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE drafts ADD COLUMN collection_stage TEXT NOT NULL DEFAULT 'DRAFT'")
+                db.execSQL("ALTER TABLE drafts ADD COLUMN field_collected_at INTEGER")
+                db.execSQL("ALTER TABLE drafts ADD COLUMN lab_completed_at INTEGER")
+                // Per-measurement analysis provenance. Existing rows keep NULL: provenance that was never
+                // recorded stays missing rather than being invented.
+                db.execSQL("ALTER TABLE measurements ADD COLUMN analysis_stage TEXT")
+                db.execSQL("ALTER TABLE measurements ADD COLUMN analysis_method TEXT")
+                db.execSQL("ALTER TABLE measurements ADD COLUMN analysis_instrument TEXT")
+                db.execSQL("ALTER TABLE measurements ADD COLUMN analyzed_at INTEGER")
+                db.execSQL("ALTER TABLE measurements ADD COLUMN field_exception_reason TEXT")
+            }
+        }
+
         fun open(context: Context): WatershedDatabase = try {
             Room.databaseBuilder(context, WatershedDatabase::class.java, "pa_watershed_watch.db")
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
                 .build()
         } catch (error: Exception) {
             throw LocalStoreUnavailableException(error)
@@ -299,6 +345,7 @@ class RoomMobileRepository(private val db: WatershedDatabase) : DraftRepository,
             collectedAt = current.collectedAt,
             collector = current.collector,
             testType = TestType.entries.first { it.label == current.testType },
+            weatherCondition = current.weatherCondition, waterColor = current.waterColor, flowCondition = current.flowCondition,
             method = current.method,
             instrument = current.instrument,
             measurements = measurements,
@@ -308,7 +355,7 @@ class RoomMobileRepository(private val db: WatershedDatabase) : DraftRepository,
             sync = parent.syncState.enumOr(SyncState.Waiting),
             revision = parent.currentRevisionNo,
             correctionReason = parent.correctionReason,
-            revisions = revisions.map { Revision(it.revisionNo, it.submittedAt, it.workflowState.enumOr(WorkflowState.Submitted), it.revisionNote, emptyList()) },
+            revisions = revisions.map { Revision(it.revisionNo, it.submittedAt, it.workflowState.enumOr(WorkflowState.Submitted), it.revisionNote, emptyList(), it.revisionId) },
             latitude = current.latitude,
             longitude = current.longitude,
             accuracyMeters = current.accuracyM,
@@ -341,7 +388,7 @@ class RoomMobileRepository(private val db: WatershedDatabase) : DraftRepository,
         db.withTransaction {
             dao.insertRevision(revision)
             dao.deleteMeasurements(snapshot.ownerUid, snapshot.revisionId.value)
-            dao.putMeasurements(snapshot.measurements.map { it.toEntity(snapshot) } + draft.temperatureEntity())
+            dao.putMeasurements(snapshot.measurements.map { it.toEntity(snapshot) } + listOfNotNull(draft.temperatureEntity()))
             dao.deleteAttachments(snapshot.ownerUid, snapshot.revisionId.value)
             dao.putAttachments(snapshot.attachments.map(ObservationAttachment::toEntity))
             dao.putObservation(parent)
@@ -377,9 +424,13 @@ private fun DraftEntity.toDomain(measurements: List<LocalMeasurementEntity>, att
     latitude = latitude, longitude = longitude, accuracyMeters = accuracyM, gpsState = gpsState.enumOr(GpsState.Acquiring),
     testType = testType?.let { name -> TestType.entries.firstOrNull { it.name == name } }, testTypeOther = testTypeOther,
     method = method, instrument = instrument, labResultsPending = labResultsPending,
+    weatherCondition = weatherCondition, waterColor = waterColor, flowCondition = flowCondition,
+    collectionStage = collectionStage.enumOr(CollectionStage.DRAFT), fieldCollectedAt = fieldCollectedAt, labCompletedAt = labCompletedAt,
     requestedAnalytes = requestedAnalytes.split(',').mapNotNull { name -> MeasurementKind.entries.firstOrNull { it.name == name } }.toSet(),
     values = measurements.associate { it.kind.enumOr(MeasurementKind.Temperature) to it.rawValue },
-    unitIds = measurements.associate { it.kind.enumOr(MeasurementKind.Temperature) to it.rawUnitId }, notes = notes,
+    unitIds = measurements.associate { it.kind.enumOr(MeasurementKind.Temperature) to it.rawUnitId },
+    analysisDetails = measurements.mapNotNull { row -> row.analysisProvenance()?.let { row.kind.enumOr(MeasurementKind.Temperature) to it } }.toMap(),
+    notes = notes,
     attachments = attachments.map(LocalAttachmentEntity::toDomain), currentStep = currentStep, isCorrection = isCorrection,
     sourceRecordId = sourceSubmissionId, baseRevision = baseRevision, correctionReason = correctionReason,
     revisionNote = revisionNote, lastSavedAt = lastSavedAt,
@@ -389,7 +440,7 @@ private fun ObservationDraft.toEntity() = DraftEntity(
     submissionId.value, eventId.value, revisionId.value, revisionNo, ownerUid, createdAt, siteId, collectedAt, collector,
     latitude, longitude, accuracyMeters, gpsState.name, testType?.name, testTypeOther, method, instrument, labResultsPending,
     requestedAnalytes.joinToString(",") { it.name }, notes, currentStep, isCorrection, sourceRecordId, baseRevision,
-    correctionReason, revisionNote, lastSavedAt,
+    correctionReason, revisionNote, lastSavedAt, weatherCondition, waterColor, flowCondition, collectionStage.name, fieldCollectedAt, labCompletedAt,
 )
 
 private fun ObservationDraft.localMeasurements() = values.map { (kind, raw) ->
@@ -397,14 +448,26 @@ private fun ObservationDraft.localMeasurements() = values.map { (kind, raw) ->
     val unit = selectedUnit(kind)
     val numeric = raw.toDoubleOrNull()
     val canonical = numeric?.takeIf(Double::isFinite)?.let { unit.convert(it, kind.units.first()) }
+    val analysis = analysisDetails[kind]?.takeIf { kind.needsAnalysisProvenance }
     LocalMeasurementEntity(
         revisionId.value, kind.name, CanonicalIds.measurement(revisionId, spec.parameterCode ?: "LOCAL_${kind.name}").value,
         ownerUid, spec.parameterCode, raw, unit.id, canonical, spec.canonicalUnit,
+        analysisStage = analysis?.stage?.name, analysisMethod = analysis?.method, analysisInstrument = analysis?.instrument,
+        analyzedAt = analysis?.analyzedAt, fieldExceptionReason = analysis?.fieldExceptionReason,
     )
 }
 
-private fun ObservationDraft.temperatureEntity(): LocalMeasurementEntity {
+/** Laboratory-dependent rows carry their recorded provenance; field parameters return null. */
+internal fun LocalMeasurementEntity.analysisProvenance(): AnalysisProvenance? {
+    val measurementKind = MeasurementKind.entries.firstOrNull { it.name == kind } ?: return null
+    if (!measurementKind.needsAnalysisProvenance) return null
+    val stage = analysisStage?.let { name -> AnalysisStage.entries.firstOrNull { it.name == name } } ?: return null
+    return AnalysisProvenance(stage, analysisMethod.orEmpty(), analysisInstrument.orEmpty(), analyzedAt, fieldExceptionReason.orEmpty())
+}
+
+private fun ObservationDraft.temperatureEntity(): LocalMeasurementEntity? {
     val raw = values[MeasurementKind.Temperature].orEmpty()
+    if (raw.isBlank()) return null
     return LocalMeasurementEntity(
         revisionId.value, MeasurementKind.Temperature.name,
         CanonicalIds.measurement(revisionId, "WATER_TEMP_C").value, ownerUid, "WATER_TEMP_C", raw,
@@ -416,11 +479,14 @@ private fun CanonicalObservationSnapshot.toEntity(workflow: WorkflowState, note:
     revisionId.value, submissionId.value, eventId.value, revisionNo, ownerUid, siteId.value, createdAt, collectedAt,
     submittedAt, collectorDisplayName, latitude, longitude, gpsAccuracyM, testType, testTypeOther, methodName,
     instrumentName, fieldNotes, temperatureEnteredValue, temperatureEnteredUnit, tempC, tempF, workflow.name, note, appVersion,
+    weatherCondition, waterColor, flowCondition, collectionStage, schemaVersion,
 )
 
 private fun CanonicalMeasurement.toEntity(snapshot: CanonicalObservationSnapshot) = LocalMeasurementEntity(
     snapshot.revisionId.value, kind.name, id.value, snapshot.ownerUid, parameterCode, enteredValue.toString(),
     enteredUnitId, value, unitCode,
+    analysisStage = analysisStage, analysisMethod = analysisMethod, analysisInstrument = analysisInstrument,
+    analyzedAt = analyzedAt, fieldExceptionReason = fieldExceptionReason,
 )
 
 private fun ObservationAttachment.toEntity() = LocalAttachmentEntity(
@@ -438,7 +504,7 @@ private fun LocalAttachmentEntity.toDomain() = ObservationAttachment(
 private fun LocalMeasurementEntity.toDisplayValue(): MeasurementValue? {
     val kind = MeasurementKind.entries.firstOrNull { it.name == this.kind } ?: return null
     val unit = Units.byId(rawUnitId) ?: kind.units.first()
-    return MeasurementValue(kind, rawValue, unit.id)
+    return MeasurementValue(kind, rawValue, unit.id, analysisProvenance())
 }
 
 private fun CachedSiteEntity.toDomain() = Site(siteId, name, county, watershed, latitude, longitude, true, "")

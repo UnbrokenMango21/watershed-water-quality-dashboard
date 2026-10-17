@@ -37,6 +37,7 @@ dist/
 .env
 .env.*
 !.env.example
+!.env.central-pa-watershed-dev
 *.pem
 *.p8
 *.key
@@ -55,5 +56,17 @@ Phone App/Android App/*.iml
 Phone App/**/DerivedData/
 Phone App/**/*.xcarchive
 
+# Authenticated ArcGIS inventory reports may contain private item metadata.
+artifacts/arcgis_inventory/
+
 # Firebase/Admin credentials are never repository material.
 # Firebase client configuration used by signed native apps may be tracked intentionally.
+
+# Retired Expo output and local audit evidence remain private/untracked.
+/mobile/
+/artifacts/
+**/build/
+
+# Python bytecode
+__pycache__/
+*.pyc

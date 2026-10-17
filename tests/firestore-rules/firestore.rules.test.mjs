@@ -18,7 +18,7 @@ import {
   Timestamp
 } from 'firebase/firestore';
 
-const PROJECT_ID = 'central-pa-watershed-dev';
+const PROJECT_ID = process.env.GCLOUD_PROJECT || 'central-pa-watershed-dev';
 const TEST_DIR = path.dirname(fileURLToPath(import.meta.url));
 const RULES_PATH = path.resolve(TEST_DIR, '../../firebase/firestore.rules');
 
@@ -61,7 +61,7 @@ function draftSubmission(overrides = {}) {
     created_at: nowString(),
     updated_at: nowString(),
     submitted_at: null,
-    schema_version: '0.1.0',
+    schema_version: '0.2.0',
     mobile_app_version: '0.1.0-test',
     ...overrides
   };
@@ -86,6 +86,9 @@ function draftRevision(overrides = {}) {
     gps_accuracy_m: 4.2,
     site_distance_m: 3.1,
     weather_condition: 'Clear',
+    water_color: 'Unknown',
+    flow_condition: 'Unknown',
+    collection_stage: 'READY_FOR_REVIEW',
     data_collected_by: 'Student/researcher',
     test_type: 'In-situ / Field Instrument',
     test_type_other: null,
@@ -97,7 +100,7 @@ function draftRevision(overrides = {}) {
     temp_c: 20,
     temp_f: 68,
     field_notes_original: null,
-    schema_version: '0.1.0',
+    schema_version: '0.2.0',
     mobile_app_version: '0.1.0-test',
     ...overrides
   };
@@ -117,6 +120,9 @@ function measurement(id = 'm-1', overrides = {}) {
     qualifier: null,
     notes: null,
     entered_at: nowString(),
+    analysis_stage: 'FIELD',
+    analyzed_at: nowString(),
+    field_exception_reason: null,
     ...overrides
   };
 }
@@ -180,6 +186,18 @@ test('collector cannot create a submission owned by another uid', async () => {
   await assertFails(setDoc(doc(db, `submissions/${submissionId}`), draftSubmission()));
 });
 
+test('ADMIN can create and manage a submission it owns', async () => {
+  const db = env.authenticatedContext('admin-1', { role: 'ADMIN' }).firestore();
+  await assertSucceeds(setDoc(
+    doc(db, `submissions/${submissionId}`),
+    draftSubmission({ collector_user_id: 'admin-1' }),
+  ));
+  await assertSucceeds(updateDoc(doc(db, `submissions/${submissionId}`), {
+    mobile_app_version: '0.1.1-admin-test',
+    updated_at: nowString(),
+  }));
+});
+
 test('collector cannot inject server-owned fields into submission creation', async () => {
   const db = env.authenticatedContext('collector-a').firestore();
   await assertFails(setDoc(doc(db, `submissions/${submissionId}`), draftSubmission({ overall_quality_score: 99 })));
@@ -199,8 +217,36 @@ test('collector cannot read another collector submission', async () => {
 
 test('QC reviewer can read collector submission', async () => {
   await seed(`submissions/${submissionId}`, draftSubmission());
+  await seed('users/reviewer-1', { display_name: 'Reviewer One', role: 'QC_REVIEWER', active: true });
   const db = env.authenticatedContext('reviewer-1', { role: 'QC_REVIEWER' }).firestore();
   await assertSucceeds(getDoc(doc(db, `submissions/${submissionId}`)));
+});
+
+test('reviewer reads need an active reviewer profile, matching the review API', async () => {
+  await seed(`submissions/${submissionId}`, draftSubmission({ status: 'PENDING_REVIEW' }));
+  await seed('users/collector-b', { display_name: 'Collector B', role: 'COLLECTOR', active: true });
+  const read = (uid, claims) => getDoc(doc(env.authenticatedContext(uid, claims).firestore(), `submissions/${submissionId}`));
+
+  // Claim without a profile, an inactive profile, or a non-reviewer profile: refused.
+  await assertFails(read('reviewer-noprofile', { role: 'QC_REVIEWER' }));
+  await seed('users/reviewer-inactive', { display_name: 'Inactive', role: 'QC_REVIEWER', active: false });
+  await assertFails(read('reviewer-inactive', { role: 'QC_REVIEWER' }));
+  await seed('users/reviewer-wrongrole', { display_name: 'Wrong role', role: 'COLLECTOR', active: true });
+  await assertFails(read('reviewer-wrongrole', { role: 'QC_REVIEWER' }));
+  await assertFails(read('admin-noprofile', { role: 'ADMIN' }));
+  // Profile without the claim: refused.
+  await seed('users/profile-only', { display_name: 'Profile only', role: 'QC_REVIEWER', active: true });
+  await assertFails(read('profile-only', {}));
+
+  // Active reviewer and admin profiles: allowed, and deactivation takes effect at once.
+  await seed('users/reviewer-1', { display_name: 'Reviewer One', role: 'QC_REVIEWER', active: true });
+  await assertSucceeds(read('reviewer-1', { role: 'QC_REVIEWER' }));
+  await seed('users/admin-1', { display_name: 'Admin One', role: 'ADMIN', active: true });
+  await assertSucceeds(read('admin-1', { role: 'ADMIN' }));
+  const adminDb = env.authenticatedContext('admin-1', { role: 'ADMIN' }).firestore();
+  await assertSucceeds(getDoc(doc(adminDb, 'users/collector-b')));
+  await seed('users/reviewer-1', { display_name: 'Reviewer One', role: 'QC_REVIEWER', active: false });
+  await assertFails(read('reviewer-1', { role: 'QC_REVIEWER' }));
 });
 
 test('collector can transition own submission DRAFT to SUBMITTED', async () => {
@@ -436,6 +482,7 @@ test('every production parameter accepts every mobile stable entered-unit id', a
         parameter_code: parameterCode,
         unit_code: unitCode,
         entered_unit_code: enteredUnitCode,
+        analysis_stage: ['CHLORIDE_MG_L', 'SULFATE_MG_L', 'NITRATE_MG_L', 'PHOSPHATE_MG_L'].includes(parameterCode) ? 'LAB' : 'FIELD',
       })));
     }
   }
@@ -540,6 +587,19 @@ test('QC reviewer browser cannot edit science, create audit, or escalate role', 
   await assertFails(updateDoc(doc(db, 'users/reviewer-1'), { role: 'ADMIN' }));
 });
 
+test('collector reads only their own profile and cannot write it directly, even the display name', async () => {
+  await seed('users/collector-a', { display_name: 'Collector A', role: 'COLLECTOR', active: true });
+  await seed('users/collector-b', { display_name: 'Collector B', role: 'COLLECTOR', active: true });
+  const db = env.authenticatedContext('collector-a').firestore();
+
+  await assertSucceeds(getDoc(doc(db, 'users/collector-a')));
+  await assertFails(getDoc(doc(db, 'users/collector-b')));
+  // The only self-service profile write is the server callable `updateMyDisplayName`.
+  await assertFails(updateDoc(doc(db, 'users/collector-a'), { display_name: 'Renamed Directly' }));
+  await assertFails(updateDoc(doc(db, 'users/collector-a'), { role: 'ADMIN' }));
+  await assertFails(setDoc(doc(db, 'users/collector-new'), { display_name: 'Self Provisioned' }));
+});
+
 test('ADMIN browser also uses the server review path and cannot write workflow directly', async () => {
   await seed(`submissions/${submissionId}`, draftSubmission({ status: 'PENDING_REVIEW' }));
   const db = env.authenticatedContext('admin-1', { role: 'ADMIN' }).firestore();
@@ -562,4 +622,128 @@ test('default-deny blocks unknown top-level collection writes', async () => {
 
 test('test suite sanity check', () => {
   assert.ok(true);
+});
+
+test('field collection stays a mutable same-ID cloud draft until laboratory completion and explicit submission', async () => {
+  const db = env.authenticatedContext('collector-a').firestore();
+  const parent = doc(db, `submissions/${submissionId}`);
+  const revision = doc(db, `submissions/${submissionId}/revisions/${revisionId}`);
+  await assertSucceeds(setDoc(parent, draftSubmission()));
+  const emptyScience = { temp_entered_value: null, temp_entered_unit: null, temp_c: null, temp_f: null, instrument_name: null, weather_condition: 'Unknown', water_color: 'Unknown', flow_condition: 'Unknown', collection_stage: 'LAB_PENDING' };
+  await assertSucceeds(setDoc(revision, draftRevision(emptyScience)));
+  await assertSucceeds(updateDoc(revision, { field_notes_original: 'Field collection completed; analysis pending.' }));
+  await assertFails(updateDoc(revision, { revision_status: 'SUBMITTED', submitted_at: serverTimestamp() }));
+  await assertFails(updateDoc(revision, { collection_stage: 'READY_FOR_REVIEW', water_color: '', revision_status: 'SUBMITTED', submitted_at: serverTimestamp() }));
+  await assertFails(updateDoc(revision, { temp_c: 0 }));
+  await assertSucceeds(updateDoc(revision, { collection_stage: 'LAB_COMPLETED' }));
+  const nitrate = doc(db, `submissions/${submissionId}/revisions/${revisionId}/measurements/lab-nitrate`);
+  await assertSucceeds(setDoc(nitrate, measurement('lab-nitrate', { parameter_code: 'NITRATE_MG_L', display_name: 'Nitrate', value: 1.2, unit_code: 'mg/L as N', entered_value: 1.2, entered_unit_code: 'mg-n-l', method_name: 'Penn State Lab', instrument_name: null, analysis_stage: 'LAB', analyzed_at: Timestamp.fromDate(new Date('2026-08-09T14:00:00Z')) })));
+  await assertSucceeds(updateDoc(revision, { revision_status: 'SUBMITTED', submitted_at: serverTimestamp() }));
+  await assertSucceeds(updateDoc(parent, { status: 'SUBMITTED', submitted_at: serverTimestamp(), updated_at: serverTimestamp() }));
+  await assertFails(updateDoc(revision, { temp_c: 10 }));
+  await assertFails(updateDoc(nitrate, { value: 9 }));
+  const saved = (await getDoc(parent)).data();
+  assert.equal(saved.current_revision_id, revisionId);
+  assert.equal(saved.current_revision_no, 1);
+});
+
+test('water depth is a nonnegative length measurement and cannot use discharge units', async () => {
+  await seed(`submissions/${submissionId}`, draftSubmission());
+  await seed(`submissions/${submissionId}/revisions/${revisionId}`, draftRevision());
+  const db = env.authenticatedContext('collector-a').firestore();
+  const ref = doc(db, `submissions/${submissionId}/revisions/${revisionId}/measurements/depth`);
+  const depth = measurement('depth', { parameter_code: 'WATER_DEPTH_M', display_name: 'Water Depth', value: 0.3, unit_code: 'm', entered_value: 30, entered_unit_code: 'cm', instrument_name: null });
+  await assertSucceeds(setDoc(ref, depth));
+  await assertFails(setDoc(ref, { ...depth, unit_code: 'm3/s' }));
+  await assertFails(setDoc(ref, { ...depth, value: -0.3, entered_value: -30 }));
+});
+
+test('v0.2 provenance: laboratory parameters always record it; other parameters record it completely or not at all', async () => {
+  await seed(`submissions/${submissionId}`, draftSubmission());
+  await seed(`submissions/${submissionId}/revisions/${revisionId}`, draftRevision());
+  const db = env.authenticatedContext('collector-a').firestore();
+  const ref = doc(db, `submissions/${submissionId}/revisions/${revisionId}/measurements/m-1`);
+  const { analysis_stage, analyzed_at, ...withoutProvenance } = measurement();
+  // A non-laboratory value from a laboratory or mixed method leaves provenance unrecorded.
+  await assertSucceeds(setDoc(ref, withoutProvenance));
+  await assertSucceeds(setDoc(ref, { ...measurement(), analysis_stage: null, analyzed_at: null }));
+  await assertFails(setDoc(ref, { ...measurement(), analysis_stage: 'FIELD', analyzed_at: null }));
+  await assertFails(setDoc(ref, { ...measurement(), analysis_stage: null }));
+  await assertFails(setDoc(ref, { ...measurement(), analysis_stage: 'OFFSITE' }));
+  await assertFails(setDoc(ref, { ...measurement(), analyzed_at: '2026-08-08T20:00:00Z' }));
+  await assertSucceeds(setDoc(ref, measurement('m-1', { analysis_stage: 'LAB' })));
+  const nitrate = doc(db, `submissions/${submissionId}/revisions/${revisionId}/measurements/nitrate`);
+  const nitrateValue = measurement('nitrate', { parameter_code: 'NITRATE_MG_L', display_name: 'Nitrate', value: 1.2, unit_code: 'mg/L as N', entered_value: 1.2, entered_unit_code: 'mg-n-l', instrument_name: null });
+  const { analysis_stage: s2, analyzed_at: a2, ...nitrateWithoutProvenance } = nitrateValue;
+  await assertFails(setDoc(nitrate, nitrateWithoutProvenance));
+  await assertSucceeds(setDoc(nitrate, { ...nitrateValue, analysis_stage: 'LAB' }));
+});
+
+test('lab-dependent parameters analyzed in the field require a documented exception', async () => {
+  await seed(`submissions/${submissionId}`, draftSubmission());
+  await seed(`submissions/${submissionId}/revisions/${revisionId}`, draftRevision());
+  const db = env.authenticatedContext('collector-a').firestore();
+  const ref = doc(db, `submissions/${submissionId}/revisions/${revisionId}/measurements/chloride`);
+  const chloride = measurement('chloride', { parameter_code: 'CHLORIDE_MG_L', display_name: 'Chloride', value: 31, unit_code: 'mg/L', entered_value: 31, entered_unit_code: 'mg-l', instrument_name: null });
+  await assertFails(setDoc(ref, chloride));
+  await assertFails(setDoc(ref, { ...chloride, field_exception_reason: '   ' }));
+  await assertSucceeds(setDoc(ref, { ...chloride, field_exception_reason: 'Program-approved chloride test strip protocol.' }));
+  await assertFails(setDoc(ref, { ...chloride, analysis_stage: 'LAB', field_exception_reason: 'Not an exception.' }));
+  await assertSucceeds(setDoc(ref, { ...chloride, analysis_stage: 'LAB' }));
+  const ph = doc(db, `submissions/${submissionId}/revisions/${revisionId}/measurements/m-1`);
+  await assertFails(setDoc(ph, measurement('m-1', { field_exception_reason: 'pH needs no exception.' })));
+});
+
+test('installed 0.1.0 clients keep their original contract during the transition', async () => {
+  const db = env.authenticatedContext('collector-a').firestore();
+  const parent = doc(db, `submissions/${submissionId}`);
+  const revision = doc(db, `submissions/${submissionId}/revisions/${revisionId}`);
+  const { water_color, flow_condition, collection_stage, ...legacyRevision } = draftRevision({ schema_version: '0.1.0', weather_condition: '' });
+  await assertSucceeds(setDoc(parent, draftSubmission({ schema_version: '0.1.0' })));
+  await assertFails(setDoc(revision, { ...legacyRevision, temp_entered_value: null, temp_entered_unit: null, temp_c: null, temp_f: null }));
+  await assertFails(setDoc(revision, { ...legacyRevision, instrument_name: null }));
+  await assertSucceeds(setDoc(revision, legacyRevision));
+  const legacyMeasurement = doc(db, `submissions/${submissionId}/revisions/${revisionId}/measurements/m-1`);
+  const { analysis_stage, analyzed_at, field_exception_reason, ...legacyValue } = measurement();
+  await assertFails(setDoc(legacyMeasurement, measurement()));
+  await assertSucceeds(setDoc(legacyMeasurement, legacyValue));
+  await assertSucceeds(updateDoc(revision, { revision_status: 'SUBMITTED', submitted_at: serverTimestamp() }));
+  await assertSucceeds(updateDoc(parent, { status: 'SUBMITTED', submitted_at: serverTimestamp(), updated_at: serverTimestamp() }));
+  await assertFails(setDoc(doc(db, 'submissions/unknown-schema'), draftSubmission({ submission_id: 'unknown-schema', schema_version: '0.3.0' })));
+});
+
+test('a revision cannot change schema version to escape its contract', async () => {
+  await seed(`submissions/${submissionId}`, draftSubmission());
+  await seed(`submissions/${submissionId}/revisions/${revisionId}`, draftRevision({ water_color: '' }));
+  const db = env.authenticatedContext('collector-a').firestore();
+  const revision = doc(db, `submissions/${submissionId}/revisions/${revisionId}`);
+  await assertFails(updateDoc(revision, { schema_version: '0.1.0', revision_status: 'SUBMITTED', submitted_at: serverTimestamp() }));
+  await assertFails(updateDoc(revision, { schema_version: '0.1.0' }));
+});
+
+test('a correction follows its observation contract: no downgrade to 0.1.0, legacy may move forward', async () => {
+  const db = env.authenticatedContext('collector-a').firestore();
+  const correction = doc(db, `submissions/${submissionId}/revisions/${correctionRevisionId}`);
+  const { water_color, flow_condition, collection_stage, ...legacyShape } = draftRevision({ revision_id: correctionRevisionId, revision_no: 2, schema_version: '0.1.0' });
+  await seed(`submissions/${submissionId}`, draftSubmission({ status: 'NEEDS_CORRECTION' }));
+  await assertFails(setDoc(correction, legacyShape));
+  await seed(`submissions/${submissionId}`, draftSubmission({ status: 'NEEDS_CORRECTION', schema_version: '0.1.0' }));
+  await assertSucceeds(setDoc(correction, legacyShape));
+  await env.clearFirestore();
+  await seed(`siteCatalog/${siteId}`, { site_id: siteId, active: true });
+  await seed(`submissions/${submissionId}`, draftSubmission({ status: 'NEEDS_CORRECTION', schema_version: '0.1.0' }));
+  await assertSucceeds(setDoc(correction, draftRevision({ revision_id: correctionRevisionId, revision_no: 2 })));
+});
+
+test('legacy 0.1.0 measurements still require an instrument; 0.2.0 measurements do not', async () => {
+  const db = env.authenticatedContext('collector-a').firestore();
+  const path = `submissions/${submissionId}/revisions/${revisionId}/measurements/m-1`;
+  const { analysis_stage, analyzed_at, field_exception_reason, ...legacyValue } = measurement();
+  await seed(`submissions/${submissionId}`, draftSubmission({ schema_version: '0.1.0' }));
+  await seed(`submissions/${submissionId}/revisions/${revisionId}`, draftRevision({ schema_version: '0.1.0' }));
+  await assertFails(setDoc(doc(db, path), { ...legacyValue, instrument_name: null }));
+  await assertFails(setDoc(doc(db, path), { ...legacyValue, instrument_name: '' }));
+  await assertSucceeds(setDoc(doc(db, path), legacyValue));
+  await seed(`submissions/${submissionId}/revisions/${revisionId}`, draftRevision());
+  await assertSucceeds(setDoc(doc(db, path), measurement('m-1', { instrument_name: null })));
 });

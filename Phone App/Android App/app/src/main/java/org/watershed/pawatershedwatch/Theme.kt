@@ -13,7 +13,9 @@ import androidx.compose.ui.unit.sp
 
 val Hemlock = Color(0xFF0D5C4B)
 val Water = Color(0xFF167A8B)
-val Goldenrod = Color(0xFFA76100)
+private val GoldenrodTextLight = Color(0xFF955600)
+val Goldenrod: Color
+    @Composable get() = if (isSystemInDarkTheme()) Color(0xFFF3B65C) else GoldenrodTextLight
 val Fern = Color(0xFF2E7D52)
 val Limestone = Color(0xFFF3F1E9)
 val Ink = Color(0xFF17211E)
@@ -28,7 +30,7 @@ private val LightColors = lightColorScheme(
     onSecondary = Color.White,
     secondaryContainer = Color(0xFFD4EEF1),
     onSecondaryContainer = Color(0xFF07434B),
-    tertiary = Goldenrod,
+    tertiary = GoldenrodTextLight,
     background = Limestone,
     onBackground = Ink,
     surface = Color(0xFFFFFDF8),
@@ -46,6 +48,7 @@ private val DarkColors = darkColorScheme(
     onPrimaryContainer = Color(0xFFC5F0E2),
     secondary = Color(0xFF7DCBD6),
     onSecondary = Color(0xFF00363D),
+    tertiary = Color(0xFFF3B65C),
     background = Color(0xFF111714),
     onBackground = Color(0xFFE4E9E5),
     surface = Color(0xFF171E1B),

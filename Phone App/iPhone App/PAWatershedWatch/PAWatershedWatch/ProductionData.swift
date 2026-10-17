@@ -1,8 +1,11 @@
 import CryptoKit
 @preconcurrency import FirebaseAuth
+import FirebaseCore
 @preconcurrency import FirebaseFirestore
 import Foundation
+@preconcurrency import GoogleSignIn
 import SwiftData
+import UIKit
 
 enum ProductionSupport: String, Codable { case fullySupported = "FULLY_SUPPORTED", featureGated = "FEATURE_GATED" }
 
@@ -26,6 +29,7 @@ extension MeasurementKind {
         case .sulfate: .init(code: "SULFATE_MG_L", unit: "mg/L", support: .fullySupported)
         case .nitrate: .init(code: "NITRATE_MG_L", unit: "mg/L as N", support: .fullySupported)
         case .phosphate: .init(code: "PHOSPHATE_MG_L", unit: "mg/L as P", support: .fullySupported)
+        case .waterDepth: .init(code: "WATER_DEPTH_M", unit: "m", support: .fullySupported)
         case .flow: .init(code: "DISCHARGE_M3_S", unit: "m3/s", support: .fullySupported)
         default: .init(code: nil, unit: nil, support: .featureGated)
         }
@@ -46,6 +50,11 @@ extension TestType {
     }
 
     static func contract(_ value: String) -> TestType? { allCases.first { $0.contractValue == value } }
+
+    /// Whether the method category itself says a non-laboratory reading was analysed in the field at
+    /// sampling. Laboratory, mixed and other categories do not say where or when a reading was analysed,
+    /// so no analysis stage or time is recorded for them.
+    var recordsFieldAnalysis: Bool { [.fieldInstrument, .fieldKit, .sonde].contains(self) }
 }
 
 enum EasternTime {
@@ -82,6 +91,11 @@ struct CanonicalMeasurement: Codable, Hashable {
     let enteredUnit: String
     let value: Double
     let unitCode: String
+    var analysisStage: String? = nil
+    var analysisMethod: String? = nil
+    var analysisInstrument: String? = nil
+    var analyzedAt: Date? = nil
+    var fieldExceptionReason: String? = nil
 }
 
 struct CanonicalSnapshot: Codable, Hashable {
@@ -103,14 +117,32 @@ struct CanonicalSnapshot: Codable, Hashable {
     let method: String
     let instrument: String
     let notes: String?
-    let temperatureEnteredValue: Double
-    let temperatureEnteredUnit: String
-    let tempC: Double
-    let tempF: Double
+    let temperatureEnteredValue: Double?
+    let temperatureEnteredUnit: String?
+    let tempC: Double?
+    let tempF: Double?
     let measurements: [CanonicalMeasurement]
     let attachments: [AttachmentRecord]
     let appVersion: String
     let correction: Bool
+    var weatherCondition: String? = nil
+    var waterColor: String? = nil
+    var flowCondition: String? = nil
+    var collectionStage: String? = nil
+    /// The Firestore contract this revision was created under. Persisted with every queued snapshot so a
+    /// record saved by an earlier app build is replayed under its own contract after an upgrade. Snapshots
+    /// persisted before this field existed decode it as nil; see `resolvedSchemaVersion`.
+    var schemaVersion: String? = nil
+
+    /// A snapshot without a recorded schema came from a build that predates this field. Only 0.2 builds
+    /// record a collection stage (it is always set there), so its presence identifies a 0.2.0 snapshot;
+    /// otherwise the snapshot was created by an installed 0.1.0 build and keeps that contract.
+    var resolvedSchemaVersion: String {
+        if let schemaVersion { return schemaVersion }
+        return collectionStage != nil ? FirebaseMapper.schemaVersion : FirebaseMapper.legacySchemaVersion
+    }
+
+    var usesLegacySchema: Bool { resolvedSchemaVersion == FirebaseMapper.legacySchemaVersion }
 }
 
 enum CanonicalizationError: LocalizedError {
@@ -158,10 +190,21 @@ extension ObservationDraft {
     func measurementProblem(for kind: MeasurementKind) -> String? {
         let raw = values[kind, default: ""].trimmingCharacters(in: .whitespacesAndNewlines)
         guard !raw.isEmpty else { return nil }
+        if kind.needsAnalysisProvenance {
+            guard let analysis = analysisDetails[kind], ["LAB", "FIELD"].contains(analysis.stage),
+                  !analysis.method.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, let analyzedAt = analysis.analyzedAt
+            else { return "Record the analysis method and time for \(String(localized: kind.title))." }
+            if analyzedAt < date || analyzedAt > Date.now.addingTimeInterval(300) { return "Analysis time must be on or after sampling and cannot be in the future." }
+            if analysis.stage == "FIELD" && analysis.fieldExceptionReason.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return "Describe the field-analysis protocol or exception for \(String(localized: kind.title))." }
+            // The archive accepts at most 1,000 characters for a documented field exception.
+            if analysis.stage == "FIELD" && analysis.fieldExceptionReason.trimmingCharacters(in: .whitespacesAndNewlines).unicodeScalars.count > 1000 { return "Keep the field-analysis exception for \(String(localized: kind.title)) to 1,000 characters or fewer." }
+        }
+
         let name = String(localized: kind.title)
         let spec = kind.productionSpec
         guard spec.support == .fullySupported, let code = spec.code else { return "\(name) is not enabled by the production contract." }
         guard let entered = Double(raw), entered.isFinite else { return "\(name) must be a number." }
+        if kind == .waterDepth && entered < 0 { return "Water depth cannot be negative." }
         guard kind != .temperature else {
             let celsius = selectedUnit(for: .temperature).convert(entered, to: .celsius)
             return ProductionHardRange.temperatureC.bounds.contains(celsius) ? nil : ProductionHardRange.temperatureC.message(for: name)
@@ -171,6 +214,14 @@ extension ObservationDraft {
         return range.bounds.contains(canonicalValue(entered, for: kind)) ? nil : range.message(for: name)
     }
 
+    /// The documented exception for a laboratory parameter analyzed in the field. Laboratory results and
+    /// field parameters carry none: the rules accept a reason only for that one documented case.
+    func fieldExceptionReason(for kind: MeasurementKind) -> String? {
+        guard kind.needsAnalysisProvenance, let analysis = analysisDetails[kind], analysis.stage == "FIELD" else { return nil }
+        let reason = analysis.fieldExceptionReason.trimmingCharacters(in: .whitespacesAndNewlines)
+        return reason.isEmpty ? nil : reason
+    }
+
     /// Every unusable entry in display order, so the screen can show a banner and focus the first one.
     var measurementProblems: [(kind: MeasurementKind, message: String)] {
         (requiredMeasurements + optionalMeasurements).compactMap { kind in
@@ -178,7 +229,7 @@ extension ObservationDraft {
         }
     }
 
-    func canonicalSnapshot(submittedAt: Date = .now) throws -> CanonicalSnapshot {
+    func canonicalSnapshot(submittedAt: Date = .now, forDraft: Bool = false) throws -> CanonicalSnapshot {
         guard !ownerUID.isEmpty else { throw CanonicalizationError.invalid("Authenticated owner is required") }
         guard let site, let latitude, let longitude, let accuracyMeters,
               (-90...90).contains(latitude), (-180...180).contains(longitude), !(latitude == 0 && longitude == 0), accuracyMeters >= 0
@@ -187,22 +238,27 @@ extension ObservationDraft {
         else { throw CanonicalizationError.invalid("A collector name is required", section: .visitDetails) }
         guard let testType else { throw CanonicalizationError.invalid("Test type is required", section: .testMethod) }
         guard testType != .other || !testTypeOther.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw CanonicalizationError.invalid("Describe the other test type", section: .testMethod) }
-        guard !method.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-              !instrument.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        else { throw CanonicalizationError.invalid("Method and instrument or laboratory are required", section: .testMethod) }
-        if let problem = measurementProblems.first {
+        guard visualObservationsComplete else { throw CanonicalizationError.invalid("Choose weather, water color, and flow condition. Unknown is allowed.", section: .measurements) }
+        guard forDraft || !labResultsPending else { throw CanonicalizationError.invalid("Complete laboratory results before submitting for review.", section: .measurements) }
+        let problems = measurementProblems
+        if !forDraft, let problem = problems.first {
             throw CanonicalizationError.invalid(problem.message, section: .measurements, measurement: problem.kind)
         }
-        guard let enteredTemperature = Double(values[.temperature, default: ""]), enteredTemperature.isFinite
-        else { throw CanonicalizationError.invalid("\(String(localized: MeasurementKind.temperature.title)) is required.", section: .measurements, measurement: .temperature) }
-        // Water Temperature is `requiredMeasurements`' only entry, and it is already confirmed present
-        // above, so there is no further "profile minimum" to check here.
+        // A cloud draft carries only values that are already complete. Anything still unusable — a lab
+        // result without its analysis time, say — stays in the local draft until it is finished, so one
+        // incomplete entry never blocks synchronizing the rest of the field record.
+        let incomplete = forDraft ? Set(problems.map(\.kind)) : []
+        let temperatureRaw = incomplete.contains(.temperature) ? "" : values[.temperature, default: ""].trimmingCharacters(in: .whitespacesAndNewlines)
+        let enteredTemperature = temperatureRaw.isEmpty ? nil : Double(temperatureRaw)
         let temperatureUnit = selectedUnit(for: .temperature)
-        let tempC = temperatureUnit.convert(enteredTemperature, to: .celsius)
-        let tempF = MeasurementUnit.celsius.convert(tempC, to: .fahrenheit)
+        let tempC = enteredTemperature.map { temperatureUnit.convert($0, to: .celsius) }
+        let tempF = tempC.map { MeasurementUnit.celsius.convert($0, to: .fahrenheit) }
+        // A non-laboratory reading's stage and time are recorded only when the method category establishes
+        // them; laboratory parameters carry exactly what the collector entered.
+        let fieldAnalysis = testType.recordsFieldAnalysis
         let canonical = try values.compactMap { kind, raw -> CanonicalMeasurement? in
             let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard kind != .temperature, !trimmed.isEmpty else { return nil }
+            guard kind != .temperature, !trimmed.isEmpty, !incomplete.contains(kind) else { return nil }
             let spec = kind.productionSpec
             guard let code = spec.code, let unitCode = spec.unit, let entered = Double(trimmed), entered.isFinite
             else { throw CanonicalizationError.invalid("\(String(localized: kind.title)) could not be recorded.", section: .measurements, measurement: kind) }
@@ -210,7 +266,12 @@ extension ObservationDraft {
             return CanonicalMeasurement(
                 id: CanonicalID.measurement(revisionID: revisionID, parameterCode: code), kind: kind,
                 parameterCode: code, displayName: String(localized: kind.title), enteredValue: entered,
-                enteredUnitID: selected.id, enteredUnit: selected.menuTitle, value: canonicalValue(entered, for: kind), unitCode: unitCode
+                enteredUnitID: selected.id, enteredUnit: selected.menuTitle, value: canonicalValue(entered, for: kind), unitCode: unitCode,
+                analysisStage: kind.needsAnalysisProvenance ? analysisDetails[kind]?.stage : (fieldAnalysis ? "FIELD" : nil),
+                analysisMethod: kind.needsAnalysisProvenance ? analysisDetails[kind]?.method.trimmingCharacters(in: .whitespacesAndNewlines) : canonicalMethod,
+                analysisInstrument: kind.needsAnalysisProvenance ? analysisDetails[kind].flatMap { Self.trimmedOrNil($0.instrument) } : canonicalInstrument,
+                analyzedAt: kind.needsAnalysisProvenance ? analysisDetails[kind]?.analyzedAt : (fieldAnalysis ? date : nil),
+                fieldExceptionReason: fieldExceptionReason(for: kind)
             )
         }.sorted { MeasurementKind.allCases.firstIndex(of: $0.kind)! < MeasurementKind.allCases.firstIndex(of: $1.kind)! }
         for attachment in attachments {
@@ -224,17 +285,113 @@ extension ObservationDraft {
             latitude: latitude, longitude: longitude, accuracyMeters: accuracyMeters,
             collector: collector.trimmingCharacters(in: .whitespacesAndNewlines), testType: testType.contractValue,
             testTypeOther: testTypeOther.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : testTypeOther,
-            method: method.trimmingCharacters(in: .whitespacesAndNewlines), instrument: instrument.trimmingCharacters(in: .whitespacesAndNewlines),
+            method: canonicalMethod, instrument: canonicalInstrument,
             notes: notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : notes,
-            temperatureEnteredValue: enteredTemperature, temperatureEnteredUnit: temperatureUnit == .celsius ? "C" : "F",
+            temperatureEnteredValue: enteredTemperature, temperatureEnteredUnit: enteredTemperature == nil ? nil : (temperatureUnit == .celsius ? "C" : "F"),
             tempC: tempC, tempF: tempF, measurements: canonical, attachments: attachments,
-            appVersion: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.0", correction: isCorrection
+            appVersion: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.0", correction: isCorrection,
+            weatherCondition: weatherCondition, waterColor: waterColor, flowCondition: flowCondition,
+            collectionStage: forDraft ? collectionStage.rawValue : (collectionStage == .labCompleted ? CollectionStage.labCompleted.rawValue : CollectionStage.readyForReview.rawValue),
+            // New snapshots, including correction revisions of a 0.1.0 record, use the current contract.
+            schemaVersion: FirebaseMapper.schemaVersion
         )
+    }
+
+    private static func trimmedOrNil(_ value: String) -> String? {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+}
+
+/// One problem found while reviewing a draft. Blocking issues stop submission; warnings are shown so
+/// the collector can double-check, and never change what is recorded.
+struct ReviewIssue: Identifiable, Hashable {
+    enum Severity: Hashable { case blocking, warning }
+    let id: String
+    let severity: Severity
+    let message: String
+    let section: WorkflowSection?
+    var measurement: MeasurementKind? = nil
+}
+
+extension ObservationDraft {
+    /// Every blocking problem at once, in workflow order. `canonicalSnapshot()` remains the authority —
+    /// this list exists so Review can show all of them instead of the first.
+    var blockingIssues: [ReviewIssue] {
+        var issues: [ReviewIssue] = []
+        func add(_ id: String, _ message: String, _ section: WorkflowSection?, _ kind: MeasurementKind? = nil) {
+            issues.append(ReviewIssue(id: id, severity: .blocking, message: message, section: section, measurement: kind))
+        }
+        if ownerUID.isEmpty { add("owner", "Sign in again before submitting.", nil) }
+        if site == nil { add("site", "Choose a sampling site.", nil) }
+        if !hasValidFieldPosition { add("gps", "Capture a GPS position at the site.", .visitDetails) }
+        if collector.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { add("collector", "Add your full name in Account before submitting.", .visitDetails) }
+        if let testType {
+            if testType == .other && testTypeOther.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                add("other", "Describe the other measurement method.", .testMethod)
+            }
+        } else {
+            add("testType", "Choose how the observation was measured.", .testMethod)
+        }
+        if !visualObservationsComplete { add("visual-observations", "Choose weather, water color, and flow condition. Unknown is allowed.", .measurements) }
+        if labResultsPending { add("lab-pending", "Complete laboratory results before submitting for review.", .measurements) }
+        for kind in requiredMeasurements where Double(values[kind] ?? "") == nil && measurementProblem(for: kind) == nil {
+            add("required-\(kind.rawValue)", "\(String(localized: kind.title)) is required.", .measurements, kind)
+        }
+        for problem in measurementProblems {
+            add("problem-\(problem.kind.rawValue)", problem.message, .measurements, problem.kind)
+        }
+        if isCorrection && revisionNote.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            add("revisionNote", "Explain what you checked and changed.", nil)
+        }
+        if attachments.contains(where: { $0.ownerUID != ownerUID || $0.submissionID != id || $0.revisionID != revisionID || !(1...50 * 1024 * 1024).contains($0.sizeBytes) }) {
+            add("attachments", "An attachment does not belong to this revision.", .notesMedia)
+        }
+        // Safety net: canonicalSnapshot() is the authority. If it rejects something this list did not
+        // name, show its message rather than claiming the draft is ready.
+        if issues.isEmpty {
+            do { _ = try canonicalSnapshot() } catch let error as CanonicalizationError {
+                add("gate", error.localizedDescription, error.section, error.measurement)
+            } catch {
+                add("gate", error.localizedDescription, nil)
+            }
+        }
+        return issues
+    }
+
+    /// The same position rule `canonicalSnapshot()` enforces.
+    var hasValidFieldPosition: Bool {
+        guard let latitude, let longitude, let accuracyMeters else { return false }
+        return (-90...90).contains(latitude) && (-180...180).contains(longitude)
+            && !(latitude == 0 && longitude == 0) && accuracyMeters >= 0
+    }
+
+    /// Non-blocking field checks. The server's validation makes the authoritative quality judgment.
+    var reviewWarnings: [ReviewIssue] {
+        var warnings: [ReviewIssue] = []
+        if let accuracyMeters, accuracyMeters > 20 {
+            warnings.append(ReviewIssue(id: "accuracy", severity: .warning, message: "GPS accuracy is ±\(Int(accuracyMeters.rounded())) m. Reacquire in the open if you can.", section: .visitDetails))
+        }
+        if let distance = siteDistanceMeters, let tolerance = site?.toleranceMeters, distance > tolerance {
+            warnings.append(ReviewIssue(id: "distance", severity: .warning, message: "Your position is \(Site.distanceText(distance)) from the site, beyond its expected ±\(Int(tolerance)) m. Confirm you are at the right site.", section: .visitDetails))
+        }
+        return warnings
+    }
+
+    /// Distance between the captured field position and the authoritative site location.
+    var siteDistanceMeters: Double? {
+        guard let site, let latitude, let longitude else { return nil }
+        return site.distance(latitude: latitude, longitude: longitude)
     }
 }
 
 enum FirebaseMapper {
-    static let schemaVersion = "0.1.0"
+    /// The current contract for every new snapshot.
+    static let schemaVersion = "0.2.0"
+    /// The contract of installed 0.1.0 builds. A snapshot they queued offline is still replayed under it:
+    /// the rules accept 0.1.0 science only in its original shape (temperature and instrument required,
+    /// measurements without analysis provenance).
+    static let legacySchemaVersion = "0.1.0"
 
     /// `submitted_at` is a trusted server timestamp. Firestore rules require it to equal `request.time`
     /// on every collector write, so a concrete client `Timestamp` from the phone clock is always rejected.
@@ -250,37 +407,55 @@ enum FirebaseMapper {
             "current_revision_id": value.revisionID.uuidString.lowercased(), "current_revision_no": value.revisionNumber,
             "latest_collected_at": Timestamp(date: value.collectedAt), "created_at": Timestamp(date: value.createdAt),
             "updated_at": Timestamp(date: value.submittedAt), "submitted_at": submittedAt(status),
-            "schema_version": schemaVersion, "mobile_app_version": value.appVersion,
+            "schema_version": value.resolvedSchemaVersion, "mobile_app_version": value.appVersion,
         ]
     }
 
     static func revision(_ value: CanonicalSnapshot, status: String) -> [String: Any] {
-        [
+        var fields: [String: Any] = [
             "revision_id": value.revisionID.uuidString.lowercased(), "revision_no": value.revisionNumber,
             "submission_id": value.submissionID.uuidString.lowercased(), "event_id": value.eventID.uuidString.lowercased(),
             "collector_user_id": value.ownerUID, "site_id": value.siteID, "revision_status": status,
             "created_at": Timestamp(date: value.createdAt), "submitted_at": submittedAt(status),
             "collected_at": Timestamp(date: value.collectedAt), "time_known": true, "time_imputed": false,
             "latitude": value.latitude, "longitude": value.longitude, "location": GeoPoint(latitude: value.latitude, longitude: value.longitude),
-            "gps_accuracy_m": value.accuracyMeters, "site_distance_m": NSNull(), "weather_condition": "",
+            "gps_accuracy_m": value.accuracyMeters, "site_distance_m": NSNull(), "weather_condition": value.weatherCondition ?? NSNull(),
+            "water_color": value.waterColor ?? NSNull(), "flow_condition": value.flowCondition ?? NSNull(),
+            "collection_stage": value.collectionStage ?? "READY_FOR_REVIEW",
             "data_collected_by": value.collector, "test_type": value.testType, "test_type_other": value.testTypeOther ?? NSNull(),
-            "method_name": value.method, "instrument_name": value.instrument, "instrument_other": NSNull(),
-            "temp_entered_value": value.temperatureEnteredValue, "temp_entered_unit": value.temperatureEnteredUnit,
-            "temp_c": value.tempC, "temp_f": value.tempF, "field_notes_original": value.notes ?? NSNull(),
-            "schema_version": schemaVersion, "mobile_app_version": value.appVersion,
+            "method_name": value.method, "instrument_name": value.instrument.isEmpty ? NSNull() : value.instrument, "instrument_other": NSNull(),
+            "temp_entered_value": value.temperatureEnteredValue.map { $0 as Any } ?? NSNull(), "temp_entered_unit": value.temperatureEnteredUnit ?? NSNull(),
+            "temp_c": value.tempC.map { $0 as Any } ?? NSNull(), "temp_f": value.tempF.map { $0 as Any } ?? NSNull(), "field_notes_original": value.notes ?? NSNull(),
+            "schema_version": value.resolvedSchemaVersion, "mobile_app_version": value.appVersion,
         ]
+        // A 0.1.0 revision predates the collection stage.
+        if value.usesLegacySchema { fields.removeValue(forKey: "collection_stage") }
+        return fields
     }
 
     static func measurement(_ item: CanonicalMeasurement, in value: CanonicalSnapshot) -> [String: Any] {
-        [
+        // A laboratory result names only its own analysis instrument, never the field instrument. A 0.1.0
+        // measurement keeps the observation's instrument exactly as that build recorded it.
+        let instrument = value.usesLegacySchema ? value.instrument
+            : item.kind.needsAnalysisProvenance ? (item.analysisInstrument ?? "") : (item.analysisInstrument ?? value.instrument)
+        var fields: [String: Any] = [
             "measurement_id": item.id.uuidString.lowercased(), "parameter_code": item.parameterCode,
             "display_name": item.displayName, "value": item.value, "unit_code": item.unitCode,
             // Provenance required by config/firebase_schema.json: exactly what the collector typed and the
             // stable MeasurementUnit id they picked. Never used as conversion authority.
             "entered_value": item.enteredValue, "entered_unit_code": item.enteredUnitID,
-            "method_name": value.method, "instrument_name": value.instrument, "qualifier": NSNull(), "notes": NSNull(),
-            "entered_at": Timestamp(date: value.collectedAt),
+            "method_name": item.analysisMethod ?? value.method,
+            "instrument_name": instrument.isEmpty ? NSNull() : instrument,
+            // An unknown stage or analysis time is recorded as null, never assumed to be field analysis.
+            "analysis_stage": item.analysisStage ?? NSNull(), "analyzed_at": item.analyzedAt.map { Timestamp(date: $0) as Any } ?? NSNull(),
+            "field_exception_reason": item.fieldExceptionReason ?? NSNull(),
+            "qualifier": NSNull(), "notes": NSNull(), "entered_at": Timestamp(date: value.collectedAt),
         ]
+        // 0.1.0 measurements predate analysis provenance; the rules reject these keys on them.
+        if value.usesLegacySchema {
+            ["analysis_stage", "analyzed_at", "field_exception_reason"].forEach { fields.removeValue(forKey: $0) }
+        }
+        return fields
     }
 
     static func attachment(_ item: AttachmentRecord, in value: CanonicalSnapshot, storagePath: String) -> [String: Any] {
@@ -356,12 +531,52 @@ enum FirebaseMapper {
     var watershed: String
     var latitude: Double
     var longitude: Double
+    /// False once the catalog stops listing the site. The row is kept so historical records still show
+    /// their site name, but it is never offered for a new observation.
     var active: Bool
     var updatedAt: Date
-    init(siteID: String, name: String, county: String, watershed: String, latitude: Double, longitude: Double, active: Bool, updatedAt: Date = .now) {
+    var siteCode: String = ""
+    var toleranceMeters: Double?
+    init(siteID: String, name: String, county: String, watershed: String, latitude: Double, longitude: Double, active: Bool, updatedAt: Date = .now, siteCode: String = "", toleranceMeters: Double? = nil) {
         self.siteID = siteID; self.name = name; self.county = county; self.watershed = watershed; self.latitude = latitude; self.longitude = longitude; self.active = active; self.updatedAt = updatedAt
+        self.siteCode = siteCode; self.toleranceMeters = toleranceMeters
     }
-    var site: Site { Site(id: siteID, name: name, county: county, watershed: watershed, latitude: latitude, longitude: longitude, cached: true, distance: "") }
+    var site: Site { Site(id: siteID, name: name, code: siteCode, county: county, watershed: watershed, latitude: latitude, longitude: longitude, toleranceMeters: toleranceMeters, cached: true) }
+}
+
+/// Decodes one `siteCatalog` document. The schema fields are `county` and `watershed_name`; earlier
+/// app builds read `county_display` / `watershed_display`, which are accepted as a fallback so either
+/// shape displays without a data migration. Inactive or malformed documents are never selectable.
+enum SiteCatalogDecoder {
+    static func site(documentID: String, data: [String: Any]) -> Site? {
+        guard data["active"] as? Bool == true,
+              data["site_id"] as? String == documentID,
+              let name = (data["site_name_display"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty,
+              let latitude = number(data["latitude"]) ?? (data["location"] as? GeoPoint)?.latitude,
+              let longitude = number(data["longitude"]) ?? (data["location"] as? GeoPoint)?.longitude,
+              (-90...90).contains(latitude), (-180...180).contains(longitude), !(latitude == 0 && longitude == 0)
+        else { return nil }
+        return Site(
+            id: documentID, name: name, code: text(data["site_code"]),
+            county: text(data["county"] ?? data["county_display"]),
+            watershed: text(data["watershed_name"] ?? data["watershed_display"]),
+            latitude: latitude, longitude: longitude,
+            toleranceMeters: number(data["site_tolerance_m"]).flatMap { $0 > 0 ? $0 : nil }, cached: false
+        )
+    }
+
+    private static func text(_ value: Any?) -> String {
+        (value as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    }
+
+    private static func number(_ value: Any?) -> Double? {
+        switch value {
+        case let value as Double: value.isFinite ? value : nil
+        case let value as Int: Double(value)
+        case let value as NSNumber: value.doubleValue
+        default: nil
+        }
+    }
 }
 
 @Model final class LocalValidationFlagEntity {
@@ -429,8 +644,12 @@ private struct DraftPayload: Codable {
     let revisionNumber: Int, ownerUID: String, createdAt: Date, siteID: String?, collectedAt: Date, collector: String
     let latitude: Double?, longitude: Double?, accuracyMeters: Double?, gpsState: GPSState, testType: TestType?, testTypeOther: String
     let method: String, instrument: String, values: [MeasurementKind: String], unitIDs: [MeasurementKind: String]
-    let labResultsPending: Bool, requestedAnalytes: Set<MeasurementKind>, notes: String, attachments: [AttachmentRecord]
+    let notes: String, attachments: [AttachmentRecord]
     let currentStep: Int, isCorrection: Bool, baseRevision: Int?, correctionReason: String?, revisionNote: String, savedAt: Date
+    var weatherCondition: String? = nil, waterColor: String? = nil, flowCondition: String? = nil
+    var collectionStage: CollectionStage? = nil, labResultsPending: Bool? = nil
+    var fieldCollectedAt: Date? = nil, labCompletedAt: Date? = nil
+    var analysisDetails: [MeasurementKind: AnalysisProvenance]? = nil
 }
 
 @MainActor protocol LocalMobileRepository: AnyObject {
@@ -459,10 +678,12 @@ private struct DraftPayload: Codable {
             ownerUID: draft.ownerUID, createdAt: draft.createdAt, siteID: draft.site?.id, collectedAt: draft.date, collector: draft.collector,
             latitude: draft.latitude, longitude: draft.longitude, accuracyMeters: draft.accuracyMeters, gpsState: draft.gpsState,
             testType: draft.testType, testTypeOther: draft.testTypeOther, method: draft.method, instrument: draft.instrument,
-            values: draft.values, unitIDs: draft.selectedUnits.mapValues(\.id), labResultsPending: draft.labResultsPending,
-            requestedAnalytes: draft.requestedAnalytes, notes: draft.notes, attachments: draft.attachments,
+            values: draft.values, unitIDs: draft.selectedUnits.mapValues(\.id), notes: draft.notes, attachments: draft.attachments,
             currentStep: draft.currentStep, isCorrection: draft.isCorrection, baseRevision: draft.baseRevision,
-            correctionReason: draft.correctionReason, revisionNote: draft.revisionNote, savedAt: draft.lastSaved
+            correctionReason: draft.correctionReason, revisionNote: draft.revisionNote, savedAt: draft.lastSaved,
+            weatherCondition: draft.weatherCondition, waterColor: draft.waterColor, flowCondition: draft.flowCondition,
+            collectionStage: draft.collectionStage, labResultsPending: draft.labResultsPending,
+            fieldCollectedAt: draft.fieldCollectedAt, labCompletedAt: draft.labCompletedAt, analysisDetails: draft.analysisDetails
         )
         for existing in try context.fetch(FetchDescriptor<LocalDraftEntity>()).filter({ $0.ownerUID == draft.ownerUID }) { context.delete(existing) }
         context.insert(LocalDraftEntity(
@@ -484,16 +705,36 @@ private struct DraftPayload: Codable {
         draft.values = value.values; draft.selectedUnits = value.unitIDs.reduce(into: [:]) { result, entry in
             if let unit = MeasurementKind.allCases.flatMap(\.unitOptions).first(where: { $0.id == entry.value }) { result[entry.key] = unit }
         }
-        draft.labResultsPending = value.labResultsPending; draft.requestedAnalytes = value.requestedAnalytes; draft.notes = value.notes; draft.attachments = value.attachments
+        draft.weatherCondition = value.weatherCondition ?? ""; draft.waterColor = value.waterColor ?? ""; draft.flowCondition = value.flowCondition ?? ""
+        draft.collectionStage = value.collectionStage ?? .draft; draft.labResultsPending = value.labResultsPending ?? false
+        draft.analysisDetails = value.analysisDetails ?? [:]
+        draft.fieldCollectedAt = value.fieldCollectedAt; draft.labCompletedAt = value.labCompletedAt
+        draft.notes = value.notes; draft.attachments = value.attachments
         draft.currentStep = value.currentStep; draft.isCorrection = value.isCorrection; draft.baseRevision = value.baseRevision
         draft.correctionReason = value.correctionReason; draft.revisionNote = value.revisionNote; draft.lastSaved = value.savedAt
         return draft
     }
 
-    func cachedSites() throws -> [Site] { try context.fetch(FetchDescriptor<LocalSiteEntity>()).filter(\.active).map(\.site) }
+    /// Sites a collector may choose: active catalog entries only.
+    func cachedSites() throws -> [Site] {
+        try context.fetch(FetchDescriptor<LocalSiteEntity>()).filter(\.active).map(\.site).sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+    }
+
+    /// Replaces the selectable catalog with the server's active list. A site that disappears is marked
+    /// inactive rather than deleted, so records collected there keep their site name on this phone.
     func replaceSites(_ sites: [Site]) throws {
-        try context.fetch(FetchDescriptor<LocalSiteEntity>()).forEach(context.delete)
-        sites.forEach { context.insert(LocalSiteEntity(siteID: $0.id, name: $0.name, county: $0.county, watershed: $0.watershed, latitude: $0.latitude, longitude: $0.longitude, active: true)) }
+        let incoming = Dictionary(sites.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        var existing: [String: LocalSiteEntity] = [:]
+        for entity in try context.fetch(FetchDescriptor<LocalSiteEntity>()) {
+            guard let site = incoming[entity.siteID] else { entity.active = false; continue }
+            entity.name = site.name; entity.county = site.county; entity.watershed = site.watershed
+            entity.latitude = site.latitude; entity.longitude = site.longitude; entity.siteCode = site.code
+            entity.toleranceMeters = site.toleranceMeters; entity.active = true; entity.updatedAt = .now
+            existing[entity.siteID] = entity
+        }
+        for site in sites where existing[site.id] == nil {
+            context.insert(LocalSiteEntity(siteID: site.id, name: site.name, county: site.county, watershed: site.watershed, latitude: site.latitude, longitude: site.longitude, active: true, siteCode: site.code, toleranceMeters: site.toleranceMeters))
+        }
         try context.save()
     }
 
@@ -541,7 +782,8 @@ private struct DraftPayload: Codable {
     }
 
     func loadRecords(ownerUID: String) throws -> [ObservationRecord] {
-        let sites = Dictionary(uniqueKeysWithValues: try cachedSites().map { ($0.id, $0) })
+        // Every cached site, including ones no longer selectable, so historical records keep their names.
+        let sites = Dictionary(try context.fetch(FetchDescriptor<LocalSiteEntity>()).map { ($0.siteID, $0.site) }, uniquingKeysWith: { first, _ in first })
         return try context.fetch(FetchDescriptor<LocalObservationEntity>())
             .filter { $0.ownerUID == ownerUID }
             .sorted { $0.updatedAt > $1.updatedAt }
@@ -551,14 +793,22 @@ private struct DraftPayload: Codable {
                     .sorted { $0.revisionNumber < $1.revisionNumber }
                 guard let current = revisions.first(where: { $0.revisionID == observation.currentRevisionID }) else { return nil }
                 let snapshot = try decoder.decode(CanonicalSnapshot.self, from: current.snapshot)
-                let site = sites[snapshot.siteID] ?? Site(id: snapshot.siteID, name: "Cached site unavailable", county: "", watershed: "", latitude: 0, longitude: 0, cached: true, distance: "")
+                let site = sites[snapshot.siteID] ?? Site(id: snapshot.siteID, name: "Site details not on this phone", county: "", watershed: "", latitude: 0, longitude: 0)
                 let temperatureUnit: MeasurementUnit = snapshot.temperatureEnteredUnit == "F" ? .fahrenheit : .celsius
-                let measurements = [MeasurementValue(
-                    id: CanonicalID.measurement(revisionID: snapshot.revisionID, parameterCode: "WATER_TEMP_C"),
-                    kind: .temperature, value: Self.entry(snapshot.temperatureEnteredValue), unit: temperatureUnit
-                )] + snapshot.measurements.map { measurement in
+                let temperature = snapshot.temperatureEnteredValue.map { entered in
+                    MeasurementValue(id: CanonicalID.measurement(revisionID: snapshot.revisionID, parameterCode: "WATER_TEMP_C"), kind: .temperature, value: Self.entry(entered), unit: temperatureUnit)
+                }
+                let measurements = (temperature.map { [$0] } ?? []) + snapshot.measurements.map { measurement in
                     let unit = measurement.kind.unitOptions.first(where: { $0.id == measurement.enteredUnitID }) ?? measurement.kind.defaultUnit
-                    return MeasurementValue(id: measurement.id, kind: measurement.kind, value: Self.entry(measurement.enteredValue), unit: unit)
+                    // The laboratory analysis details the collector entered travel with the record so a
+                    // correction keeps them. Other parameters' provenance follows from the test type.
+                    let analysis = measurement.kind.needsAnalysisProvenance ? measurement.analysisStage.map { stage in
+                        AnalysisProvenance(
+                            stage: stage, method: measurement.analysisMethod ?? "", instrument: measurement.analysisInstrument ?? "",
+                            analyzedAt: measurement.analyzedAt, fieldExceptionReason: measurement.fieldExceptionReason ?? ""
+                        )
+                    } : nil
+                    return MeasurementValue(id: measurement.id, kind: measurement.kind, value: Self.entry(measurement.enteredValue), unit: unit, analysis: analysis)
                 }
                 let history = try revisions.map { revision -> RevisionSummary in
                     let value = try decoder.decode(CanonicalSnapshot.self, from: revision.snapshot)
@@ -583,7 +833,8 @@ private struct DraftPayload: Codable {
                     sync: SyncState(rawValue: observation.sync) ?? .waiting, revision: snapshot.revisionNumber,
                     correctionReason: observation.correctionReason, revisions: history,
                     latitude: snapshot.latitude, longitude: snapshot.longitude, accuracyMeters: snapshot.accuracyMeters,
-                    validation: validation, validationFlags: flags
+                    validation: validation, validationFlags: flags,
+                    weatherCondition: snapshot.weatherCondition ?? "", waterColor: snapshot.waterColor ?? "", flowCondition: snapshot.flowCondition ?? ""
                 )
             }
     }
@@ -604,7 +855,12 @@ private struct DraftPayload: Codable {
     func updateRemoteState(ownerUID: String, submissionID: UUID, workflow: WorkflowState, sync: SyncState, correctionReason: String?, validation: ValidationSummary?, flags: [ValidationFlag]) throws {
         let key = submissionID.uuidString.lowercased()
         guard let observation = try context.fetch(FetchDescriptor<LocalObservationEntity>()).first(where: { $0.ownerUID == ownerUID && $0.submissionID == key }) else { return }
-        observation.workflow = workflow.rawValue; observation.sync = sync.rawValue; observation.correctionReason = correctionReason; observation.updatedAt = .now
+        observation.workflow = workflow.rawValue
+        let pendingQueueState = try context.fetch(FetchDescriptor<LocalSyncQueueEntity>())
+            .first(where: { $0.ownerUID == ownerUID && $0.submissionID == key && $0.state != "CONFIRMED" })?.state
+        let existingSync = SyncState(rawValue: observation.sync) ?? .waiting
+        observation.sync = Self.reconciledSyncState(incoming: sync, existing: existingSync, pendingQueueState: pendingQueueState).rawValue
+        observation.correctionReason = correctionReason; observation.updatedAt = .now
         observation.validationErrorCount = validation?.errorCount; observation.validationWarningCount = validation?.warningCount
         observation.validationInfoCount = validation?.infoCount; observation.overallQualityScore = validation?.overallQualityScore
         try context.fetch(FetchDescriptor<LocalValidationFlagEntity>())
@@ -617,6 +873,15 @@ private struct DraftPayload: Codable {
     func queue(ownerUID: String) throws -> [LocalSyncQueueEntity] { try context.fetch(FetchDescriptor<LocalSyncQueueEntity>()).filter { $0.ownerUID == ownerUID && $0.state != "CONFIRMED" } }
     func markQueue(_ item: LocalSyncQueueEntity, state: String, error: String? = nil) throws { item.state = state; item.lastError = error; item.attempts += 1; try context.save() }
 
+    static func reconciledSyncState(incoming: SyncState, existing: SyncState, pendingQueueState: String?) -> SyncState {
+        guard incoming == .synced, let pendingQueueState, pendingQueueState != "CONFIRMED" else { return incoming }
+        switch pendingQueueState {
+        case "SYNCING": return .syncing
+        case "RETRYABLE_FAILURE": return .failed
+        default: return existing == .failed ? .failed : .waiting
+        }
+    }
+
     private static func entry(_ value: Double) -> String {
         value.formatted(.number.locale(Locale(identifier: "en_US_POSIX")).grouping(.never).precision(.significantDigits(1...12)))
     }
@@ -628,10 +893,112 @@ private struct DraftPayload: Codable {
     }
 }
 
+/// Calls the `updateMyDisplayName` HTTPS callable with the signed-in user's ID token. Using the
+/// documented callable wire protocol keeps the app off an extra SDK for one request.
+enum ProfileCallable {
+    static let region = "us-east4"
+
+    static func updateDisplayName(_ name: String, user: User) async throws {
+        try await call("updateMyDisplayName", data: ["displayName": name], user: user)
+        if user.isEmailVerified || user.phoneNumber != nil {
+            try await call("initializeMyAccount", data: ["displayName": name], user: user)
+        }
+    }
+
+    /// Posts `{"data": ...}` with the caller's ID token. A rejected call throws `CallableFailure.server`
+    /// carrying the server's own human-readable message, so screens can show exactly why it failed.
+    /// Callers need only success or failure, so the (non-Sendable) result is validated here and not
+    /// returned across actor boundaries.
+    static func call(_ function: String, data: [String: Any], user: User, timeout: TimeInterval = 20) async throws {
+        guard let projectID = FirebaseApp.app()?.options.projectID else { throw URLError(.badURL) }
+        let url = FirebaseEnvironment.usesEmulators
+            ? URL(string: "http://\(FirebaseEnvironment.emulatorHost):5001/\(projectID)/\(region)/\(function)")!
+            : URL(string: "https://\(region)-\(projectID).cloudfunctions.net/\(function)")!
+        var request = URLRequest(url: url, timeoutInterval: timeout)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer \(try await user.getIDToken())", forHTTPHeaderField: "Authorization")
+        request.httpBody = try JSONSerialization.data(withJSONObject: ["data": data])
+        let (body, response) = try await URLSession.shared.data(for: request)
+        _ = try CallableResponse.result(statusCode: (response as? HTTPURLResponse)?.statusCode, body: body)
+    }
+}
+
+/// A callable request the server refused, with the server's message when it sent one.
+enum CallableFailure: LocalizedError, Equatable {
+    case server(status: String?, message: String)
+    case unexpectedResponse
+
+    var errorDescription: String? {
+        switch self {
+        case .server(_, let message): message
+        case .unexpectedResponse: "The server returned an unexpected response. Try again."
+        }
+    }
+}
+
+/// Reads the callable wire protocol: `{"result": ...}` on success, `{"error": {"status", "message"}}`
+/// on failure. Kept separate from the network call so the parsing is unit-tested.
+enum CallableResponse {
+    static func result(statusCode: Int?, body: Data) throws -> Any? {
+        let json = try? JSONSerialization.jsonObject(with: body) as? [String: Any]
+        if let error = json?["error"] as? [String: Any] {
+            let message = (error["message"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            throw CallableFailure.server(status: error["status"] as? String, message: message.isEmpty ? "The server could not complete this request." : message)
+        }
+        guard statusCode == 200 else { throw CallableFailure.unexpectedResponse }
+        return json?["result"]
+    }
+}
+
+/// Debug-only switch that points the app at the local Firebase emulators, so onboarding, account
+/// creation and the correction round trip can be exercised without touching live accounts or data.
+/// Launch with `-PWWUseFirebaseEmulators YES`. Release builds always use the configured project.
+enum FirebaseEnvironment {
+    static let emulatorHost = "127.0.0.1"
+
+    static var usesEmulators: Bool {
+        #if DEBUG
+        UserDefaults.standard.bool(forKey: "PWWUseFirebaseEmulators")
+        #else
+        false
+        #endif
+    }
+
+    static func configureEmulatorsIfRequested() {
+        guard usesEmulators else { return }
+        Auth.auth().useEmulator(withHost: emulatorHost, port: 9099)
+        let settings = Firestore.firestore().settings
+        settings.host = "\(emulatorHost):8080"
+        settings.isSSLEnabled = false
+        settings.cacheSettings = MemoryCacheSettings()
+        Firestore.firestore().settings = settings
+    }
+}
+
+enum GoogleSignInFailure: LocalizedError {
+    case missingClientID
+    case missingIDToken
+
+    var errorDescription: String? {
+        switch self {
+        case .missingClientID: "Google Sign-In is not configured for this Firebase app."
+        case .missingIDToken: "Google Sign-In did not return a valid identity token."
+        }
+    }
+}
+
 @MainActor protocol RemoteMobileRepository: AnyObject {
     func signIn(email: String, password: String) async throws -> User
+    func signInWithGoogle(presenting viewController: UIViewController) async throws -> User
+    func createAccount(fullName: String, email: String, password: String) async throws -> User
+    func sendPasswordReset(email: String) async throws
+    func resendEmailVerification() async throws
+    func refreshAccount() async throws -> User
+    func updateDisplayName(_ name: String) async throws
     func signOut() throws
     func fetchSites() async throws -> [Site]
+    func saveFieldDraft(_ snapshot: CanonicalSnapshot) async throws
     func sync(_ snapshot: CanonicalSnapshot) async throws -> WorkflowState
     func listen(ownerUID: String, onChange: @escaping @MainActor (UUID, WorkflowState, String?, ValidationSummary?, [ValidationFlag]) -> Void) -> ListenerRegistration
 }
@@ -639,20 +1006,111 @@ private struct DraftPayload: Codable {
 @MainActor final class FirebaseMobileService: RemoteMobileRepository {
     private let firestore = Firestore.firestore()
 
-    func signIn(email: String, password: String) async throws -> User { try await Auth.auth().signIn(withEmail: email.trimmingCharacters(in: .whitespacesAndNewlines), password: password).user }
-    func signOut() throws { try Auth.auth().signOut() }
+    func signIn(email: String, password: String) async throws -> User {
+        try await Auth.auth().signIn(
+            withEmail: email.trimmingCharacters(in: .whitespacesAndNewlines),
+            password: password
+        ).user
+    }
+
+    func signInWithGoogle(presenting viewController: UIViewController) async throws -> User {
+        guard let clientID = FirebaseApp.app()?.options.clientID else {
+            throw GoogleSignInFailure.missingClientID
+        }
+        GIDSignIn.sharedInstance.configuration = GIDConfiguration(clientID: clientID)
+        let result = try await GIDSignIn.sharedInstance.signIn(withPresenting: viewController)
+        guard let idToken = result.user.idToken?.tokenString else {
+            throw GoogleSignInFailure.missingIDToken
+        }
+        let credential = GoogleAuthProvider.credential(
+            withIDToken: idToken,
+            accessToken: result.user.accessToken.tokenString
+        )
+        return try await Auth.auth().signIn(with: credential).user
+    }
+
+    func createAccount(fullName: String, email: String, password: String) async throws -> User {
+        let user = try await Auth.auth().createUser(withEmail: email, password: password).user
+        let change = user.createProfileChangeRequest()
+        change.displayName = fullName
+        try await change.commitChanges()
+        // Local collection remains available; verified membership is initialized by the server only
+        // after the person opens the verification link and refreshes their account.
+        try? await user.sendEmailVerification()
+        try await ProfileCallable.updateDisplayName(fullName, user: user)
+        return user
+    }
+
+    func sendPasswordReset(email: String) async throws {
+        try await Auth.auth().sendPasswordReset(withEmail: email)
+    }
+
+    func resendEmailVerification() async throws {
+        guard let user = Auth.auth().currentUser else { throw CanonicalizationError.invalid("Sign in to verify your email.") }
+        try await user.sendEmailVerification()
+    }
+
+    func refreshAccount() async throws -> User {
+        guard let user = Auth.auth().currentUser else { throw CanonicalizationError.invalid("Sign in to refresh your account.") }
+        let uid = user.uid
+        try await user.reload()
+        _ = try await user.getIDToken(forcingRefresh: true)
+        guard Auth.auth().currentUser?.uid == uid else { throw CancellationError() }
+        if user.isEmailVerified || user.phoneNumber != nil {
+            let name = IdentityName.normalized(user.displayName ?? "")
+            guard IdentityName.problem(name) == nil else { throw CanonicalizationError.invalid("Save your full name before refreshing your collector profile.") }
+            // The server checks live verification and preserves existing roles/suspensions. No
+            // claims, role or historical attribution are accepted from this client.
+            try await ProfileCallable.call("initializeMyAccount", data: ["displayName": name], user: user)
+            _ = try await user.getIDToken(forcingRefresh: true)
+        }
+        guard Auth.auth().currentUser?.uid == uid else { throw CancellationError() }
+        return user
+    }
+
+    /// The server updates the research profile and mirrors the name to Firebase Auth. Report a
+    /// failure if either step fails, so Account never claims a name was saved when it was not.
+    func updateDisplayName(_ name: String) async throws {
+        guard let user = Auth.auth().currentUser else { throw CanonicalizationError.invalid("Sign in to change your name.") }
+        try await ProfileCallable.updateDisplayName(name, user: user)
+        try await user.reload()
+    }
+
+    func signOut() throws {
+        GIDSignIn.sharedInstance.signOut()
+        try Auth.auth().signOut()
+    }
 
     func fetchSites() async throws -> [Site] {
         let result = try await firestore.collection("siteCatalog").whereField("active", isEqualTo: true).getDocuments(source: .server)
-        return result.documents.compactMap { document in
-            let data = document.data()
-            guard data["site_id"] as? String == document.documentID,
-                  let name = data["site_name_display"] as? String,
-                  let latitude = data["latitude"] as? Double ?? (data["location"] as? GeoPoint)?.latitude,
-                  let longitude = data["longitude"] as? Double ?? (data["location"] as? GeoPoint)?.longitude,
-                  (-90...90).contains(latitude), (-180...180).contains(longitude)
-            else { return nil }
-            return Site(id: document.documentID, name: name, county: data["county_display"] as? String ?? "", watershed: data["watershed_display"] as? String ?? "", latitude: latitude, longitude: longitude, cached: false, distance: "")
+        return result.documents.compactMap { SiteCatalogDecoder.site(documentID: $0.documentID, data: $0.data()) }
+    }
+
+    /// Synchronizes a mutable field/lab draft using its original identities. It never advances the
+    /// parent workflow or invokes validation; final submission is a separate explicit action.
+    func saveFieldDraft(_ snapshot: CanonicalSnapshot) async throws {
+        guard Auth.auth().currentUser?.uid == snapshot.ownerUID else { throw CanonicalizationError.invalid("Authenticated account does not own this draft") }
+        let submission = firestore.collection("submissions").document(snapshot.submissionID.uuidString.lowercased())
+        let revision = submission.collection("revisions").document(snapshot.revisionID.uuidString.lowercased())
+        let existing = try await submission.getDocument(source: .server)
+        if existing.exists {
+            guard existing.get("collector_user_id") as? String == snapshot.ownerUID,
+                  existing.get("event_id") as? String == snapshot.eventID.uuidString.lowercased(),
+                  existing.get("site_id") as? String == snapshot.siteID,
+                  existing.get("status") as? String == (snapshot.correction ? "NEEDS_CORRECTION" : "DRAFT")
+            else { throw CanonicalizationError.invalid("The remote record is no longer an editable draft") }
+        } else {
+            guard !snapshot.correction else { throw CanonicalizationError.invalid("Correction parent is missing") }
+            try await submission.setData(FirebaseMapper.submission(snapshot, status: "DRAFT"))
+        }
+        let previous = try await revision.getDocument(source: .server)
+        guard !previous.exists || previous.get("revision_status") as? String == "DRAFT" else { throw CanonicalizationError.invalid("Submitted scientific revisions are immutable") }
+        try await revision.setData(FirebaseMapper.revision(snapshot, status: "DRAFT"))
+        let current = try await revision.collection("measurements").getDocuments(source: .server)
+        let desired = Set(snapshot.measurements.map { $0.id.uuidString.lowercased() })
+        for old in current.documents where !desired.contains(old.documentID) { try await old.reference.delete() }
+        for measurement in snapshot.measurements {
+            try await revision.collection("measurements").document(measurement.id.uuidString.lowercased()).setData(FirebaseMapper.measurement(measurement, in: snapshot))
         }
     }
 
@@ -667,26 +1125,29 @@ private struct DraftPayload: Codable {
         let existing = try await submission.getDocument(source: .server)
         if existing.exists {
             guard existing.get("collector_user_id") as? String == snapshot.ownerUID, existing.get("event_id") as? String == snapshot.eventID.uuidString.lowercased() else { throw CanonicalizationError.invalid("Remote identity does not match") }
-            if let status = existing.get("status") as? String, Self.acknowledged.contains(status) {
-                guard existing.get("current_revision_id") as? String == snapshot.revisionID.uuidString.lowercased(), let workflow = WorkflowState.backend(status) else { throw CanonicalizationError.invalid("Server acknowledged a different revision") }
+            if let workflow = try Self.acknowledgedWorkflow(
+                status: existing.get("status") as? String,
+                remoteRevisionID: existing.get("current_revision_id") as? String,
+                snapshotRevisionID: snapshot.revisionID.uuidString.lowercased(),
+                isCorrection: snapshot.correction
+            ) {
                 return workflow
             }
-            if snapshot.correction, existing.get("status") as? String != "NEEDS_CORRECTION" { throw CanonicalizationError.invalid("Correction is not currently requested") }
-        } else {
+            if snapshot.correction {
+            let status = existing.get("status") as? String
+            guard status == "NEEDS_CORRECTION" else { throw CanonicalizationError.invalid("Correction is not currently requested") }
+            try Self.validateCorrectionSequence(
+                remoteRevisionNumber: existing.get("current_revision_no") as? Int,
+                snapshotRevisionNumber: snapshot.revisionNumber
+            )
+        }
+    } else {
             guard !snapshot.correction else { throw CanonicalizationError.invalid("Correction parent is missing") }
             try await submission.setData(FirebaseMapper.submission(snapshot, status: "DRAFT"))
         }
         let existingRevision = try await revision.getDocument(source: .server)
-        let revisionStatus = existingRevision.get("revision_status") as? String
-        if !existingRevision.exists { try await revision.setData(FirebaseMapper.revision(snapshot, status: "DRAFT")) }
-        if revisionStatus != "SUBMITTED" {
-            guard revisionStatus == nil || revisionStatus == "DRAFT" else { throw CanonicalizationError.invalid("Remote revision is immutable") }
-            for measurement in snapshot.measurements {
-                try await revision.collection("measurements").document(measurement.id.uuidString.lowercased()).setData(FirebaseMapper.measurement(measurement, in: snapshot))
-            }
-            let remoteMeasurements = try await revision.collection("measurements").getDocuments(source: .server)
-            guard Set(remoteMeasurements.documents.map(\.documentID)) == Set(snapshot.measurements.map { $0.id.uuidString.lowercased() })
-            else { throw CanonicalizationError.invalid("Server draft is incomplete") }
+        if existingRevision.get("revision_status") as? String != "SUBMITTED" {
+            try await saveFieldDraft(snapshot)
             try await revision.updateData(["revision_status": "SUBMITTED", "submitted_at": FieldValue.serverTimestamp()])
         }
         let target = snapshot.correction ? "RESUBMITTED" : "SUBMITTED"
@@ -724,6 +1185,35 @@ private struct DraftPayload: Codable {
                 }
             }
         }
+    }
+
+    static func validateCorrectionSequence(remoteRevisionNumber: Int?, snapshotRevisionNumber: Int) throws {
+        guard let remoteRevisionNumber else { throw CanonicalizationError.invalid("Server correction revision number is unavailable") }
+        let expected = remoteRevisionNumber + 1
+        guard snapshotRevisionNumber == expected else {
+            throw CanonicalizationError.invalid("The archive expects Revision \(expected), but this phone prepared Revision \(snapshotRevisionNumber). Retry the pending correction instead of creating another revision.")
+        }
+    }
+
+    /// Returns a server workflow only when the server already points at the same immutable revision.
+    /// A correction is the one intentional mismatch: while the parent is NEEDS_CORRECTION the server must
+    /// still point at revision N until the collector appends revision N+1. That state must continue into the
+    /// upload path instead of being mistaken for an acknowledgement of the new revision.
+    static func acknowledgedWorkflow(
+        status: String?,
+        remoteRevisionID: String?,
+        snapshotRevisionID: String,
+        isCorrection: Bool
+    ) throws -> WorkflowState? {
+        guard let status, acknowledged.contains(status) else { return nil }
+        if remoteRevisionID == snapshotRevisionID {
+            guard let workflow = WorkflowState.backend(status) else {
+                throw CanonicalizationError.invalid("Server workflow state is unsupported")
+            }
+            return workflow
+        }
+        if isCorrection && status == "NEEDS_CORRECTION" { return nil }
+        throw CanonicalizationError.invalid("Server acknowledged a different revision")
     }
 
     private static let acknowledged: Set<String> = ["SUBMITTED", "VALIDATING", "PENDING_REVIEW", "NEEDS_CORRECTION", "RESUBMITTED", "APPROVED", "REJECTED", "PUBLISHING", "PUBLISH_FAILED", "PUBLISHED"]

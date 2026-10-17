@@ -13,6 +13,7 @@
 import { getApp, getApps, initializeApp, type FirebaseApp } from 'firebase/app';
 import { connectAuthEmulator, getAuth, type Auth } from 'firebase/auth';
 import { connectFirestoreEmulator, getFirestore, type Firestore } from 'firebase/firestore';
+import { connectFunctionsEmulator, getFunctions, httpsCallable } from 'firebase/functions';
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -45,6 +46,7 @@ function connectLocalEmulators(app: FirebaseApp): void {
   if (process.env.NEXT_PUBLIC_USE_FIREBASE_EMULATORS !== 'true' || state.__watershedFirebaseEmulatorsConnected) return;
   connectAuthEmulator(getAuth(app), 'http://127.0.0.1:9099', { disableWarnings: true });
   connectFirestoreEmulator(getFirestore(app), '127.0.0.1', 8080);
+  connectFunctionsEmulator(getFunctions(app, 'us-east4'), '127.0.0.1', 5001);
   state.__watershedFirebaseEmulatorsConnected = true;
 }
 
@@ -58,4 +60,11 @@ export function clientDb(): Firestore {
   const app = clientApp();
   connectLocalEmulators(app);
   return getFirestore(app);
+}
+
+export async function accountAction<T>(name: 'initializeMyAccount' | 'requestMyReviewerAccess' | 'decideReviewerMembership' | 'sendSubmissionMessage' | 'proposeSiteCoordinates' | 'decideSiteCoordinates', data: object): Promise<T> {
+  const app = clientApp();
+  connectLocalEmulators(app);
+  const result = await httpsCallable<object, T>(getFunctions(app, 'us-east4'), name)(data);
+  return result.data;
 }

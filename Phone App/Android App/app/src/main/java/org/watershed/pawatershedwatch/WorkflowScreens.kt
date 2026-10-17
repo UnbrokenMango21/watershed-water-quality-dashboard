@@ -39,6 +39,8 @@ import androidx.compose.material.icons.rounded.LocationOn
 import androidx.compose.material.icons.rounded.MyLocation
 import androidx.compose.material.icons.rounded.Schedule
 import androidx.compose.material.icons.rounded.Science
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.FilterChip
@@ -180,7 +182,7 @@ private fun GpsPanel(draft: ObservationDraft, onReacquire: () -> Unit, onSetting
 }
 
 @Composable
-private fun DateTimeControls(epoch: Long, onChange: (Long) -> Unit) {
+internal fun DateTimeControls(epoch: Long, labelPrefix: String = "Collection", onChange: (Long) -> Unit) {
     val context = LocalContext.current
     val eastern = remember(epoch) { EasternTime.display(epoch) }
     val dateText = remember(epoch) {
@@ -190,7 +192,7 @@ private fun DateTimeControls(epoch: Long, onChange: (Long) -> Unit) {
     }
     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         OutlinedButton(
-            modifier = Modifier.weight(1f).height(56.dp),
+            modifier = Modifier.weight(1f).height(56.dp).semantics { contentDescription = "$labelPrefix date, $dateText. Change date." },
             onClick = {
                 DatePickerDialog(context, { _, year, month, day ->
                     onChange(EasternTime.replaceDate(epoch, year, month + 1, day))
@@ -201,8 +203,9 @@ private fun DateTimeControls(epoch: Long, onChange: (Long) -> Unit) {
             Spacer(Modifier.width(8.dp))
             Text(dateText)
         }
+        val timeText = eastern.format(java.time.format.DateTimeFormatter.ofPattern("h:mm a", Locale.US))
         OutlinedButton(
-            modifier = Modifier.weight(1f).height(56.dp),
+            modifier = Modifier.weight(1f).height(56.dp).semantics { contentDescription = "$labelPrefix time, $timeText Eastern. Change time." },
             onClick = {
                 TimePickerDialog(context, { _, hour, minute ->
                     onChange(EasternTime.replaceTime(epoch, hour, minute))
@@ -211,7 +214,7 @@ private fun DateTimeControls(epoch: Long, onChange: (Long) -> Unit) {
         ) {
             Icon(Icons.Rounded.Schedule, contentDescription = null)
             Spacer(Modifier.width(8.dp))
-            Text(eastern.format(java.time.format.DateTimeFormatter.ofPattern("h:mm a", Locale.US)))
+            Text(timeText)
         }
     }
 }
@@ -220,7 +223,7 @@ private fun DateTimeControls(epoch: Long, onChange: (Long) -> Unit) {
 fun TestMethodScreen(model: AppViewModel, onBack: () -> Unit, onNext: () -> Unit) {
     val draft = model.draft ?: return
     val focus = LocalFocusManager.current
-    val canContinue = draft.testType != null && draft.method.isNotBlank() && draft.instrument.isNotBlank() &&
+    val canContinue = draft.testType != null &&
         (draft.testType != TestType.Other || draft.testTypeOther.isNotBlank())
     Scaffold(
         topBar = { FieldTopBar("Test and Method", onBack) },
@@ -230,10 +233,11 @@ fun TestMethodScreen(model: AppViewModel, onBack: () -> Unit, onNext: () -> Unit
             modifier = Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).imePadding().padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(18.dp),
         ) {
-            ScreenIntro("Step 3", "How are you testing?", "This choice shapes which measurements are required next.")
+            ScreenIntro("Step 3", "How are you testing?", "Choose the method used for this visit. It can change next time.")
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 FieldLabel("Test type", required = true, style = MaterialTheme.typography.titleLarge)
-                TestType.entries.forEach { type ->
+                val choices = TestType.offeredForNewObservations + listOfNotNull(draft.testType?.takeIf { it !in TestType.offeredForNewObservations })
+                choices.forEach { type ->
                     Surface(
                         modifier = Modifier.fillMaxWidth().clickable { model.selectTestType(type) },
                         shape = RoundedCornerShape(16.dp),
@@ -252,61 +256,11 @@ fun TestMethodScreen(model: AppViewModel, onBack: () -> Unit, onNext: () -> Unit
                         value = draft.testTypeOther,
                         onValueChange = { value -> model.updateDraft { it.copy(testTypeOther = value) } },
                         modifier = Modifier.fillMaxWidth(),
-                        label = { FieldLabel("Describe test type", required = true) },
+                        label = { FieldLabel("Method / Instrument", required = true) },
                         singleLine = false,
                         maxLines = 3,
                         shape = RoundedCornerShape(16.dp),
                     )
-                }
-                OutlinedTextField(
-                    value = draft.method,
-                    onValueChange = { value -> model.updateDraft { it.copy(method = value) } },
-                    modifier = Modifier.fillMaxWidth(),
-                    label = { FieldLabel("Collection / measurement method", required = true) },
-                    minLines = 2,
-                    shape = RoundedCornerShape(16.dp),
-                )
-                OutlinedTextField(
-                    value = draft.instrument,
-                    onValueChange = { value -> model.updateDraft { it.copy(instrument = value) } },
-                    modifier = Modifier.fillMaxWidth(),
-                    label = { FieldLabel(if (type == TestType.PennStateLab || type == TestType.ExternalLab) "Laboratory" else "Instrument or kit", required = true) },
-                    minLines = 1,
-                    maxLines = 3,
-                    shape = RoundedCornerShape(16.dp),
-                )
-                if (type in listOf(TestType.PennStateLab, TestType.ExternalLab, TestType.Mixed)) {
-                    FieldSurface {
-                        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text("Lab results pending", style = MaterialTheme.typography.titleMedium)
-                                    Text("Record requested analyses now; add results in a later revision.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                }
-                                Switch(
-                                    checked = draft.labResultsPending,
-                                    onCheckedChange = { pending -> model.updateDraft { it.copy(labResultsPending = pending) } },
-                                )
-                            }
-                            if (draft.labResultsPending) {
-                                Text("Requested analyses", color = MaterialTheme.colorScheme.secondary, style = MaterialTheme.typography.labelLarge)
-                                listOf(MeasurementKind.Chloride, MeasurementKind.Nitrate, MeasurementKind.Phosphate, MeasurementKind.Sulfate).forEach { kind ->
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth().clickable {
-                                            model.updateDraft {
-                                                val next = if (kind in it.requestedAnalytes) it.requestedAnalytes - kind else it.requestedAnalytes + kind
-                                                it.copy(requestedAnalytes = next)
-                                            }
-                                        },
-                                        verticalAlignment = Alignment.CenterVertically,
-                                    ) {
-                                        Checkbox(checked = kind in draft.requestedAnalytes, onCheckedChange = null)
-                                        Text(kind.title)
-                                    }
-                                }
-                            }
-                        }
-                    }
                 }
             }
             Spacer(Modifier.height(120.dp))
@@ -320,7 +274,7 @@ fun MeasurementsScreen(model: AppViewModel, onBack: () -> Unit, onNext: () -> Un
     val required = draft.requiredMeasurements
     val optional = draft.optionalMeasurements
     val invalid = draft.values.any { (kind, value) -> measurementError(kind, value, draft.selectedUnit(kind)) != null }
-    val canContinue = draft.requiredComplete && !invalid
+    val canContinue = draft.visualObservationsComplete && !invalid
     val ordered = remember(required, optional) { required + optional }
     val focusChain = rememberMeasurementFocusChain(ordered)
     val listState = rememberLazyListState()
@@ -329,12 +283,7 @@ fun MeasurementsScreen(model: AppViewModel, onBack: () -> Unit, onNext: () -> Un
     fun nextFocus(kind: MeasurementKind): FocusRequester? =
         ordered.drop(ordered.indexOf(kind) + 1).firstOrNull(::supported)?.let(focusChain::get)
 
-    val headerCount = if (required.isEmpty()) 3 else 2
-    fun itemIndex(kind: MeasurementKind): Int? = when {
-        required.contains(kind) -> headerCount + required.indexOf(kind)
-        optional.contains(kind) -> headerCount + required.size + 1 + optional.indexOf(kind)
-        else -> null
-    }
+    fun itemIndex(kind: MeasurementKind): Int? = measurementItemIndex(kind, required, optional)
 
     val focusTarget = model.measurementFocusTarget
     LaunchedEffect(focusTarget) {
@@ -355,20 +304,39 @@ fun MeasurementsScreen(model: AppViewModel, onBack: () -> Unit, onNext: () -> Un
             contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 16.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            item {
+            item(key = MeasurementListKeys.INTRO) {
                 ScreenIntro(
                     "Step 4",
                     "Enter readings",
-                    "${draft.completedRequiredCount} of ${required.size} required complete · tap any unit to change it",
+                    "Record the site observations. Numerical measurements are optional.",
                 )
             }
-            item { SectionHeading("Required Measurements", "Complete these for ${draft.testType?.label ?: "this test"}") }
-            if (required.isEmpty()) {
-                item {
-                    StatusPanel("No readings required yet", "Requested lab analyses are pending. Optional field observations can still be added below.", Water, Icons.Rounded.Science)
+            item(key = MeasurementListKeys.OBSERVATIONS) {
+                FieldSurface {
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        FieldLabel("Site observations", required = true, style = MaterialTheme.typography.titleMedium)
+                        Text("Choose Unknown for a condition that was not observed.", style = MaterialTheme.typography.bodySmall)
+                        ObservationChoice("Weather Conditions", draft.weatherCondition, FieldObservationVocabulary.weather) { value -> model.updateDraft { it.copy(weatherCondition = value) } }
+                        ObservationChoice("Water Color", draft.waterColor, FieldObservationVocabulary.waterColor) { value -> model.updateDraft { it.copy(waterColor = value) } }
+                        ObservationChoice("Flow Condition", draft.flowCondition, FieldObservationVocabulary.flow) { value -> model.updateDraft { it.copy(flowCondition = value) } }
+                    }
                 }
             }
-            items(required, key = { "required-${it.name}" }) { kind ->
+            item(key = MeasurementListKeys.LAB_WORKFLOW) {
+                FieldSurface {
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text("Field collection and laboratory work", style = MaterialTheme.typography.titleMedium)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("Laboratory results pending", modifier = Modifier.weight(1f))
+                            Switch(checked = draft.labResultsPending, onCheckedChange = { pending -> model.updateDraft { it.copy(labResultsPending = pending, collectionStage = if (pending) CollectionStage.LAB_PENDING else CollectionStage.LAB_COMPLETED, labCompletedAt = if (pending) null else System.currentTimeMillis()) } })
+                        }
+                        Text("Save on this phone and synchronize when online. Reopen the same draft after analysis; pending laboratory work cannot be submitted.", style = MaterialTheme.typography.bodySmall)
+                        OutlinedButton(onClick = { model.saveFieldCollection() }, enabled = draft.visualObservationsComplete) { Text("Save field collection for later") }
+                        if (draft.fieldCollectedAt != null) Text("Field collection saved on this phone", style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            }
+            items(required, key = MeasurementListKeys::required) { kind ->
                 MeasurementEntry(
                     draft,
                     kind,
@@ -379,20 +347,61 @@ fun MeasurementsScreen(model: AppViewModel, onBack: () -> Unit, onNext: () -> Un
                     onUnitChange = { unit, clear -> model.changeUnit(kind, unit, clear) },
                 )
             }
-            item { SectionHeading("Optional Measurements", "Always available when the field protocol calls for them") }
-            items(optional, key = { "optional-${it.name}" }) { kind ->
-                MeasurementEntry(
-                    draft,
-                    kind,
-                    required = false,
-                    enabled = supported(kind),
-                    focusRequester = focusChain[kind],
-                    nextFocusRequester = nextFocus(kind),
-                    onValueChange = { model.setMeasurement(kind, it) },
-                    onUnitChange = { unit, clear -> model.changeUnit(kind, unit, clear) },
-                )
+            item(key = MeasurementListKeys.OPTIONAL_HEADING) { SectionHeading("Optional Measurements", "Always available when the field protocol calls for them") }
+            items(optional, key = MeasurementListKeys::optional) { kind ->
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    MeasurementEntry(
+                        draft,
+                        kind,
+                        required = false,
+                        enabled = supported(kind),
+                        focusRequester = focusChain[kind],
+                        nextFocusRequester = nextFocus(kind),
+                        onValueChange = { model.setMeasurement(kind, it) },
+                        onUnitChange = { unit, clear -> model.changeUnit(kind, unit, clear) },
+                    )
+                    if (kind.needsAnalysisProvenance && draft.values[kind].orEmpty().isNotBlank()) {
+                        AnalysisProvenanceFields(draft, kind) { change -> model.updateAnalysis(kind, change) }
+                    }
+                }
             }
             item { Spacer(Modifier.height(16.dp)) }
+        }
+    }
+}
+
+/** Item keys of the Measurements list. Review-issue focus derives scroll positions from this same order. */
+internal object MeasurementListKeys {
+    const val INTRO = "intro"
+    const val OBSERVATIONS = "site-observations"
+    const val LAB_WORKFLOW = "lab-workflow"
+    const val OPTIONAL_HEADING = "optional-heading"
+    val leading = listOf(INTRO, OBSERVATIONS, LAB_WORKFLOW)
+    fun required(kind: MeasurementKind) = "required-${kind.name}"
+    fun optional(kind: MeasurementKind) = "optional-${kind.name}"
+
+    /** Keys in the order MeasurementsScreen emits its items, up to the last measurement row. */
+    fun ordered(requiredKinds: List<MeasurementKind>, optionalKinds: List<MeasurementKind>): List<String> =
+        leading + requiredKinds.map(::required) + OPTIONAL_HEADING + optionalKinds.map(::optional)
+}
+
+/** The LazyColumn index of a measurement row, or null when the kind is not shown. */
+internal fun measurementItemIndex(kind: MeasurementKind, required: List<MeasurementKind>, optional: List<MeasurementKind>): Int? {
+    val key = when (kind) {
+        in required -> MeasurementListKeys.required(kind)
+        in optional -> MeasurementListKeys.optional(kind)
+        else -> return null
+    }
+    return MeasurementListKeys.ordered(required, optional).indexOf(key).takeIf { it >= 0 }
+}
+
+@Composable
+private fun ObservationChoice(label: String, value: String, choices: List<String>, onChange: (String) -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
+    Box {
+        OutlinedButton(onClick = { expanded = true }, modifier = Modifier.fillMaxWidth()) { Text("$label: ${value.ifBlank { "Choose…" }}") }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            choices.forEach { choice -> DropdownMenuItem(text = { Text(choice) }, onClick = { onChange(choice); expanded = false }) }
         }
     }
 }
@@ -458,13 +467,14 @@ fun ReviewScreen(model: AppViewModel, onBack: () -> Unit, onFix: (ReviewIssue) -
             }
             ReviewSection("Test and method") {
                 KeyValueRow("Test type", draft.testType?.label ?: "Not selected")
-                KeyValueRow("Method", draft.method)
-                if (draft.instrument.isNotBlank()) KeyValueRow("Instrument or lab", draft.instrument)
+                KeyValueRow("Method", draft.canonicalMethod)
+                if (draft.testType != TestType.Other && draft.instrument.isNotBlank()) KeyValueRow("Instrument or lab", draft.instrument)
             }
             ReviewSection("Measurements") {
                 MeasurementKind.entries.forEach { kind ->
                     draft.values[kind]?.takeIf(String::isNotBlank)?.let { raw ->
                         KeyValueRow(kind.title, displayMeasurement(MeasurementValue(kind, raw, draft.selectedUnit(kind).id)))
+                        if (kind.needsAnalysisProvenance) KeyValueRow("${kind.title} analysis", analysisSummary(draft.analysis(kind)))
                     }
                 }
                 if (draft.values.values.none { it.isNotBlank() }) Text("No measurements entered", color = MaterialTheme.colorScheme.onSurfaceVariant)

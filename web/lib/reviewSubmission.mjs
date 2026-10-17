@@ -7,6 +7,22 @@ const DECISIONS = {
   REJECT: { nextStatus: 'REJECTED', requiresReason: true, auditEventType: 'REVIEW_REJECTED' },
 };
 
+/**
+ * Who may review. Reviewers are provisioned by an administrator: the Auth account must be enabled,
+ * carry a QC_REVIEWER or ADMIN custom claim, and have an active users/{uid} profile with a reviewer
+ * role. Returns null when access is allowed, otherwise a reason for logs (never shown in detail).
+ */
+export function reviewerAccessProblem({ disabled, claimRole, profile, accessVersion }) {
+  if (disabled) return 'account disabled';
+  if (!REVIEWER_ROLES.has(claimRole)) return 'no reviewer role claim';
+  if (!profile) return 'no reviewer profile';
+  if (profile.active !== true) return 'reviewer profile inactive';
+  if (!REVIEWER_ROLES.has(profile.role)) return 'profile role is not a reviewer role';
+  if (profile.role !== claimRole) return 'profile and claim roles disagree';
+  if (profile.access_version && profile.access_version !== accessVersion) return 'membership version changed';
+  return null;
+}
+
 export class ReviewValidationError extends Error {}
 export class ReviewConflictError extends Error {}
 
@@ -40,6 +56,7 @@ export async function applyReviewDecision({
   decision,
   reviewerUid,
   reviewerRole,
+  reviewerDisplayName = null,
   reason = null,
   now = new Date(),
 }) {
@@ -104,6 +121,10 @@ export async function applyReviewDecision({
     if (submission.status !== REVIEWABLE_STATUS) {
       throw new ReviewConflictError(`Submission '${submissionId}' is not reviewable from status '${submission.status}'`);
     }
+    // Separation of duties: whoever collected an observation cannot also decide it.
+    if (submission.collector_user_id === reviewerUid) {
+      throw new ReviewConflictError('You collected this observation. Another reviewer must decide it.');
+    }
 
     const previousStatus = submission.status;
 
@@ -128,6 +149,16 @@ export async function applyReviewDecision({
       revision_id: expectedRevisionId,
       reason: reasonValue,
       metadata: { reviewer_role: reviewerRole },
+    });
+
+    // The discussion event commits with the decision and audit. Retries reuse the
+    // same deterministic ID; scientific revision documents remain untouched.
+    tx.set(submissionRef.collection('messages').doc(auditId), {
+      message_id: auditId, submission_id: submissionId, revision_id: expectedRevisionId,
+      sender_uid: reviewerUid, sender_display_name: reviewerDisplayName || 'Authorized reviewer',
+      sender_role: reviewerRole, created_at: occurredAt,
+      kind: decision === 'NEEDS_CORRECTION' ? 'CORRECTION_REQUEST' : 'REVIEW_DECISION',
+      decision, text: reasonValue || (decision === 'APPROVE' ? 'This revision was approved for publication processing.' : 'Review decision recorded.'),
     });
 
     return {

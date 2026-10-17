@@ -12,6 +12,8 @@ import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import com.google.android.gms.tasks.Task
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.auth.FirebaseUser
+import com.google.firebase.functions.FirebaseFunctions
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
@@ -43,7 +45,20 @@ class AppGraph(application: Application, val database: WatershedDatabase) {
     val sync: SyncRepository = FirebaseSyncRepository(
         application, FirebaseAuth.getInstance(), FirebaseFirestore.getInstance(), database.dao(), local,
     )
+    // Callables are deployed in us-east4 (functions/index.mjs).
+    val collaboration: CollaborationRepository = FirebaseCollaborationRepository(
+        FirebaseFirestore.getInstance(), FirebaseFunctions.getInstance("us-east4"),
+    )
 }
+
+private fun FirebaseUser.toAccount() = AuthAccount(
+    uid = uid,
+    email = email,
+    displayName = displayName?.takeIf(String::isNotBlank) ?: email?.substringBefore('@').orEmpty(),
+    emailVerified = isEmailVerified,
+    profileName = displayName?.trim()?.takeIf(String::isNotEmpty),
+    hasVerifiedPhone = !phoneNumber.isNullOrBlank(),
+)
 
 private suspend fun <T> Task<T>.awaitResult(): T = suspendCancellableCoroutine { continuation ->
     addOnSuccessListener { if (continuation.isActive) continuation.resume(it) }
@@ -55,7 +70,7 @@ class FirebaseAuthRepository(private val auth: FirebaseAuth) : AuthRepository {
     override val account: Flow<AuthAccount?> = callbackFlow {
         val listener = FirebaseAuth.AuthStateListener { current ->
             val user = current.currentUser
-            trySend(user?.let { AuthAccount(it.uid, it.email, it.displayName ?: it.email?.substringBefore('@').orEmpty()) })
+            trySend(user?.toAccount())
         }
         auth.addAuthStateListener(listener)
         awaitClose { auth.removeAuthStateListener(listener) }
@@ -64,7 +79,18 @@ class FirebaseAuthRepository(private val auth: FirebaseAuth) : AuthRepository {
     override suspend fun signIn(email: String, password: String): Result<AuthAccount> = runCatching {
         val user = auth.signInWithEmailAndPassword(email.trim(), password).awaitResult().user
             ?: error("Authentication did not return an account")
-        AuthAccount(user.uid, user.email, user.displayName ?: user.email?.substringBefore('@').orEmpty())
+        user.toAccount()
+    }
+
+    override suspend fun reload(): Result<AuthAccount?> = runCatching {
+        val user = auth.currentUser ?: return@runCatching null
+        user.reload().awaitResult()
+        auth.currentUser?.toAccount()
+    }
+
+    override suspend fun sendEmailVerification(): Result<Unit> = runCatching {
+        requireNotNull(auth.currentUser) { "Sign in first." }.sendEmailVerification().awaitResult()
+        Unit
     }
 
     override fun signOut() = auth.signOut()
@@ -106,6 +132,26 @@ class FirebaseSyncRepository(
     private val dao: MobileDao,
     private val local: ObservationRepository,
 ) : SyncRepository {
+    override suspend fun saveFieldDraft(snapshot: CanonicalObservationSnapshot) {
+        require(auth.currentUser?.uid == snapshot.ownerUid) { "Authenticated account does not own this draft" }
+        val parent = firestore.collection("submissions").document(snapshot.submissionId.value)
+        val revision = parent.collection("revisions").document(snapshot.revisionId.value)
+        val existing = parent.get(Source.SERVER).awaitResult()
+        if (existing.exists()) {
+            require(existing.getString("collector_user_id") == snapshot.ownerUid && existing.getString("event_id") == snapshot.eventId.value && existing.getString("site_id") == snapshot.siteId.value) { "Remote draft identity mismatch" }
+            require(existing.getString("status") == if (snapshot.correction) "NEEDS_CORRECTION" else "DRAFT") { "Remote record is no longer an editable draft" }
+        } else {
+            require(!snapshot.correction) { "Correction parent is missing" }
+            parent.set(FirestoreObservationMapper.submission(snapshot, "DRAFT")).awaitResult()
+        }
+        val previous = revision.get(Source.SERVER).awaitResult()
+        require(!previous.exists() || previous.getString("revision_status") == "DRAFT") { "Submitted scientific revisions are immutable" }
+        revision.set(FirestoreObservationMapper.revision(snapshot, "DRAFT")).awaitResult()
+        val desired = snapshot.measurements.map { it.id.value }.toSet()
+        revision.collection("measurements").get(Source.SERVER).awaitResult().documents.filter { it.id !in desired }.forEach { it.reference.delete().awaitResult() }
+        snapshot.measurements.forEach { measurement -> revision.collection("measurements").document(measurement.id.value).set(FirestoreObservationMapper.measurement(snapshot, measurement)).awaitResult() }
+    }
+
     override suspend fun enqueue(ownerUid: String, submissionId: SubmissionId, revisionId: RevisionId) {
         dao.putQueue(SyncQueueEntity(submissionId.value, revisionId.value, ownerUid, "WAITING", 0, 0, null))
         val request = OneTimeWorkRequestBuilder<ObservationSyncWorker>()
@@ -144,20 +190,10 @@ class FirebaseSyncRepository(
             }
 
             val remoteRevision = revisionRef.get(Source.SERVER).awaitResult()
-            if (!remoteRevision.exists()) {
-                revisionRef.set(FirestoreObservationMapper.revision(snapshot, "DRAFT")).awaitResult()
-            } else {
-                require(remoteRevision.getString("revision_status") == "DRAFT") { "Remote revision is immutable" }
+            if (remoteRevision.getString("revision_status") != "SUBMITTED") {
+                saveFieldDraft(snapshot)
+                revisionRef.update(mapOf("revision_status" to "SUBMITTED", "submitted_at" to FieldValue.serverTimestamp())).awaitResult()
             }
-            snapshot.measurements.forEach { value ->
-                revisionRef.collection("measurements").document(value.id.value)
-                    .set(FirestoreObservationMapper.measurement(snapshot, value)).awaitResult()
-            }
-            require(revisionRef.get(Source.SERVER).awaitResult().exists())
-            for (measurement in snapshot.measurements) {
-                require(revisionRef.collection("measurements").document(measurement.id.value).get(Source.SERVER).awaitResult().exists())
-            }
-            revisionRef.update(mapOf("revision_status" to "SUBMITTED", "submitted_at" to FieldValue.serverTimestamp())).awaitResult()
             val target = if (snapshot.correction) "RESUBMITTED" else "SUBMITTED"
             parentRef.update(
                 mapOf(
@@ -242,18 +278,29 @@ class ObservationSyncWorker(application: android.content.Context, params: Worker
     }
 }
 
-private fun RevisionEntity.snapshot(measurements: List<LocalMeasurementEntity>): CanonicalObservationSnapshot {
+internal fun RevisionEntity.snapshot(measurements: List<LocalMeasurementEntity>): CanonicalObservationSnapshot {
     val canonicalMeasurements = measurements.mapNotNull { entity ->
         val kind = MeasurementKind.entries.firstOrNull { it.name == entity.kind } ?: return@mapNotNull null
         if (kind == MeasurementKind.Temperature || entity.parameterCode == null || entity.canonicalValue == null || entity.canonicalUnit == null) return@mapNotNull null
+        // Provenance is replayed exactly as it was persisted at submission, including a null stage and
+        // time for a value whose method category did not establish them. Nothing is defaulted: a
+        // laboratory parameter without provenance is rejected by the rules rather than being given an
+        // invented analysis. Rows written before Room v5 have no analysis method either and replay
+        // under 0.1.0, which ignores these fields.
         CanonicalMeasurement(
             MeasurementId(entity.measurementId), kind, entity.parameterCode, kind.title,
             entity.rawValue.toDouble(), entity.rawUnitId, Units.byId(entity.rawUnitId)?.menuTitle.orEmpty(), entity.canonicalValue, entity.canonicalUnit,
+            analysisStage = entity.analysisStage,
+            analysisMethod = entity.analysisMethod?.takeIf(String::isNotBlank) ?: method,
+            analysisInstrument = if (entity.analysisMethod != null) entity.analysisInstrument else instrument.ifBlank { null },
+            analyzedAt = entity.analyzedAt,
+            fieldExceptionReason = entity.fieldExceptionReason,
         )
     }
     return CanonicalObservationSnapshot(
         SubmissionId(submissionId), EventId(eventId), RevisionId(revisionId), revisionNo, ownerUid, SiteId(siteId), createdAt,
         collectedAt, submittedAt, latitude, longitude, accuracyM, collector, testType, testTypeOther, method, instrument, notes,
         tempEnteredValue, tempEnteredUnit, tempC, tempF, canonicalMeasurements, emptyList(), appVersion, revisionNo > 1,
+        weatherCondition, waterColor, flowCondition, collectionStage, schemaVersion,
     )
 }

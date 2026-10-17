@@ -97,6 +97,9 @@ export interface RevisionDoc {
   gps_accuracy_m: Nullable<number>;
   site_distance_m: Nullable<number>;
   weather_condition: Nullable<string>;
+  water_color: Nullable<string>;
+  flow_condition: Nullable<string>;
+  collection_stage: Nullable<'DRAFT' | 'FIELD_COLLECTED' | 'LAB_PENDING' | 'LAB_COMPLETED' | 'READY_FOR_REVIEW'>;
   data_collected_by: Nullable<string>;
   test_type: Nullable<string>;
   test_type_other: Nullable<string>;
@@ -130,6 +133,12 @@ export interface MeasurementDoc {
   qualifier: Nullable<string>;
   notes: Nullable<string>;
   entered_at: Nullable<Timestamp>;
+  /** Schema 0.2.0: where the value was analyzed. Absent on legacy 0.1.0 measurements. */
+  analysis_stage?: Nullable<'FIELD' | 'LAB'>;
+  /** Schema 0.2.0: when the value was analyzed (laboratory results are usually later than collection). */
+  analyzed_at?: Nullable<Timestamp>;
+  /** Documented protocol exception when a laboratory parameter was analyzed in the field. */
+  field_exception_reason?: Nullable<string>;
 }
 
 export interface ValidationFlagDoc {

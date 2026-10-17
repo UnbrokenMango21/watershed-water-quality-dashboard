@@ -296,3 +296,31 @@ test('an unauthorized role cannot apply a review decision', async () => {
   const submissionSnap = await seeded.submissionRef.get();
   assert.equal(submissionSnap.data().status, 'PENDING_REVIEW');
 });
+
+test('reviewer access needs an enabled account, a reviewer claim and an active reviewer profile', async () => {
+  const { reviewerAccessProblem } = await import('../../web/lib/reviewSubmission.mjs');
+  const profile = { active: true, role: 'QC_REVIEWER' };
+  assert.equal(reviewerAccessProblem({ disabled: false, claimRole: 'QC_REVIEWER', profile }), null);
+  assert.equal(reviewerAccessProblem({ disabled: false, claimRole: 'ADMIN', profile: { active: true, role: 'ADMIN' } }), null);
+  assert.ok(reviewerAccessProblem({ disabled: true, claimRole: 'QC_REVIEWER', profile }));
+  assert.ok(reviewerAccessProblem({ disabled: false, claimRole: 'COLLECTOR', profile }));
+  assert.ok(reviewerAccessProblem({ disabled: false, claimRole: undefined, profile }));
+  assert.ok(reviewerAccessProblem({ disabled: false, claimRole: 'QC_REVIEWER', profile: null }));
+  assert.ok(reviewerAccessProblem({ disabled: false, claimRole: 'QC_REVIEWER', profile: { active: false, role: 'QC_REVIEWER' } }));
+  assert.ok(reviewerAccessProblem({ disabled: false, claimRole: 'QC_REVIEWER', profile: { active: true, role: 'COLLECTOR' } }));
+});
+
+test('a reviewer cannot decide an observation they collected, and nothing is written', async () => {
+  const seeded = await seedPendingReview();
+  await assert.rejects(
+    () => applyReviewDecision({
+      db, Timestamp, submissionId: seeded.submissionId, expectedRevisionId: seeded.revisionId,
+      decision: 'APPROVE', reviewerUid: 'collector-review-test', reviewerRole: 'QC_REVIEWER', now: NOW,
+    }),
+    (error) => error instanceof ReviewConflictError && /Another reviewer must decide/.test(error.message),
+  );
+  const submission = (await db.collection('submissions').doc(seeded.submissionId).get()).data();
+  assert.equal(submission.status, 'PENDING_REVIEW');
+  assert.equal((await db.collection('submissions').doc(seeded.submissionId).collection('audit').get()).size, 0);
+  assert.equal((await db.collection('submissions').doc(seeded.submissionId).collection('messages').get()).size, 0);
+});

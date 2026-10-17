@@ -44,6 +44,7 @@ object ProductionMeasurementCatalog {
             MeasurementKind.Sulfate -> ProductionMeasurementSpec(kind, "SULFATE_MG_L", "mg/L", "measurement", ProductionSupport.FULLY_SUPPORTED)
             MeasurementKind.Nitrate -> ProductionMeasurementSpec(kind, "NITRATE_MG_L", "mg/L as N", "measurement", ProductionSupport.FULLY_SUPPORTED)
             MeasurementKind.Phosphate -> ProductionMeasurementSpec(kind, "PHOSPHATE_MG_L", "mg/L as P", "measurement", ProductionSupport.FULLY_SUPPORTED)
+            MeasurementKind.WaterDepth -> ProductionMeasurementSpec(kind, "WATER_DEPTH_M", "m", "measurement", ProductionSupport.FULLY_SUPPORTED)
             MeasurementKind.Flow -> ProductionMeasurementSpec(kind, "DISCHARGE_M3_S", "m3/s", "measurement", ProductionSupport.FULLY_SUPPORTED)
             else -> ProductionMeasurementSpec(kind, null, null, null, ProductionSupport.FEATURE_GATED)
         }
@@ -85,6 +86,20 @@ data class CanonicalMeasurement(
     val enteredUnit: String,
     val value: Double,
     val unitCode: String,
+    /**
+     * "FIELD" or "LAB" for a laboratory-dependent parameter (as recorded). Any other parameter is FIELD
+     * only when the test type is a field method category, and null (unknown) otherwise.
+     */
+    val analysisStage: String?,
+    val analysisMethod: String,
+    val analysisInstrument: String?,
+    /**
+     * Laboratory-dependent parameters: the recorded analysis time. Other parameters: the sampling time
+     * when [analysisStage] is FIELD, and null when the stage is unknown.
+     */
+    val analyzedAt: Long?,
+    /** Only a laboratory-dependent parameter analyzed in the field carries a documented exception. */
+    val fieldExceptionReason: String?,
 )
 
 data class CanonicalObservationSnapshot(
@@ -106,14 +121,23 @@ data class CanonicalObservationSnapshot(
     val methodName: String,
     val instrumentName: String,
     val fieldNotes: String?,
-    val temperatureEnteredValue: Double,
-    val temperatureEnteredUnit: String,
-    val tempC: Double,
-    val tempF: Double,
+    val temperatureEnteredValue: Double?,
+    val temperatureEnteredUnit: String?,
+    val tempC: Double?,
+    val tempF: Double?,
     val measurements: List<CanonicalMeasurement>,
     val attachments: List<ObservationAttachment>,
     val appVersion: String,
     val correction: Boolean,
+    val weatherCondition: String = "",
+    val waterColor: String = "",
+    val flowCondition: String = "",
+    val collectionStage: String = "READY_FOR_REVIEW",
+    /**
+     * The contract this revision was recorded under. New revisions use the current contract; a revision
+     * queued by an installed 0.1.0 build before upgrade keeps 0.1.0 so its replay still satisfies the rules.
+     */
+    val schemaVersion: String = FirestoreObservationMapper.SCHEMA_VERSION,
 )
 
 object CanonicalIds {
@@ -140,7 +164,7 @@ object EasternTime {
     fun offsetString(epochMillis: Long): String = display(epochMillis).format(DateTimeFormatter.ISO_OFFSET_DATE_TIME)
 }
 
-fun ObservationDraft.toCanonicalSnapshot(ownerUid: String, appVersion: String, submittedAt: Long = System.currentTimeMillis()): CanonicalObservationSnapshot {
+fun ObservationDraft.toCanonicalSnapshot(ownerUid: String, appVersion: String, submittedAt: Long = System.currentTimeMillis(), forDraft: Boolean = false): CanonicalObservationSnapshot {
     require(this.ownerUid == ownerUid) { "Draft owner does not match authenticated user" }
     require(ownerUid.isNotBlank()) { "Authenticated owner is required" }
     require(revisionNo >= 1) { "Revision number must be positive" }
@@ -153,31 +177,40 @@ fun ObservationDraft.toCanonicalSnapshot(ownerUid: String, appVersion: String, s
     val test = requireNotNull(testType) { "Test type is required" }
     require(test != TestType.Other || testTypeOther.isNotBlank()) { "Other test type requires a description" }
     require(collector.isNotBlank()) { "Collector display name is required" }
-    require(method.isNotBlank()) { "Measurement method is required" }
-    require(instrument.isNotBlank()) { "Instrument or laboratory is required" }
+    require(visualObservationsComplete) { "Choose weather, water color, and flow condition. Unknown is allowed." }
+    require(forDraft || !labResultsPending) { "Complete laboratory results before submitting for review" }
     require(requiredComplete) { "Measurements do not meet the production validation profile" }
     attachments.forEach { attachment ->
         require(attachment.ownerUid == ownerUid && attachment.submissionId == submissionId && attachment.revisionId == revisionId) { "Attachment identity does not match this revision" }
         require(attachment.sizeBytes in 1..50L * 1024 * 1024) { "Attachment size is invalid" }
         require(attachment.contentType in setOf("image/jpeg", "image/png", "image/heic", "audio/mp4", "audio/m4a", "application/pdf")) { "Attachment type is not allowed" }
     }
-    val temperatureRaw = requireNotNull(values[MeasurementKind.Temperature]?.trim()?.toDoubleOrNull()) { "Water temperature is required" }
-    require(temperatureRaw.isFinite()) { "Water temperature must be finite" }
+    val now = System.currentTimeMillis()
+    val problems = MeasurementKind.entries.mapNotNull { kind -> measurementProblem(kind, now)?.let { kind to it } }
+    if (!forDraft) problems.firstOrNull()?.let { (_, message) -> throw IllegalArgumentException(message) }
+    // A cloud draft carries only values that are already complete. Anything still unusable (a lab
+    // result without its analysis time, say) stays in the local draft until it is finished, so one
+    // incomplete entry never blocks synchronizing the rest of the field record.
+    val incomplete = if (forDraft) problems.map { it.first }.toSet() else emptySet()
+    val temperatureText = if (MeasurementKind.Temperature in incomplete) "" else values[MeasurementKind.Temperature].orEmpty().trim()
+    val temperatureRaw = temperatureText.takeIf { it.isNotEmpty() }?.toDoubleOrNull()
     val temperatureUnit = selectedUnit(MeasurementKind.Temperature)
-    measurementErrorMessage(MeasurementKind.Temperature, values.getValue(MeasurementKind.Temperature), temperatureUnit)
-        ?.let { throw IllegalArgumentException(it) }
-    val tempC = temperatureUnit.convert(temperatureRaw, Units.Celsius)
-    val tempF = Units.Celsius.convert(tempC, Units.Fahrenheit)
+    val tempC = temperatureRaw?.let { temperatureUnit.convert(it, Units.Celsius) }
+    val tempF = tempC?.let { Units.Celsius.convert(it, Units.Fahrenheit) }
+    val methodName = canonicalMethod
+    val instrumentName = canonicalInstrument
     val canonicalMeasurements = values.mapNotNull { (kind, raw) ->
-        if (kind == MeasurementKind.Temperature || raw.isBlank()) return@mapNotNull null
+        if (kind == MeasurementKind.Temperature || raw.isBlank() || kind in incomplete) return@mapNotNull null
         val spec = ProductionMeasurementCatalog.spec(kind)
         require(spec.support == ProductionSupport.FULLY_SUPPORTED) { "${kind.title} is not enabled by the production contract" }
         val entered = requireNotNull(raw.toDoubleOrNull()) { "${kind.title} must be numeric" }
         require(entered.isFinite()) { "${kind.title} must be finite" }
         val selected = selectedUnit(kind)
-        measurementErrorMessage(kind, raw, selected)?.let { throw IllegalArgumentException(it) }
         val canonicalUnit = kind.units.first()
         val canonical = BigDecimal.valueOf(selected.convert(entered, canonicalUnit)).setScale(12, RoundingMode.HALF_EVEN).stripTrailingZeros().toDouble()
+        val analysis = if (kind.needsAnalysisProvenance) requireNotNull(analysisDetails[kind]) { "Record the analysis method and time for ${kind.title}." } else null
+        // Without recorded provenance, only a field method category establishes stage and time.
+        val fieldAtSampling = analysis == null && test.establishesFieldAnalysis
         CanonicalMeasurement(
             id = CanonicalIds.measurement(revisionId, requireNotNull(spec.parameterCode)),
             kind = kind,
@@ -188,20 +221,32 @@ fun ObservationDraft.toCanonicalSnapshot(ownerUid: String, appVersion: String, s
             enteredUnit = selected.menuTitle,
             value = canonical,
             unitCode = requireNotNull(spec.canonicalUnit),
+            analysisStage = analysis?.stage?.name ?: AnalysisStage.FIELD.name.takeIf { fieldAtSampling },
+            analysisMethod = analysis?.method?.trim() ?: methodName,
+            analysisInstrument = (analysis?.instrument ?: instrumentName).trim().ifEmpty { null },
+            analyzedAt = analysis?.let { requireNotNull(it.analyzedAt) } ?: collectedAt.takeIf { fieldAtSampling },
+            fieldExceptionReason = fieldExceptionReason(kind),
         )
     }.sortedBy { it.kind.ordinal }
 
     return CanonicalObservationSnapshot(
         submissionId, eventId, revisionId, revisionNo, ownerUid, SiteId(siteId), createdAt, collectedAt,
         submittedAt, latitude, longitude, accuracy, collector.trim(), test.label, testTypeOther.trim().ifBlank { null },
-        method.trim(), instrument.trim(), notes.trim().ifBlank { null }, temperatureRaw,
-        if (temperatureUnit == Units.Celsius) "C" else "F", tempC, tempF, canonicalMeasurements,
-        attachments, appVersion, isCorrection,
+        methodName, instrumentName, notes.trim().ifBlank { null }, temperatureRaw,
+        if (temperatureRaw == null) null else if (temperatureUnit == Units.Celsius) "C" else "F", tempC, tempF, canonicalMeasurements,
+        attachments, appVersion, isCorrection, weatherCondition, waterColor, flowCondition,
+        if (forDraft) collectionStage.name else if (collectionStage == CollectionStage.LAB_COMPLETED) "LAB_COMPLETED" else "READY_FOR_REVIEW",
     )
 }
 
 object FirestoreObservationMapper {
-    const val SCHEMA_VERSION = "0.1.0"
+    const val SCHEMA_VERSION = "0.2.0"
+    /** Original contract of installed 0.1.0 builds; only replayed for revisions they queued offline. */
+    const val LEGACY_SCHEMA_VERSION = "0.1.0"
+
+    private fun schemaVersion(snapshot: CanonicalObservationSnapshot): String = snapshot.schemaVersion.also {
+        require(it == SCHEMA_VERSION || it == LEGACY_SCHEMA_VERSION) { "Unsupported schema version $it" }
+    }
 
     /**
      * firebase/firestore.rules requires `submitted_at == request.time` on every collector-authored
@@ -222,45 +267,79 @@ object FirestoreObservationMapper {
         "created_at" to Timestamp(Date(snapshot.createdAt)),
         "updated_at" to Timestamp(Date(snapshot.submittedAt)),
         "submitted_at" to submittedAt(status),
-        "schema_version" to SCHEMA_VERSION,
+        "schema_version" to schemaVersion(snapshot),
         "mobile_app_version" to snapshot.appVersion,
     )
 
-    fun revision(snapshot: CanonicalObservationSnapshot, status: String): Map<String, Any?> = mapOf(
-        "revision_id" to snapshot.revisionId.value,
-        "revision_no" to snapshot.revisionNo,
-        "submission_id" to snapshot.submissionId.value,
-        "event_id" to snapshot.eventId.value,
-        "collector_user_id" to snapshot.ownerUid,
-        "site_id" to snapshot.siteId.value,
-        "revision_status" to status,
-        "created_at" to Timestamp(Date(snapshot.createdAt)),
-        "submitted_at" to submittedAt(status),
-        "collected_at" to Timestamp(Date(snapshot.collectedAt)),
-        "time_known" to true,
-        "time_imputed" to false,
-        "latitude" to snapshot.latitude,
-        "longitude" to snapshot.longitude,
-        "location" to GeoPoint(snapshot.latitude, snapshot.longitude),
-        "gps_accuracy_m" to snapshot.gpsAccuracyM,
-        "site_distance_m" to null,
-        "weather_condition" to "",
-        "data_collected_by" to snapshot.collectorDisplayName,
-        "test_type" to snapshot.testType,
-        "test_type_other" to snapshot.testTypeOther,
-        "method_name" to snapshot.methodName,
-        "instrument_name" to snapshot.instrumentName,
-        "instrument_other" to null,
-        "temp_entered_value" to snapshot.temperatureEnteredValue,
-        "temp_entered_unit" to snapshot.temperatureEnteredUnit,
-        "temp_c" to snapshot.tempC,
-        "temp_f" to snapshot.tempF,
-        "field_notes_original" to snapshot.fieldNotes,
-        "schema_version" to SCHEMA_VERSION,
-        "mobile_app_version" to snapshot.appVersion,
+    fun revision(snapshot: CanonicalObservationSnapshot, status: String): Map<String, Any?> {
+        val legacy = schemaVersion(snapshot) == LEGACY_SCHEMA_VERSION
+        // A 0.1.0 revision predates the collection stage and may predate the visual observations: an
+        // observation the old build never recorded is written as null, not as a placeholder (as on iOS).
+        fun observed(value: String): String? = if (legacy) value.ifBlank { null } else value
+        val fields = linkedMapOf<String, Any?>(
+            "revision_id" to snapshot.revisionId.value,
+            "revision_no" to snapshot.revisionNo,
+            "submission_id" to snapshot.submissionId.value,
+            "event_id" to snapshot.eventId.value,
+            "collector_user_id" to snapshot.ownerUid,
+            "site_id" to snapshot.siteId.value,
+            "revision_status" to status,
+            "created_at" to Timestamp(Date(snapshot.createdAt)),
+            "submitted_at" to submittedAt(status),
+            "collected_at" to Timestamp(Date(snapshot.collectedAt)),
+            "time_known" to true,
+            "time_imputed" to false,
+            "latitude" to snapshot.latitude,
+            "longitude" to snapshot.longitude,
+            "location" to GeoPoint(snapshot.latitude, snapshot.longitude),
+            "gps_accuracy_m" to snapshot.gpsAccuracyM,
+            "site_distance_m" to null,
+            "weather_condition" to observed(snapshot.weatherCondition),
+            "water_color" to observed(snapshot.waterColor),
+            "flow_condition" to observed(snapshot.flowCondition),
+            "collection_stage" to snapshot.collectionStage,
+            "data_collected_by" to snapshot.collectorDisplayName,
+            "test_type" to snapshot.testType,
+            "test_type_other" to snapshot.testTypeOther,
+            "method_name" to snapshot.methodName,
+            "instrument_name" to snapshot.instrumentName.ifBlank { null },
+            "instrument_other" to null,
+            "temp_entered_value" to snapshot.temperatureEnteredValue,
+            "temp_entered_unit" to snapshot.temperatureEnteredUnit,
+            "temp_c" to snapshot.tempC,
+            "temp_f" to snapshot.tempF,
+            "field_notes_original" to snapshot.fieldNotes,
+            "schema_version" to schemaVersion(snapshot),
+            "mobile_app_version" to snapshot.appVersion,
+        )
+        if (legacy) fields.remove("collection_stage")
+        return fields
+    }
+
+    fun measurement(snapshot: CanonicalObservationSnapshot, value: CanonicalMeasurement): Map<String, Any?> =
+        if (schemaVersion(snapshot) == LEGACY_SCHEMA_VERSION) legacyMeasurement(snapshot, value) else mapOf(
+        "measurement_id" to value.id.value,
+        "parameter_code" to value.parameterCode,
+        "display_name" to value.displayName,
+        "value" to value.value,
+        "unit_code" to value.unitCode,
+        "entered_value" to value.enteredValue,
+        "entered_unit_code" to value.enteredUnitId,
+        "method_name" to value.analysisMethod,
+        "instrument_name" to value.analysisInstrument?.ifBlank { null },
+        "qualifier" to null,
+        "notes" to null,
+        // entered_at stays the sampling time on both platforms; analyzed_at carries the analysis time
+        // (null with a null stage when the method category does not establish where it was analyzed).
+        "entered_at" to Timestamp(Date(snapshot.collectedAt)),
+        "analysis_stage" to value.analysisStage,
+        "analyzed_at" to value.analyzedAt?.let { Timestamp(Date(it)) },
+        "field_exception_reason" to value.fieldExceptionReason,
     )
 
-    fun measurement(snapshot: CanonicalObservationSnapshot, value: CanonicalMeasurement): Map<String, Any?> = mapOf(
+    // The 0.1.0 measurement shape: the revision's recorded method and (required) instrument, and none of
+    // the analysis provenance fields, which the rules reject on a 0.1.0 revision.
+    private fun legacyMeasurement(snapshot: CanonicalObservationSnapshot, value: CanonicalMeasurement): Map<String, Any?> = mapOf(
         "measurement_id" to value.id.value,
         "parameter_code" to value.parameterCode,
         "display_name" to value.displayName,

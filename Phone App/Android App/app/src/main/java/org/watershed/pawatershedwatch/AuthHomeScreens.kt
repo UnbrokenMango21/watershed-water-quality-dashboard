@@ -11,6 +11,8 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -25,7 +27,14 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowForward
 import androidx.compose.material.icons.automirrored.rounded.Logout
+import androidx.compose.material.icons.automirrored.rounded.Chat
+import androidx.compose.material.icons.automirrored.rounded.HelpOutline
 import androidx.compose.material.icons.rounded.ArrowDropDown
+import androidx.compose.material.icons.rounded.EditLocationAlt
+import androidx.compose.material.icons.automirrored.rounded.FactCheck
+import androidx.compose.material.icons.rounded.MarkEmailRead
+import androidx.compose.material.icons.rounded.Science
+import androidx.compose.material.icons.rounded.Visibility
 import androidx.compose.material.icons.rounded.Cached
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.CloudOff
@@ -38,6 +47,7 @@ import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.WaterDrop
 import androidx.compose.material3.Button
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
@@ -66,12 +76,105 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+
+/**
+ * One concise first-run page (supervisor feedback): the six steps of a record, then Get Started.
+ * Shown once; Account → How the app works reopens it.
+ */
+@Composable
+fun OnboardingScreen(revisit: Boolean, onDone: () -> Unit) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+            .statusBarsPadding()
+            .navigationBarsPadding()
+            .padding(horizontal = 20.dp),
+    ) {
+        Column(
+            modifier = Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(top = 24.dp, bottom = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(18.dp),
+        ) {
+            BrandMark(modifier = Modifier.size(64.dp))
+            Text("PA Watershed Watch", style = MaterialTheme.typography.headlineMedium, modifier = Modifier.semantics { heading() })
+            Text(
+                "Monitor local water quality and support Penn State watershed research. Every record follows the same path:",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodyLarge,
+            )
+            FieldSurface {
+                Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    OnboardingStep(1, Icons.Rounded.LocationOn, "Choose a site", "Select your monitoring site. The phone records the sampling time and position.")
+                    OnboardingStep(2, Icons.Rounded.Visibility, "Collect field observations", "Record weather, water color and flow. Unknown is an honest answer.")
+                    OnboardingStep(3, Icons.Rounded.WaterDrop, "Record measurements and notes", "Every number is optional. Leave a value blank if it was not measured; it is never stored as zero.")
+                    OnboardingStep(4, Icons.Rounded.Science, "Complete lab analysis if needed", "Save the field collection, then reopen the same record to enter laboratory results with their method and analysis time.")
+                    OnboardingStep(5, Icons.AutoMirrored.Rounded.FactCheck, "Submit for review", "Review the record and submit it yourself. Nothing is submitted automatically.")
+                    OnboardingStep(6, Icons.AutoMirrored.Rounded.Chat, "Respond to corrections", "If a reviewer asks for a correction, reply or create a new revision. Earlier revisions stay unchanged.")
+                }
+            }
+        }
+        PrimaryAction(if (revisit) "Done" else "Get Started", onClick = onDone, modifier = Modifier.padding(vertical = 12.dp))
+    }
+}
+
+@Composable
+private fun OnboardingStep(number: Int, icon: ImageVector, title: String, detail: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth().semantics(mergeDescendants = true) { contentDescription = "Step $number. $title. $detail" },
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
+        verticalAlignment = Alignment.Top,
+    ) {
+        Box(Modifier.size(44.dp).background(MaterialTheme.colorScheme.primaryContainer, RoundedCornerShape(12.dp)), contentAlignment = Alignment.Center) {
+            Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+        }
+        Column(modifier = Modifier.weight(1f).clearAndSetSemantics { }, verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            Text("$number. $title", style = MaterialTheme.typography.titleMedium)
+            Text(detail, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
+        }
+    }
+}
+
+/** Account setup state (verification, missing name, server profile) with the action that resolves it. */
+@Composable
+fun ProfileStatusPanel(model: AppViewModel, onOpenAccount: (() -> Unit)? = null) {
+    val message = model.profileMessage
+    when (model.profileStatus) {
+        ProfileStatus.NeedsVerification -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            StatusPanel("Verify your email", message ?: "Verify your email address to finish setting up your account.", Goldenrod, Icons.Rounded.MarkEmailRead)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = model::checkVerification, enabled = !model.profileBusy, modifier = Modifier.heightIn(min = 48.dp)) { Text("I've Verified") }
+                TextButton(onClick = model::resendVerification, enabled = !model.profileBusy, modifier = Modifier.heightIn(min = 48.dp)) { Text("Resend Email") }
+            }
+        }
+        ProfileStatus.NeedsName -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            StatusPanel("Add your full name", message ?: "Add your full name in Account.", Goldenrod, Icons.Rounded.Person)
+            onOpenAccount?.let { TextButton(onClick = it, modifier = Modifier.heightIn(min = 48.dp)) { Text("Open Account") } }
+        }
+        ProfileStatus.Failed -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            StatusPanel("Account setup not finished", message ?: "Your account profile could not be set up.", MaterialTheme.colorScheme.error, Icons.Rounded.ErrorOutline)
+            TextButton(onClick = model::retryProfile, modifier = Modifier.heightIn(min = 48.dp)) {
+                Icon(Icons.Rounded.Refresh, contentDescription = null)
+                Spacer(Modifier.width(8.dp))
+                Text("Try Again")
+            }
+        }
+        ProfileStatus.Initializing -> Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+            Text("Setting up your account profile…", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        ProfileStatus.Ready, ProfileStatus.Unknown -> Unit
+    }
+}
 
 @Composable
 fun SignInScreen(model: AppViewModel) {
@@ -141,6 +244,7 @@ fun HomeScreen(
     onStart: () -> Unit,
     onResume: () -> Unit,
     onRecord: (String) -> Unit,
+    onOpenAccount: () -> Unit = {},
 ) {
     val attention = model.records.filter { it.sync == SyncState.Failed || it.sync == SyncState.Waiting || it.workflow == WorkflowState.NeedsCorrection }
     Column(
@@ -162,6 +266,8 @@ fun HomeScreen(
                 )
             }
         }
+
+        ProfileStatusPanel(model, onOpenAccount)
 
         Surface(
             modifier = Modifier.fillMaxWidth().clickable(onClick = onStart),
@@ -222,7 +328,7 @@ private fun ObservationHomeRow(record: ObservationRecord, onClick: () -> Unit) {
 }
 
 @Composable
-fun SelectSiteScreen(model: AppViewModel, onBack: () -> Unit, onNext: () -> Unit) {
+fun SelectSiteScreen(model: AppViewModel, onBack: () -> Unit, onProposals: () -> Unit = {}, onNext: () -> Unit) {
     var search by remember { mutableStateOf("") }
     val visible = model.sites.filter { site ->
         (model.connection != ConnectionState.Offline || site.cached) &&
@@ -241,6 +347,11 @@ fun SelectSiteScreen(model: AppViewModel, onBack: () -> Unit, onNext: () -> Unit
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             FieldLabel("Choose one sampling site", required = true, style = MaterialTheme.typography.titleMedium)
+            TextButton(onClick = onProposals, modifier = Modifier.heightIn(min = 48.dp)) {
+                Icon(Icons.Rounded.EditLocationAlt, contentDescription = null)
+                Spacer(Modifier.width(8.dp))
+                Text("Propose a new site or a coordinate correction")
+            }
             if (model.connection == ConnectionState.Offline) {
                 StatusPanel("Cached sites", "You can keep working. Site details were saved on this phone.", Goldenrod, Icons.Rounded.Cached)
             }
@@ -290,13 +401,46 @@ private fun SiteRow(site: Site, selected: Boolean, onClick: () -> Unit) {
 }
 
 @Composable
-fun AccountScreen(model: AppViewModel) {
+fun AccountScreen(model: AppViewModel, onProposals: () -> Unit = {}) {
     val context = LocalContext.current
+    var editingName by rememberSaveable { mutableStateOf(false) }
+    var nameDraft by rememberSaveable { mutableStateOf("") }
     Column(
         modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp).padding(bottom = 32.dp),
         verticalArrangement = Arrangement.spacedBy(20.dp),
     ) {
         ScreenIntro("Account", model.signedInName, "PA Watershed Watch field account")
+        ProfileStatusPanel(model)
+        SectionHeading("Your name", "Shown to reviewers with your submissions and messages")
+        FieldSurface {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                if (editingName) {
+                    OutlinedTextField(
+                        value = nameDraft,
+                        onValueChange = { if (it.length <= 80) nameDraft = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { FieldLabel("Full name", required = true) },
+                        singleLine = true,
+                        shape = RoundedCornerShape(16.dp),
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(
+                            onClick = { model.saveProfileName(nameDraft) { saved -> if (saved) editingName = false } },
+                            enabled = !model.profileBusy && nameDraft.isNotBlank(),
+                            modifier = Modifier.heightIn(min = 48.dp),
+                        ) { Text(if (model.profileBusy) "Saving…" else "Save Name") }
+                        TextButton(onClick = { editingName = false }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Cancel") }
+                    }
+                    if (model.profileStatus != ProfileStatus.NeedsVerification) model.profileMessage?.let { Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                } else {
+                    KeyValueRow("Full name", model.profileName ?: "Not set")
+                    TextButton(
+                        onClick = { nameDraft = model.profileName.orEmpty(); editingName = true },
+                        modifier = Modifier.heightIn(min = 48.dp),
+                    ) { Text(if (model.profileName == null) "Add Full Name" else "Change Name") }
+                }
+            }
+        }
         FieldSurface {
             Column {
                 KeyValueRow("Signed in as", model.signedInEmail)
@@ -324,6 +468,21 @@ fun AccountScreen(model: AppViewModel) {
                     Icon(Icons.Rounded.Settings, contentDescription = null)
                     Spacer(Modifier.width(8.dp))
                     Text("Open App Settings")
+                }
+            }
+        }
+        SectionHeading("Sites and help")
+        FieldSurface {
+            Column {
+                TextButton(onClick = onProposals, modifier = Modifier.heightIn(min = 48.dp)) {
+                    Icon(Icons.Rounded.EditLocationAlt, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("My coordinate proposals")
+                }
+                TextButton(onClick = model::reopenOnboarding, modifier = Modifier.heightIn(min = 48.dp)) {
+                    Icon(Icons.AutoMirrored.Rounded.HelpOutline, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("How the app works")
                 }
             }
         }

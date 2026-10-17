@@ -62,6 +62,36 @@ data class Site(
         get() = String.format(Locale.US, "%.4f° N · %.4f° W", latitude, -longitude)
 }
 
+object FieldObservationVocabulary {
+    val weather = listOf("Clear", "Partly Cloudy", "Cloudy", "Overcast", "Light Rain", "Heavy Rain", "Snow", "Windy", "Other", "Unknown")
+    val waterColor = listOf("Clear", "Light Brown", "Dark Brown", "Greenish", "Turbid/Murky", "Other", "Unknown")
+    val flow = listOf("No Visible Flow", "Low", "Moderate", "High", "Unknown")
+}
+
+enum class CollectionStage { DRAFT, FIELD_COLLECTED, LAB_PENDING, LAB_COMPLETED, READY_FOR_REVIEW }
+
+/** Where a value was analyzed. Laboratory-dependent parameters default to LAB. */
+enum class AnalysisStage(val label: String) {
+    LAB("Laboratory"),
+    FIELD("Field — documented protocol"),
+}
+
+/**
+ * Per-parameter analysis provenance for a laboratory-dependent value (chloride, sulfate, nitrate,
+ * phosphate). [analyzedAt] stays null until the collector records it; it is never invented.
+ */
+data class AnalysisProvenance(
+    val stage: AnalysisStage = AnalysisStage.LAB,
+    val method: String = "",
+    val instrument: String = "",
+    val analyzedAt: Long? = null,
+    val fieldExceptionReason: String = "",
+)
+
+const val FIELD_EXCEPTION_REASON_MAX = 1000
+/** Clock skew tolerated before an analysis time counts as "in the future" (matches iOS). */
+const val ANALYSIS_FUTURE_TOLERANCE_MS = 5 * 60 * 1000L
+
 enum class TestType(
     val label: String,
     val suggestedMethod: String,
@@ -74,6 +104,23 @@ enum class TestType(
     Sonde("Continuous Sensor / Sonde", "15 minute deployment", "EXO2 Multiparameter Sonde"),
     Mixed("Mixed In-situ + Lab", "Direct reading and grab sample", "YSI ProDSS · Unit 4412"),
     Other("Other", "Other", ""),
+    ;
+
+    /**
+     * Whether choosing this method category itself establishes that a non-laboratory parameter was
+     * measured in the field at sampling time. Laboratory, mixed and other categories do not, so such
+     * a value records no analysis stage or time rather than asserting provenance nobody entered.
+     */
+    val establishesFieldAnalysis: Boolean get() = this == FieldInstrument || this == FieldKit || this == Sonde
+
+    companion object {
+        /**
+         * Choices offered for a new observation (parity with iOS). Sonde and combined field-and-lab stay
+         * valid stored values for older records and corrections, but are not offered until the program
+         * confirms they are part of this collection protocol (docs/SUPERVISOR_QUESTIONS.md).
+         */
+        val offeredForNewObservations = listOf(FieldInstrument, FieldKit, PennStateLab, ExternalLab, Other)
+    }
 }
 
 data class UnitSpec(
@@ -116,6 +163,9 @@ object Units {
     val UgPL = UnitSpec("ug-p-l", "µg P", "L", "µg/L as P", "micrograms per liter as phosphorus", .001)
     val MgPo4L = UnitSpec("mg-po4-l", "mg PO₄³⁻", "L", "mg/L as PO₄", "milligrams per liter as phosphate", .326315789)
     val UgPo4L = UnitSpec("ug-po4-l", "µg PO₄³⁻", "L", "µg/L as PO₄", "micrograms per liter as phosphate", .000326315789)
+    val Meters = UnitSpec("m", "m", menuTitle = "Meters (m)", spokenName = "meters")
+    val Centimeters = UnitSpec("cm", "cm", menuTitle = "Centimeters (cm)", spokenName = "centimeters", scaleToBase = 0.01)
+    val Feet = UnitSpec("ft", "ft", menuTitle = "Feet (ft)", spokenName = "feet", scaleToBase = 0.3048)
     val M3S = UnitSpec("m3-s", "m³", "s", "m³/s", "cubic meters per second")
     val LS = UnitSpec("l-s", "L", "s", "L/s", "liters per second", .001)
     val Ft3S = UnitSpec("ft3-s", "ft³", "s", "ft³/s (cfs)", "cubic feet per second", .028316846592)
@@ -134,7 +184,7 @@ object Units {
     val all = listOf(
         Celsius, Fahrenheit, Ph, Percent, MgO2L, UmolO2L, UsCm, MsCm, SM, MgL, UgL, GL,
         Mv, V, MgNL, UgNL, MgNo3L, UgNo3L, MgNo2L, UgNo2L, MgPL, UgPL, MgPo4L, UgPo4L,
-        M3S, LS, Ft3S, GalMin, Ntu, Fnu, Pss78, Ppt, MgCaCo3L, MeqL, UgChlaL, MgChlaM3,
+        Meters, Centimeters, Feet, M3S, LS, Ft3S, GalMin, Ntu, Fnu, Pss78, Ppt, MgCaCo3L, MeqL, UgChlaL, MgChlaM3,
         Cfu100, Mpn100,
     )
 
@@ -154,6 +204,7 @@ enum class MeasurementKind(val title: String, val contractCode: String? = null) 
     Nitrate("Nitrate", "NITRATE_MG_L"),
     Phosphate("Phosphate", "PHOSPHATE_MG_L"),
     Flow("Discharge / Flow", "DISCHARGE_M3_S"),
+    WaterDepth("Water Depth", "WATER_DEPTH_M"),
     Turbidity("Turbidity"),
     Salinity("Salinity"),
     TotalSuspendedSolids("Total Suspended Solids"),
@@ -178,6 +229,7 @@ val MeasurementKind.units: List<UnitSpec>
         MeasurementKind.Chloride, MeasurementKind.Sulfate -> listOf(Units.MgL, Units.UgL)
         MeasurementKind.Nitrate -> listOf(Units.MgNL, Units.UgNL, Units.MgNo3L, Units.UgNo3L)
         MeasurementKind.Phosphate -> listOf(Units.MgPL, Units.UgPL, Units.MgPo4L, Units.UgPo4L)
+        MeasurementKind.WaterDepth -> listOf(Units.Meters, Units.Centimeters, Units.Feet)
         MeasurementKind.Flow -> listOf(Units.M3S, Units.LS, Units.Ft3S, Units.GalMin)
         MeasurementKind.Turbidity -> listOf(Units.Ntu, Units.Fnu)
         MeasurementKind.Salinity -> listOf(Units.Pss78, Units.Ppt)
@@ -194,6 +246,11 @@ val MeasurementKind.preservesQuantity: Boolean
 
 val MeasurementKind.allowsNegative: Boolean
     get() = this == MeasurementKind.Orp || this == MeasurementKind.Temperature
+
+/** Laboratory-dependent parameters: each value records its own analysis stage, method and time. */
+val MeasurementKind.needsAnalysisProvenance: Boolean
+    get() = this == MeasurementKind.Chloride || this == MeasurementKind.Sulfate ||
+        this == MeasurementKind.Nitrate || this == MeasurementKind.Phosphate
 
 enum class WorkflowStep(val number: Int) {
     Site(1),
@@ -224,10 +281,17 @@ data class ObservationDraft(
     val testTypeOther: String = "",
     val method: String = "",
     val instrument: String = "",
-    val labResultsPending: Boolean = true,
+    val labResultsPending: Boolean = false,
+    val weatherCondition: String = "",
+    val waterColor: String = "",
+    val flowCondition: String = "",
+    val collectionStage: CollectionStage = CollectionStage.DRAFT,
+    val fieldCollectedAt: Long? = null,
+    val labCompletedAt: Long? = null,
     val requestedAnalytes: Set<MeasurementKind> = setOf(MeasurementKind.Chloride, MeasurementKind.Nitrate, MeasurementKind.Phosphate),
     val values: Map<MeasurementKind, String> = emptyMap(),
     val unitIds: Map<MeasurementKind, String> = emptyMap(),
+    val analysisDetails: Map<MeasurementKind, AnalysisProvenance> = emptyMap(),
     val notes: String = "",
     val attachments: List<ObservationAttachment> = emptyList(),
     val currentStep: Int = 1,
@@ -240,9 +304,13 @@ data class ObservationDraft(
 ) {
     val id: String get() = submissionId.value
 
-    /** Water Temperature is the only required measurement, for every test type, with no exceptions. */
+    /** Supervisor protocol v0.2: all numerical measurements are optional. */
     val requiredMeasurements: List<MeasurementKind>
-        get() = listOf(MeasurementKind.Temperature)
+        get() = emptyList()
+
+    val visualObservationsComplete: Boolean get() = weatherCondition in FieldObservationVocabulary.weather && waterColor in FieldObservationVocabulary.waterColor && flowCondition in FieldObservationVocabulary.flow
+    val canonicalMethod: String get() = if (testType == TestType.Other) testTypeOther.trim() else method.trim().ifBlank { testType?.label.orEmpty() }
+    val canonicalInstrument: String get() = if (testType == TestType.Other) testTypeOther.trim() else instrument.trim()
 
     val optionalMeasurements: List<MeasurementKind>
         get() = MeasurementKind.entries.filterNot(requiredMeasurements::contains)
@@ -254,9 +322,61 @@ data class ObservationDraft(
 
     val completedRequiredCount: Int get() = requiredMeasurements.count(::isComplete)
     val requiredComplete: Boolean get() = completedRequiredCount == requiredMeasurements.size
+
+    fun analysis(kind: MeasurementKind): AnalysisProvenance = analysisDetails[kind] ?: AnalysisProvenance()
+
+    /**
+     * Why the analysis provenance of an entered laboratory-dependent value is incomplete, or null.
+     * Messages match the iOS client. Blank values and field parameters never have a problem here.
+     */
+    fun analysisProblem(kind: MeasurementKind, now: Long = System.currentTimeMillis()): String? {
+        if (!kind.needsAnalysisProvenance || values[kind].isNullOrBlank()) return null
+        val analysis = analysisDetails[kind]
+        val analyzedAt = analysis?.analyzedAt
+        if (analysis == null || analysis.method.isBlank() || analyzedAt == null) {
+            return "Record the analysis method and time for ${kind.title}."
+        }
+        // Pickers choose whole minutes, so the sampling minute itself counts as "on or after sampling"
+        // (well inside the server's five-minute clock tolerance).
+        if (analyzedAt < collectedAt - Math.floorMod(collectedAt, 60_000L) || analyzedAt > now + ANALYSIS_FUTURE_TOLERANCE_MS) {
+            return "Analysis time must be on or after sampling and cannot be in the future."
+        }
+        if (analysis.stage == AnalysisStage.FIELD) {
+            val reason = analysis.fieldExceptionReason.trim()
+            if (reason.isEmpty()) return "Describe the field-analysis protocol or exception for ${kind.title}."
+            if (reason.length > FIELD_EXCEPTION_REASON_MAX) return "Keep the field-analysis exception for ${kind.title} to $FIELD_EXCEPTION_REASON_MAX characters or fewer."
+        }
+        return null
+    }
+
+    /**
+     * Why this entry cannot be recorded, or null when it is blank or acceptable. Shared by the inline
+     * messages, the review issues and [toCanonicalSnapshot], so all three say exactly the same thing.
+     */
+    fun measurementProblem(kind: MeasurementKind, now: Long = System.currentTimeMillis()): String? {
+        val raw = values[kind].orEmpty()
+        if (raw.isBlank()) return null
+        if (ProductionMeasurementCatalog.spec(kind).support != ProductionSupport.FULLY_SUPPORTED) {
+            return "${kind.title} is not enabled by the production contract."
+        }
+        return measurementErrorMessage(kind, raw, selectedUnit(kind)) ?: analysisProblem(kind, now)
+    }
+
+    /** The documented exception for a laboratory parameter analyzed in the field; null otherwise. */
+    fun fieldExceptionReason(kind: MeasurementKind): String? {
+        if (!kind.needsAnalysisProvenance) return null
+        val analysis = analysisDetails[kind]?.takeIf { it.stage == AnalysisStage.FIELD } ?: return null
+        return analysis.fieldExceptionReason.trim().ifEmpty { null }
+    }
 }
 
-data class MeasurementValue(val kind: MeasurementKind, val value: String, val unitId: String)
+data class MeasurementValue(
+    val kind: MeasurementKind,
+    val value: String,
+    val unitId: String,
+    /** Recorded analysis provenance for a laboratory-dependent value; null for field parameters. */
+    val analysis: AnalysisProvenance? = null,
+)
 
 data class Revision(
     val number: Int,
@@ -264,6 +384,7 @@ data class Revision(
     val state: WorkflowState,
     val note: String,
     val measurements: List<MeasurementValue>,
+    val id: String? = null,
 )
 
 data class ValidationSummary(
@@ -301,6 +422,9 @@ data class ObservationRecord(
     val requestedAnalytes: Set<MeasurementKind> = emptySet(),
     val validation: ValidationSummary? = null,
     val validationFlags: List<ValidationFlag> = emptyList(),
+    val weatherCondition: String = "",
+    val waterColor: String = "",
+    val flowCondition: String = "",
 )
 
 fun formatEntry(value: Double): String {
@@ -355,6 +479,15 @@ fun measurementError(kind: MeasurementKind, raw: String, unit: UnitSpec = kind.u
 
 fun measurementErrorMessage(kind: MeasurementKind, raw: String, unit: UnitSpec = kind.units.first()): String? =
     measurementError(kind, raw, unit)?.let { "${kind.title} $it." }
+
+/** One readable line for a recorded laboratory-dependent analysis, e.g. on Review and Detail. */
+fun analysisSummary(analysis: AnalysisProvenance): String = buildList {
+    add(if (analysis.stage == AnalysisStage.LAB) "Laboratory" else "Field (documented exception)")
+    analysis.method.trim().takeIf(String::isNotEmpty)?.let(::add) ?: add("method not recorded")
+    analysis.instrument.trim().takeIf(String::isNotEmpty)?.let(::add)
+    add(analysis.analyzedAt?.let { "analyzed ${formatDateTime(it)}" } ?: "analysis time not recorded")
+    if (analysis.stage == AnalysisStage.FIELD) analysis.fieldExceptionReason.trim().takeIf(String::isNotEmpty)?.let { add("exception: $it") }
+}.joinToString(" · ")
 
 fun formatDateTime(epochMillis: Long): String =
     DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).apply {

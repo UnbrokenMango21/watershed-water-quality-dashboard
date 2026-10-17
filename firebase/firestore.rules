@@ -17,12 +17,29 @@ service cloud.firestore {
         : "COLLECTOR";
     }
 
+    // Reviewer and admin reads need the role claim AND the administrator-managed users/{uid}
+    // profile to exist, be active and carry a reviewer role (the same claim and profile checks as
+    // web/lib/reviewSubmission.mjs reviewerAccessProblem). Rules cannot see the Auth `disabled`
+    // flag: a disabled account cannot sign in or refresh, but an already-issued ID token keeps
+    // passing these rules until it expires (at most about an hour). Setting the profile's `active`
+    // to false is therefore the immediate suspension control for reads; the review API refuses
+    // both inactive profiles and disabled accounts at once.
+    function activeReviewerProfile() {
+      let profilePath = /databases/$(database)/documents/users/$(uid());
+      return exists(profilePath)
+        && get(profilePath).data.active == true
+        && get(profilePath).data.role == role()
+        && get(profilePath).data.role in ["QC_REVIEWER", "ADMIN"]
+        && (!('access_version' in get(profilePath).data)
+          || request.auth.token.get('access_version', null) == get(profilePath).data.access_version);
+    }
+
     function isAdmin() {
-      return signedIn() && role() == "ADMIN";
+      return signedIn() && role() == "ADMIN" && activeReviewerProfile();
     }
 
     function isReviewer() {
-      return signedIn() && role() == "QC_REVIEWER";
+      return signedIn() && role() == "QC_REVIEWER" && activeReviewerProfile();
     }
 
     function submissionPath(submissionId) {
@@ -135,6 +152,9 @@ service cloud.firestore {
         "gps_accuracy_m",
         "site_distance_m",
         "weather_condition",
+        "water_color",
+        "flow_condition",
+        "collection_stage",
         "data_collected_by",
         "test_type",
         "test_type_other",
@@ -178,6 +198,47 @@ service cloud.firestore {
       ];
     }
 
+    function validOptionalTemperature(data) {
+      let entered = data.get("temp_entered_value", null);
+      let unit = data.get("temp_entered_unit", null);
+      let c = data.get("temp_c", null);
+      let f = data.get("temp_f", null);
+      return (entered == null && unit == null && c == null && f == null)
+        || (entered is number && c is number && f is number && unit in ["C", "F"]
+          && c >= -5 && c <= 60
+          && ((unit == "C" && c >= entered - 0.2 && c <= entered + 0.2)
+            || (unit == "F" && c >= (entered - 32) * 5 / 9 - 0.2 && c <= (entered - 32) * 5 / 9 + 0.2))
+          && f >= c * 9 / 5 + 32 - 0.36 && f <= c * 9 / 5 + 32 + 0.36);
+    }
+
+    function validVisualObservations(data) {
+      return data.get("weather_condition", "") in ["Clear", "Partly Cloudy", "Cloudy", "Overcast", "Light Rain", "Heavy Rain", "Snow", "Windy", "Other", "Unknown"]
+        && data.get("water_color", "") in ["Clear", "Light Brown", "Dark Brown", "Greenish", "Turbid/Murky", "Other", "Unknown"]
+        && data.get("flow_condition", "") in ["No Visible Flow", "Low", "Moderate", "High", "Unknown"];
+    }
+
+    function validSubmittedScience(data) {
+      return data.schema_version == "0.2.0"
+        && validVisualObservations(data)
+        && data.get("collection_stage", "") in ["LAB_COMPLETED", "READY_FOR_REVIEW"]
+        && validTestType(data.test_type)
+        && (data.test_type != "Other" || nonEmptyString(data.test_type_other))
+        && nonEmptyString(data.method_name)
+        && (data.instrument_name == null || data.instrument_name is string)
+        && validOptionalTemperature(data);
+    }
+
+    // Installed 0.1.0 app builds keep their original contract (temperature and instrument
+    // required, no visual observations) until they are retired; 0.2.0 never falls back to it.
+    function validLegacyScience(data) {
+      return data.schema_version == "0.1.0"
+        && nonEmptyString(data.instrument_name)
+        && data.temp_entered_value is number
+        && data.temp_c is number
+        && data.temp_f is number
+        && data.temp_entered_unit in ["C", "F"];
+    }
+
     function validCollectorRevisionCreate(submissionId, revisionId) {
       return request.resource.data.keys().hasOnly(collectorRevisionAllowedKeys())
         && request.resource.data.keys().hasAll(collectorRevisionRequiredKeys())
@@ -207,12 +268,13 @@ service cloud.firestore {
         && validTestType(request.resource.data.test_type)
         && (request.resource.data.test_type != "Other" || nonEmptyString(request.resource.data.test_type_other))
         && nonEmptyString(request.resource.data.method_name)
-        && nonEmptyString(request.resource.data.instrument_name)
-        && request.resource.data.temp_entered_value is number
-        && request.resource.data.temp_c is number
-        && request.resource.data.temp_f is number
-        && request.resource.data.temp_entered_unit in ["C", "F"]
-        && request.resource.data.schema_version == "0.1.0"
+        && (request.resource.data.instrument_name == null || request.resource.data.instrument_name is string)
+        && validOptionalTemperature(request.resource.data)
+        && (request.resource.data.schema_version == "0.2.0" || validLegacyScience(request.resource.data))
+        // A revision follows its observation's contract; a legacy observation may only be corrected
+        // forward to 0.2.0, never a 0.2.0 observation back to the legacy contract.
+        && (request.resource.data.schema_version == get(submissionPath(submissionId)).data.schema_version
+          || (get(submissionPath(submissionId)).data.schema_version == "0.1.0" && request.resource.data.schema_version == "0.2.0"))
         && nonEmptyString(request.resource.data.mobile_app_version)
         && (
           (get(submissionPath(submissionId)).data.status == "DRAFT" && request.resource.data.revision_no == 1)
@@ -232,15 +294,16 @@ service cloud.firestore {
         && request.resource.data.collector_user_id == resource.data.collector_user_id
         && request.resource.data.site_id == resource.data.site_id
         && request.resource.data.created_at == resource.data.created_at
+        && request.resource.data.schema_version == resource.data.schema_version
         && request.resource.data.revision_status in ["DRAFT", "SUBMITTED"]
-        && request.resource.data.submitted_at == request.time
-        && request.resource.data.temp_entered_unit in ["C", "F"]
+        && (request.resource.data.revision_status == "DRAFT"
+          ? request.resource.data.submitted_at == null
+          : request.resource.data.submitted_at == request.time
+            && (validSubmittedScience(request.resource.data) || validLegacyScience(request.resource.data)))
         && request.resource.data.latitude is number
         && request.resource.data.longitude is number
         && request.resource.data.gps_accuracy_m is number
-        && request.resource.data.temp_entered_value is number
-        && request.resource.data.temp_c is number
-        && request.resource.data.temp_f is number;
+        && validOptionalTemperature(request.resource.data);
     }
 
     function measurementAllowedKeys() {
@@ -256,8 +319,35 @@ service cloud.firestore {
         "instrument_name",
         "qualifier",
         "notes",
-        "entered_at"
+        "entered_at",
+        "analysis_stage",
+        "analyzed_at",
+        "field_exception_reason"
       ];
+    }
+
+    // Chloride, sulfate, nitrate and phosphate are normally laboratory analyses. A field
+    // analysis of one of them is allowed only as an explicitly documented exception.
+    function labDependentParameter(parameterCode) {
+      return parameterCode in ["CHLORIDE_MG_L", "SULFATE_MG_L", "NITRATE_MG_L", "PHOSPHATE_MG_L"];
+    }
+
+    // 0.2.0 laboratory parameters always record where and when they were analyzed. Other
+    // parameters record it only when the method makes it known (a field method); otherwise all
+    // three fields stay null rather than asserting provenance nobody entered. Legacy 0.1.0
+    // measurements predate the fields and must not carry them.
+    function validAnalysisProvenance(data, schemaVersion) {
+      let stage = data.get("analysis_stage", null);
+      let analyzedAt = data.get("analyzed_at", null);
+      let reason = data.get("field_exception_reason", null);
+      return schemaVersion == "0.2.0"
+        ? (stage == null && analyzedAt == null && reason == null && !labDependentParameter(data.parameter_code))
+          || (stage in ["FIELD", "LAB"]
+            && analyzedAt is timestamp
+            && (reason == null || (reason is string && reason.size() <= 1000))
+            && (stage == "LAB" ? reason == null
+              : (labDependentParameter(data.parameter_code) ? reason is string && reason.trim().size() > 0 : reason == null)))
+        : stage == null && analyzedAt == null && reason == null;
     }
 
     function validParameterUnit(parameterCode, unitCode) {
@@ -270,6 +360,7 @@ service cloud.firestore {
         || (parameterCode in ["CHLORIDE_MG_L", "SULFATE_MG_L"] && unitCode == "mg/L")
         || (parameterCode == "NITRATE_MG_L" && unitCode == "mg/L as N")
         || (parameterCode == "PHOSPHATE_MG_L" && unitCode == "mg/L as P")
+        || (parameterCode == "WATER_DEPTH_M" && unitCode == "m")
         || (parameterCode == "DISCHARGE_M3_S" && unitCode == "m3/s");
     }
 
@@ -283,10 +374,12 @@ service cloud.firestore {
         || (parameterCode in ["CHLORIDE_MG_L", "SULFATE_MG_L"] && enteredUnitCode in ["mg-l", "ug-l"])
         || (parameterCode == "NITRATE_MG_L" && enteredUnitCode in ["mg-n-l", "ug-n-l", "mg-no3-l", "ug-no3-l"])
         || (parameterCode == "PHOSPHATE_MG_L" && enteredUnitCode in ["mg-p-l", "ug-p-l", "mg-po4-l", "ug-po4-l"])
+        || (parameterCode == "WATER_DEPTH_M" && enteredUnitCode in ["m", "cm", "ft"])
         || (parameterCode == "DISCHARGE_M3_S" && enteredUnitCode in ["m3-s", "l-s", "ft3-s", "gal-min"]);
     }
 
-    function validMeasurement(measurementId) {
+    function validMeasurement(submissionId, revisionId, measurementId) {
+      let schemaVersion = get(revisionPath(submissionId, revisionId)).data.get("schema_version", null);
       return request.resource.data.keys().hasOnly(measurementAllowedKeys())
         && request.resource.data.keys().hasAll([
           "measurement_id",
@@ -307,8 +400,13 @@ service cloud.firestore {
         && request.resource.data.entered_value is number
         && validEnteredUnit(request.resource.data.parameter_code, request.resource.data.entered_unit_code)
         && nonEmptyString(request.resource.data.method_name)
-        && nonEmptyString(request.resource.data.instrument_name)
-        && request.resource.data.entered_at is timestamp;
+        // Instrument became optional in 0.2.0; legacy 0.1.0 measurements keep requiring it.
+        && (schemaVersion == "0.2.0"
+          ? (request.resource.data.instrument_name == null || request.resource.data.instrument_name is string)
+          : nonEmptyString(request.resource.data.instrument_name))
+        && (request.resource.data.parameter_code != "WATER_DEPTH_M" || request.resource.data.value >= 0)
+        && request.resource.data.entered_at is timestamp
+        && validAnalysisProvenance(request.resource.data, schemaVersion);
     }
 
     function attachmentAllowedKeys() {
@@ -356,9 +454,35 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    match /reviewerDisplayProfiles/{userId} {
+      allow read: if isReviewer() || isAdmin();
+      allow write: if false;
+    }
+
+    // Requests are private membership records. Only trusted callables may change
+    // their state or append an audit event; an application is never authorization.
+    match /reviewerAccessRequests/{userId} {
+      allow read: if signedIn() && (userId == uid() || isAdmin());
+      allow write: if false;
+      match /audit/{auditId} {
+        allow read: if signedIn() && (userId == uid() || isAdmin());
+        allow write: if false;
+      }
+
+    }
+
     match /siteCatalog/{siteId} {
       allow read: if signedIn();
       allow write: if false;
+    }
+
+    match /siteCoordinateProposals/{proposalId} {
+      allow read: if signedIn() && (resource.data.submitted_by_uid == uid() || isReviewer() || isAdmin());
+      allow write: if false;
+      match /audit/{auditId} {
+        allow read: if signedIn() && (get(/databases/$(database)/documents/siteCoordinateProposals/$(proposalId)).data.submitted_by_uid == uid() || isReviewer() || isAdmin());
+        allow write: if false;
+      }
     }
 
     match /submissions/{submissionId} {
@@ -376,7 +500,7 @@ service cloud.firestore {
         && request.resource.data.created_at is timestamp
         && request.resource.data.updated_at is timestamp
         && request.resource.data.submitted_at == null
-        && request.resource.data.schema_version == "0.1.0"
+        && request.resource.data.schema_version in ["0.1.0", "0.2.0"]
         && nonEmptyString(request.resource.data.mobile_app_version)
         && request.resource.data.keys().hasOnly([
           "submission_id",
@@ -438,7 +562,7 @@ service cloud.firestore {
 
           allow create, update: if ownsSubmission(submissionId)
             && revisionIsDraft(submissionId, revisionId)
-            && validMeasurement(measurementId);
+            && validMeasurement(submissionId, revisionId, measurementId);
 
           allow delete: if ownsSubmission(submissionId)
             && revisionIsDraft(submissionId, revisionId);
@@ -463,6 +587,16 @@ service cloud.firestore {
 
       match /audit/{auditId} {
         allow read: if canReadSubmission(submissionId);
+        allow write: if false;
+      }
+
+      match /messages/{messageId} {
+        allow read: if canReadSubmission(submissionId);
+        allow write: if false;
+      }
+
+      match /internalNotes/{messageId} {
+        allow read: if isReviewer() || isAdmin();
         allow write: if false;
       }
     }

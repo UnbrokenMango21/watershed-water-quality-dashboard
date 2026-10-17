@@ -10,6 +10,8 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -20,6 +22,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowForward
+import androidx.compose.material.icons.automirrored.rounded.Chat
+import androidx.compose.material.icons.automirrored.rounded.HelpOutline
+import androidx.compose.material.icons.automirrored.rounded.Send
+import androidx.compose.material.icons.rounded.Gavel
+import androidx.compose.material.icons.rounded.ReportProblem
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.CloudDone
 import androidx.compose.material.icons.rounded.CloudOff
@@ -31,6 +38,8 @@ import androidx.compose.material.icons.rounded.Schedule
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Sync
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -40,6 +49,13 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -175,8 +191,13 @@ fun ObservationDetailScreen(model: AppViewModel, recordId: String, onBack: () ->
                 )
                 PrimaryAction("Retry Sync", onClick = { model.retrySync(record.id) }, icon = Icons.Rounded.Refresh)
             }
+            DiscussionSection(model, record)
             DetailSection("Measurements") {
-                record.measurements.forEach { value -> KeyValueRow(value.kind.title, displayMeasurement(value)) }
+                record.measurements.forEach { value ->
+                    KeyValueRow(value.kind.title, displayMeasurement(value))
+                    value.analysis?.let { KeyValueRow("${value.kind.title} analysis", analysisSummary(it)) }
+                }
+                if (record.measurements.isEmpty()) Text("No measurements entered", color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             DetailSection("Test and method") {
                 KeyValueRow("Test type", record.testType.label)
@@ -211,6 +232,107 @@ fun ObservationDetailScreen(model: AppViewModel, recordId: String, onBack: () ->
                 }
             }
             Spacer(Modifier.height(120.dp))
+        }
+    }
+}
+
+private data class MessageStyle(val icon: ImageVector, val color: Color, val prominent: Boolean)
+
+@Composable
+private fun MessageKind.style(): MessageStyle = when (this) {
+    MessageKind.CollectorComment -> MessageStyle(Icons.AutoMirrored.Rounded.Chat, Water, false)
+    MessageKind.ReviewerQuestion -> MessageStyle(Icons.AutoMirrored.Rounded.HelpOutline, MaterialTheme.colorScheme.secondary, false)
+    MessageKind.CorrectionRequest -> MessageStyle(Icons.Rounded.ReportProblem, Goldenrod, true)
+    MessageKind.ReviewDecision -> MessageStyle(Icons.Rounded.Gavel, Fern, false)
+}
+
+/**
+ * Live submission discussion (submissions/{id}/messages, ordered by created_at). Kinds are told
+ * apart by icon and text label, not color alone; reviewer-only internal notes are never requested.
+ */
+@Composable
+private fun DiscussionSection(model: AppViewModel, record: ObservationRecord) {
+    LaunchedEffect(record.id, record.sync) { model.observeDiscussion(record.id) }
+    DisposableEffect(record.id) { onDispose { model.stopDiscussion() } }
+    var reply by rememberSaveable(record.id) { mutableStateOf("") }
+    val revisionNumbers = remember(record.revisions) { record.revisions.mapNotNull { revision -> revision.id?.let { it to revision.number } }.toMap() }
+    val available = record.sync == SyncState.Synced
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        SectionHeading("Discussion", "Messages with reviewers about this submission")
+        when {
+            !available -> StatusPanel("Discussion opens after sync", "Messages become available once the archive confirms this record.", Water, Icons.Rounded.CloudOff)
+            model.discussionLoading -> Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                Text("Loading discussion…", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            model.discussionError != null -> StatusPanel("Discussion unavailable", model.discussionError.orEmpty(), MaterialTheme.colorScheme.error, Icons.Rounded.ErrorOutline)
+            model.discussion.isEmpty() -> StatusPanel("No messages yet", "Reviewer questions, correction requests and decisions will appear here.", Water, Icons.AutoMirrored.Rounded.Chat)
+            else -> model.discussion.forEach { message ->
+                val revisionLabel = when {
+                    message.revisionId == record.currentRevisionId.value -> "Revision ${record.revision} (current)"
+                    else -> revisionNumbers[message.revisionId]?.let { "Revision $it" } ?: "Earlier revision"
+                }
+                MessageRow(message, revisionLabel)
+            }
+        }
+        if (available && model.discussionError == null) {
+            val online = model.connection == ConnectionState.Online
+            OutlinedTextField(
+                value = reply,
+                onValueChange = { if (it.length <= MESSAGE_MAX_CHARS) reply = it },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("Reply to reviewers") },
+                placeholder = { Text("Answer a question or explain a value") },
+                minLines = 3,
+                supportingText = { Text("${reply.length} / $MESSAGE_MAX_CHARS") },
+                shape = RoundedCornerShape(16.dp),
+            )
+            model.messageError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+            if (!online) Text("Reconnect to send a message. Your text stays here.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Button(
+                onClick = { model.sendReply(record.id, reply) { reply = "" } },
+                enabled = online && reply.isNotBlank() && !model.sendingMessage,
+                modifier = Modifier.heightIn(min = 48.dp),
+            ) {
+                Icon(Icons.AutoMirrored.Rounded.Send, contentDescription = null)
+                Spacer(Modifier.width(8.dp))
+                Text(if (model.sendingMessage) "Sending…" else "Send Reply")
+            }
+        }
+    }
+}
+
+@Composable
+private fun MessageRow(message: SubmissionMessage, revisionLabel: String) {
+    val style = message.kind.style()
+    val sent = message.createdAt?.let(::formatDateTime) ?: "Sending…"
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .then(if (style.prominent) Modifier.border(2.dp, style.color, RoundedCornerShape(18.dp)) else Modifier)
+            .semantics(mergeDescendants = true) {
+                contentDescription = "${message.kind.label} from ${message.senderName}, ${senderRoleLabel(message.senderRole)}, $revisionLabel, $sent. ${message.text}"
+            },
+        shape = RoundedCornerShape(18.dp),
+        color = style.color.copy(alpha = if (style.prominent) .16f else .08f),
+    ) {
+        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Icon(style.icon, contentDescription = null, tint = style.color, modifier = Modifier.size(20.dp))
+                Text(
+                    message.kind.label,
+                    color = style.color,
+                    style = if (style.prominent) MaterialTheme.typography.titleMedium else MaterialTheme.typography.labelLarge,
+                    fontWeight = if (style.prominent) FontWeight.Bold else null,
+                )
+            }
+            Text(
+                "${message.senderName} · ${senderRoleLabel(message.senderRole)} · $revisionLabel · $sent",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodySmall,
+            )
+            Text(message.text, style = MaterialTheme.typography.bodyLarge)
+            message.decision?.let { Text("Decision: ${it.replace('_', ' ').lowercase().replaceFirstChar(Char::uppercase)}", style = MaterialTheme.typography.labelLarge) }
         }
     }
 }
@@ -268,6 +390,9 @@ fun CorrectionRevisionScreen(model: AppViewModel, recordId: String, onBack: () -
                     onValueChange = { model.setMeasurement(original.kind, it) },
                     onUnitChange = { unit, clear -> model.changeUnit(original.kind, unit, clear) },
                 )
+                if (original.kind.needsAnalysisProvenance && draft.values[original.kind].orEmpty().isNotBlank()) {
+                    AnalysisProvenanceFields(draft, original.kind) { change -> model.updateAnalysis(original.kind, change) }
+                }
             }
             OutlinedTextField(
                 value = draft.revisionNote,
