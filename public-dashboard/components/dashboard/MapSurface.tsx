@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import type { DashboardParameter, DashboardSite, LatestSiteCondition } from "@/lib/data/DashboardDataSource";
 import { CalciteIcon, formatDateTime, parameterDefinitions, type MapTool } from "./dashboard-utils";
 import { initialMapLayerState, useDashboardMap, type MapBackground, type MapLayerState } from "./useDashboardMap";
+import { MapLoadVeil, type RecordsPhase } from "./MapLoadVeil";
 import type { WatershedLookup } from "@/lib/geography/watershedContext";
 
 const toolLabels: Record<Exclude<MapTool, null>, string> = {
@@ -26,9 +27,11 @@ export function MapSurface({
   selectedSite,
   hoveredSite,
   activeParameter,
+  records,
   onSelectSite,
   onHoverSite,
 }: {
+  records: RecordsPhase;
   sites: DashboardSite[];
   conditions: Record<string, LatestSiteCondition | null>;
   selectedSite: DashboardSite | null;
@@ -39,7 +42,7 @@ export function MapSurface({
 }) {
   const [activeMapTool, setActiveMapTool] = useState<MapTool>(null);
   const [layerState, setLayerState] = useState<MapLayerState>(initialMapLayerState);
-  const { mapHost, hoverPoint, watershedContext, geographyError, retryGeography } = useDashboardMap({ sites, conditions, selectedSite, hoveredSite, layerState, onSelectSite, onHoverSite });
+  const { mapHost, hoverPoint, watershedContext, geographyError, mapPhase, retryGeography } = useDashboardMap({ sites, conditions, selectedSite, hoveredSite, layerState, onSelectSite, onHoverSite });
   const setLayer = (patch: Partial<MapLayerState>) => setLayerState((current) => ({ ...current, ...patch }));
 
   useEffect(() => {
@@ -52,8 +55,9 @@ export function MapSurface({
   const tooltipSite = hoverPoint ? sites.find((site) => site.id === hoverPoint.siteId) ?? null : null;
 
   return (
-    <div className="map-frame">
+    <div className="map-frame" data-map-phase={mapPhase} aria-busy={mapPhase !== "ready"}>
       <div ref={mapHost} className="map-host" />
+      <MapLoadVeil mapPhase={mapPhase} records={records} onRetry={retryGeography} />
 
       <details className="map-geography" open={Boolean(selectedSite || geographyError)}>
         <summary>Watershed context</summary>
@@ -67,7 +71,7 @@ export function MapSurface({
             <button type="button" className="map-geography-retry" onClick={retryGeography}>Retry reference geography</button>
           )}
           <p><a href="https://www.usgs.gov/national-hydrography/watershed-boundary-dataset" target="_blank" rel="noreferrer">USGS source and limitations</a></p>
-          <p><a href="https://mywaterway.epa.gov/community/State%20College,%20PA,%20USA/overview" target="_blank" rel="noreferrer">EPA How’s My Waterway — external context</a><br />EPA assessments are separate from project measurements.</p>
+          <p><a href="https://mywaterway.epa.gov/community/State%20College,%20PA,%20USA/overview" target="_blank" rel="noreferrer">EPA How’s My Waterway</a> (external context)<br />EPA assessments are separate from project measurements.</p>
         </div>
       </details>
 

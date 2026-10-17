@@ -1,8 +1,8 @@
 import { DashboardShell } from "@/components/DashboardShell";
 
 export const metadata = {
-  title: "Public Dashboard | Watershed Watch",
-  description: "Explore approved water-quality observations and monitoring sites in the Watershed Watch public dashboard.",
+  title: "Public dashboard",
+  description: "Explore monitoring sites and approved water quality readings for Central Pennsylvania streams.",
 };
 
 export default function DashboardPage() {

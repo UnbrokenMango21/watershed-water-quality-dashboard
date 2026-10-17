@@ -1,0 +1,153 @@
+/* Watershed Watch website pages (home, how it works, about). Brand tokens only; every class is
+   prefixed ww- so these rules never touch the dashboard application. */
+.ww-site {
+  --ww-max: 1200px;
+  --ww-gutter: clamp(20px, 5vw, 48px);
+  --ww-header: 68px;
+  --ww-hemlock-deep: #0A4A3C;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  background: var(--pww-canvas);
+  color: var(--pww-ink);
+  font-family: var(--pww-font-sans);
+  font-size: 17px;
+  line-height: 1.6;
+  font-kerning: normal;
+  text-rendering: optimizeLegibility;
+}
+.ww-site main { flex: 1 0 auto; outline: none; }
+.ww-site h1, .ww-site h2, .ww-site h3 { margin: 0; color: var(--pww-ink); font-weight: 600; text-wrap: balance; }
+.ww-site p { margin: 0; text-wrap: pretty; }
+.ww-site img { display: block; max-width: 100%; height: auto; }
+.ww-site a { color: var(--pww-primary); }
+.ww-site a:focus-visible, .ww-site button:focus-visible { outline: 2px solid var(--pww-primary); outline-offset: 3px; border-radius: 4px; }
+html[data-menu-open] { overflow: hidden; }
+
+.ww-wrap { width: 100%; max-width: calc(var(--ww-max) + var(--ww-gutter) * 2); margin-inline: auto; padding-inline: var(--ww-gutter); }
+.ww-skip { position: absolute; left: 12px; top: -100px; z-index: 100; padding: 10px 14px; border-radius: var(--pww-radius-sm); background: var(--pww-primary); color: var(--pww-on-primary) !important; font-weight: 600; text-decoration: none; }
+.ww-skip:focus { top: 12px; }
+
+/* Header */
+.ww-header { position: sticky; top: 0; z-index: 40; background: var(--pww-canvas); border-bottom: 1px solid var(--pww-line); }
+.ww-header-row { height: var(--ww-header); display: flex; align-items: center; justify-content: space-between; gap: 24px; }
+.ww-logo { display: block; line-height: 0; }
+.ww-logo img { width: 157px; }
+.ww-nav { display: flex; align-items: center; gap: 28px; }
+.ww-nav a:not(.ww-button) { color: var(--pww-ink); font-size: 15px; font-weight: 500; text-decoration: none; text-underline-offset: 8px; text-decoration-thickness: 2px; }
+.ww-nav a:not(.ww-button):hover { color: var(--pww-primary); }
+.ww-nav a[aria-current="page"] { text-decoration-line: underline; text-decoration-color: var(--pww-primary); }
+.ww-menu-toggle { display: none; height: 40px; padding: 0 16px; border: 1px solid var(--pww-line-input); border-radius: var(--pww-radius-md); background: transparent; color: var(--pww-ink); font: inherit; font-size: 15px; font-weight: 600; cursor: pointer; }
+.ww-menu { position: fixed; inset: var(--ww-header) 0 0; z-index: 39; overflow-y: auto; background: var(--pww-canvas); }
+.ww-menu nav { display: flex; flex-direction: column; padding-block: 16px 40px; }
+.ww-menu a { padding: 16px 0; border-bottom: 1px solid var(--pww-line-soft); color: var(--pww-ink); font-size: 22px; font-weight: 600; line-height: 1.25; text-decoration: none; }
+.ww-menu a[aria-current="page"] { color: var(--pww-primary); }
+.ww-menu .ww-menu-primary { margin-bottom: 12px; padding: 0 20px; height: 52px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: var(--pww-radius-md); background: var(--pww-primary); color: var(--pww-on-primary); font-size: 17px; }
+
+/* Actions */
+.ww-button { display: inline-flex; align-items: center; justify-content: center; height: 44px; padding: 0 20px; border-radius: var(--pww-radius-md); background: var(--pww-primary); color: var(--pww-on-primary) !important; font-size: 15px; font-weight: 600; line-height: 1; text-decoration: none; white-space: nowrap; transition: background-color 120ms ease; }
+.ww-button:hover { background: var(--ww-hemlock-deep); }
+.ww-button-large { height: 52px; padding: 0 24px; font-size: 16px; }
+.ww-text-link { font-weight: 600; text-decoration: underline; text-decoration-thickness: 1.5px; text-underline-offset: 4px; }
+.ww-text-link:hover { text-decoration-thickness: 2.5px; }
+
+/* Type */
+.ww-kicker { margin-bottom: 20px !important; color: var(--pww-ink-muted); font-size: 15px; font-weight: 500; }
+.ww-lead { max-width: 36em; color: var(--pww-ink-muted); font-size: clamp(18px, 1.6vw, 20px); line-height: 1.55; }
+.ww-section-lead { margin-top: 12px !important; color: var(--pww-ink-muted); font-size: 18px; }
+.ww-site h2 { font-size: clamp(26px, 2.6vw, 34px); line-height: 1.15; letter-spacing: -0.02em; }
+.ww-site h3 { font-size: 18px; line-height: 1.3; letter-spacing: -0.005em; }
+
+/* Home: hero and product */
+.ww-hero { padding-block: clamp(48px, 8vw, 104px) clamp(32px, 4.5vw, 56px); }
+.ww-hero h1 { max-width: 13em; font-size: clamp(40px, 6vw, 76px); line-height: 1.03; letter-spacing: -0.032em; }
+.ww-hero .ww-lead { margin-top: 24px; }
+.ww-actions { margin-top: 36px; display: flex; flex-wrap: wrap; align-items: center; gap: 16px 28px; }
+
+.ww-product { padding-bottom: clamp(64px, 9vw, 120px); }
+.ww-product-shot { display: block; overflow: hidden; border: 1px solid var(--pww-line); border-radius: var(--pww-radius-lg); background: var(--pww-surface); box-shadow: 0 1px 0 rgb(15 26 23 / 4%), 0 28px 56px -32px rgb(15 26 23 / 28%); }
+.ww-product-shot img { width: 100%; }
+.ww-product-notes { margin-top: 32px; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 24px 64px; }
+.ww-product-notes h2 { font-size: clamp(22px, 2vw, 26px); }
+.ww-product-notes p { margin-top: 10px; color: var(--pww-ink-muted); }
+.ww-status-note { padding-left: 20px; border-left: 2px solid var(--pww-line-strong); }
+
+/* Bands and the journey */
+.ww-band { padding-block: clamp(64px, 9vw, 120px); background: var(--pww-surface-header); border-block: 1px solid var(--pww-line-soft); }
+.ww-journey { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr); gap: 72px; align-items: start; }
+.ww-steps { margin: 32px 0 28px; }
+.ww-steps > div { padding: 18px 0 20px; border-top: 1px solid var(--pww-line); }
+.ww-steps dt { font-size: 18px; font-weight: 600; line-height: 1.3; }
+.ww-steps dd { margin: 6px 0 0; color: var(--pww-ink-muted); font-size: 16px; }
+.ww-journey-figures { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; position: sticky; top: calc(var(--ww-header) + 32px); }
+
+.ww-figure { margin: 0; }
+.ww-figure img { width: 100%; border: 1px solid var(--pww-line); border-radius: var(--pww-radius-md); background: var(--pww-surface); }
+.ww-figure-phone img { border-radius: 18px; }
+.ww-figure figcaption { margin-top: 10px; color: var(--pww-ink-muted); font-size: 13.5px; line-height: 1.45; }
+
+/* Home: place */
+.ww-place { padding-block: clamp(64px, 9vw, 120px); display: grid; grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); gap: 56px; align-items: center; }
+.ww-photo { margin: 0; }
+.ww-photo img { width: 100%; border-radius: var(--pww-radius-sm); }
+.ww-photo figcaption { margin-top: 10px; color: var(--pww-ink-muted); font-size: 13.5px; line-height: 1.45; }
+.ww-place-copy p { margin: 16px 0 20px; color: var(--pww-ink-muted); }
+
+/* Inner pages */
+.ww-page-head { padding-block: clamp(48px, 7vw, 96px) clamp(32px, 4vw, 56px); }
+.ww-page-head h1 { max-width: 15em; font-size: clamp(36px, 5vw, 60px); line-height: 1.05; letter-spacing: -0.028em; }
+.ww-page-head .ww-lead { margin-top: 20px; }
+.ww-chapters { padding-bottom: clamp(48px, 7vw, 96px); }
+.ww-chapter { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); gap: 32px 72px; padding-block: 48px 56px; border-top: 1px solid var(--pww-line); }
+.ww-chapter-copy p { margin-top: 14px; }
+.ww-chapter-copy h2 { font-size: clamp(24px, 2.2vw, 28px); }
+.ww-chapter-figures { display: grid; justify-items: start; }
+.ww-chapter-figures .ww-figure-phone { width: min(260px, 100%); }
+.ww-pair { grid-template-columns: repeat(2, minmax(0, 240px)); gap: 24px; align-items: start; }
+.ww-pair .ww-figure-phone { width: 100%; }
+.ww-stack .ww-figure { width: min(560px, 100%); }
+.ww-columns { margin-top: 32px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 32px 64px; }
+.ww-list { margin: 14px 0 0; padding: 0; list-style: none; }
+.ww-list li { padding: 12px 0; border-top: 1px solid var(--pww-line); }
+.ww-closing { padding-block: clamp(56px, 8vw, 104px); }
+.ww-closing p { max-width: 40em; margin-top: 14px; color: var(--pww-ink-muted); }
+.ww-photo-wide { margin-bottom: 0; }
+.ww-photo-wide img { max-height: 560px; object-fit: cover; }
+.ww-prose-grid { padding-block: clamp(48px, 7vw, 96px); display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 48px 72px; }
+.ww-prose-grid h2 { font-size: clamp(22px, 2vw, 26px); }
+.ww-prose-grid p { margin-top: 12px; color: var(--pww-ink-muted); }
+
+/* Footer */
+.ww-footer { border-top: 1px solid var(--pww-line); padding-block: 48px 56px; color: var(--pww-ink-muted); font-size: 14px; line-height: 1.55; }
+.ww-footer-grid { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.5fr) minmax(0, 1.2fr); gap: 32px 56px; }
+.ww-footer-brand img { width: 147px; margin-bottom: 14px; }
+.ww-footer-brand p { max-width: 24em; }
+.ww-footer-nav { display: flex; flex-direction: column; gap: 10px; }
+.ww-footer-nav a { color: var(--pww-ink); font-weight: 500; text-decoration: none; }
+.ww-footer-nav a:hover { color: var(--pww-primary); text-decoration: underline; }
+.ww-footer-credits p + p { margin-top: 10px; }
+
+@media (max-width: 960px) {
+  .ww-journey { grid-template-columns: minmax(0, 1fr); gap: 40px; }
+  .ww-journey-figures { position: static; max-width: 560px; }
+  .ww-place { grid-template-columns: minmax(0, 1fr); gap: 28px; }
+  .ww-chapter { grid-template-columns: minmax(0, 1fr); }
+  .ww-footer-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .ww-footer-credits { grid-column: 1 / -1; }
+}
+
+@media (max-width: 760px) {
+  .ww-site { --ww-header: 60px; font-size: 16px; }
+  .ww-nav { display: none; }
+  .ww-menu-toggle { display: inline-flex; align-items: center; }
+  .ww-logo img { width: 140px; }
+  .ww-product-notes, .ww-columns, .ww-prose-grid { grid-template-columns: minmax(0, 1fr); }
+  .ww-actions .ww-button-large { width: 100%; }
+}
+
+@media (max-width: 480px) {
+  .ww-footer-grid { grid-template-columns: minmax(0, 1fr); }
+  .ww-pair { gap: 14px; }
+}
+
+@media (min-width: 761px) { .ww-menu { display: none; } }

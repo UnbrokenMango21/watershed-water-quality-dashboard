@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { DashboardObservationSeriesPoint, DashboardParameter, DashboardSite, LatestSiteCondition } from "@/lib/data/DashboardDataSource";
 import { ArcgisDashboardDataSource } from "@/lib/data/ArcgisDashboardDataSource";
@@ -8,6 +9,7 @@ import { mockDashboardDataSource } from "@/lib/data/MockDashboardDataSource";
 import { ChartPanel } from "./dashboard/ChartPanel";
 import { exportSeriesCsv } from "./dashboard/exportCsv";
 import { MapSurface } from "./dashboard/MapSurface";
+import type { RecordsPhase } from "./dashboard/MapLoadVeil";
 import { SiteBrowser } from "./dashboard/SiteBrowser";
 import { SiteDetail } from "./dashboard/SiteDetail";
 import { CalciteIcon, formatShortDate, parameterDefinitions, rangeStart, type MobileView, type RangeName } from "./dashboard/dashboard-utils";
@@ -62,11 +64,14 @@ export function DashboardShell() {
     void Promise.all([source.listSites(), source.listLatestSiteConditions()]).then(([loadedSites, latest]) => {
       if (cancelled) return;
       if (latest.some((condition) => !loadedSites.some((site) => site.id === condition.siteId))) throw new Error("A latest observation references an unavailable public site.");
-      setSites(loadedSites);
-      setConditions(Object.fromEntries(latest.map((condition) => [condition.siteId, condition])));
+      // Keeping the same empty references avoids rebuilding the map when there is nothing to plot.
+      setSites((current) => (current.length === 0 && loadedSites.length === 0 ? current : loadedSites));
+      setConditions((current) => (Object.keys(current).length === 0 && latest.length === 0 ? current : Object.fromEntries(latest.map((condition) => [condition.siteId, condition]))));
     }).catch((error: unknown) => {
       if (cancelled) return;
-      setSites([]); setConditions({}); setSelectedSiteId(null);
+      setSites((current) => (current.length === 0 ? current : []));
+      setConditions((current) => (Object.keys(current).length === 0 ? current : {}));
+      setSelectedSiteId(null);
       // Visitors see a plain message; the precise fail-closed reason stays available for support.
       console.warn("Public monitoring data failed closed:", error);
       setDataError(error instanceof Error ? error.message : "Monitoring data could not be loaded.");
@@ -134,18 +139,26 @@ export function DashboardShell() {
   const latestSample = Object.values(conditions).flatMap((condition) => condition ? [condition.observedAt] : []).sort().at(-1);
   const watershedCount = new Set(sites.map((site) => site.watershed).filter(Boolean)).size;
   const noPublicSites = sourceConnected && sites.length === 0;
+  const recordsPhase: RecordsPhase = loadingSites ? "loading" : dataError || !source ? "error" : sites.length === 0 ? "empty" : "ready";
 
   return (
     <main className="dashboard-shell" data-mobile-view={mobileView} data-source-connected={sourceConnected ? "true" : "false"} data-empty={noPublicSites ? "true" : "false"}>
       <header className="app-bar">
         <div className="brand-block">
-          {/* eslint-disable-next-line @next/next/no-img-element -- static SVG mark */}
-          <span className="brand-mark"><img src="/brand/pww-mark-master.svg" alt="" width={24} height={28} /></span>
-          <div><h1>Watershed Watch</h1><p>Explore water quality</p></div>
-          <a className="dashboard-home-link" href="/">Website ↗</a>
+          <Link href="/" className="dashboard-brand">
+            {/* eslint-disable-next-line @next/next/no-img-element -- static SVG lockup */}
+            <img src="/brand/watershed-watch-horizontal.svg" alt="Watershed Watch home" width={147} height={30} />
+          </Link>
+          <h1 className="dashboard-title">Public dashboard</h1>
+          <nav className="dashboard-nav" aria-label="Site">
+            <Link href="/how-it-works">How it works</Link>
+            <Link href="/about">About</Link>
+          </nav>
         </div>
-        {noPublicSites ? (
-          <span className="dashboard-availability-note">Reference geography is available. Monitoring records await approval.</span>
+        {loadingSites ? (
+          <span className="dashboard-availability-note" role="status">Checking for approved records…</span>
+        ) : noPublicSites ? (
+          <span className="dashboard-availability-note">No readings have been published yet.</span>
         ) : sourceConnected ? (
           <div className="kpi-strip" aria-label="Network summary">
             <div className="kpi"><span>Monitoring sites</span><strong>{sites.length}</strong></div>
@@ -153,7 +166,7 @@ export function DashboardShell() {
             <div className="kpi"><span>Watersheds</span><strong>{watershedCount}</strong></div>
           </div>
         ) : (
-          <div className="source-status" role="status">Monitoring source unavailable</div>
+          <div className="source-status" role="status">Records unavailable</div>
         )}
       </header>
 
@@ -206,6 +219,7 @@ export function DashboardShell() {
             selectedSite={selectedSite}
             hoveredSite={hoveredSite}
             activeParameter={activeParameter}
+            records={recordsPhase}
             onSelectSite={handleSelectFromMap}
             onHoverSite={handleHover}
           />
@@ -215,6 +229,7 @@ export function DashboardShell() {
             error={seriesError}
             onRetry={() => setRetry((value) => value + 1)}
             sourceConnected={sourceConnected}
+            recordsLoading={loadingSites}
             activeParameter={activeParameter}
             activeRange={activeRange}
             points={visibleSeries}
@@ -225,14 +240,11 @@ export function DashboardShell() {
         </section>
 
         {noPublicSites ? (
-          <aside className="site-detail public-explainer" aria-label="Public monitoring status">
-            <span className="public-explainer-kicker">PUBLIC DATA / STATUS</span>
-            <h2>Good data takes time.</h2>
-            <p>No monitoring sites or observations are published yet. The map shows reference geography, not measured water conditions.</p>
-            <div className="public-explainer-rule" />
-            <h3>What happens before publication?</h3>
-            <p>Field readings are validated and reviewed before approved, public-safe records appear here.</p>
-            <a href="/#process" className="public-explainer-link">Explore the review process ↗</a>
+          <aside className="site-detail public-explainer" aria-label="About the empty dashboard">
+            <h2>No readings published yet</h2>
+            <p>The map shows USGS watershed boundaries, streams and terrain. These are reference layers, not water quality measurements.</p>
+            <p>Monitoring sites and their readings will appear here after a reviewer approves the first authorized samples. Test submissions are never published.</p>
+            <Link href="/how-it-works" className="public-explainer-link">How a reading becomes public</Link>
           </aside>
         ) : <SiteDetail site={selectedSite} condition={selectedCondition} />}
       </section>
