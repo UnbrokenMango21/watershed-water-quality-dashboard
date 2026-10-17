@@ -133,16 +133,20 @@ export function DashboardShell() {
 
   const latestSample = Object.values(conditions).flatMap((condition) => condition ? [condition.observedAt] : []).sort().at(-1);
   const watershedCount = new Set(sites.map((site) => site.watershed).filter(Boolean)).size;
+  const noPublicSites = sourceConnected && sites.length === 0;
 
   return (
-    <main className="dashboard-shell" data-mobile-view={mobileView} data-source-connected={sourceConnected ? "true" : "false"}>
+    <main className="dashboard-shell" data-mobile-view={mobileView} data-source-connected={sourceConnected ? "true" : "false"} data-empty={noPublicSites ? "true" : "false"}>
       <header className="app-bar">
         <div className="brand-block">
           {/* eslint-disable-next-line @next/next/no-img-element -- static SVG mark */}
           <span className="brand-mark"><img src="/brand/pww-mark-master.svg" alt="" width={24} height={28} /></span>
-          <div><h1>Watershed Watch</h1><p>Public dashboard</p></div>
+          <div><h1>Watershed Watch</h1><p>Explore water quality</p></div>
+          <a className="dashboard-home-link" href="/">Website ↗</a>
         </div>
-        {sourceConnected ? (
+        {noPublicSites ? (
+          <span className="dashboard-availability-note">Reference geography is available. Monitoring records await approval.</span>
+        ) : sourceConnected ? (
           <div className="kpi-strip" aria-label="Network summary">
             <div className="kpi"><span>Monitoring sites</span><strong>{sites.length}</strong></div>
             <div className="kpi"><span>Latest sample</span><strong>{latestSample ? formatShortDate(latestSample) : "None yet"}</strong></div>
@@ -220,7 +224,17 @@ export function DashboardShell() {
           />
         </section>
 
-        <SiteDetail site={selectedSite} condition={selectedCondition} />
+        {noPublicSites ? (
+          <aside className="site-detail public-explainer" aria-label="Public monitoring status">
+            <span className="public-explainer-kicker">PUBLIC DATA / STATUS</span>
+            <h2>Good data takes time.</h2>
+            <p>No monitoring sites or observations are published yet. The map shows reference geography, not measured water conditions.</p>
+            <div className="public-explainer-rule" />
+            <h3>What happens before publication?</h3>
+            <p>Field readings are validated and reviewed before approved, public-safe records appear here.</p>
+            <a href="/#process" className="public-explainer-link">Explore the review process ↗</a>
+          </aside>
+        ) : <SiteDetail site={selectedSite} condition={selectedCondition} />}
       </section>
     </main>
   );

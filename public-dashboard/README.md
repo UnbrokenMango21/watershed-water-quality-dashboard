@@ -8,7 +8,17 @@ This package hosts the public Watershed Watch website and approved-only dashboar
 - `/dashboard` contains the existing interactive ArcGIS monitoring workspace. It remains the single public-data implementation; the landing page embeds it using a same-origin, lazy-loaded iframe.
 - Local preview: `npm run dev -- -p 3007`, then open `http://localhost:3007/`.
 
-Website copy does not claim monitoring totals or site observations without an authorized published source. The dashboard remains fail-closed when no approved public data exists.
+Website copy does not claim monitoring totals or site observations without an authorized published source. The dashboard remains fail-closed when no approved public data exists. When no public observations are available, the map displays reference geography with an explicit, editorial explanation of the publication boundary.
+
+### Photography and credits
+
+Two real Pennsylvania landscape photographs are included as compressed local WebP assets, cropped for editorial layout. Both were photographed by **Nicholas A. Tonelli**, licensed **CC BY 2.0**, and attributed with source and license links in the public website footer. They illustrate local waterways, not monitoring results or documented monitoring sites.
+
+- [Riffle Run, Tiadaghton State Forest](https://commons.wikimedia.org/wiki/File:Riffle_Run_(3)_(13982015223).jpg), hero image (`public/media/riffle-run.webp`).
+- [Penns Creek seen from Penns View, Bald Eagle State Forest](https://commons.wikimedia.org/wiki/File:Flickr_-_Nicholas_T_-_Overseen.jpg), story image (`public/media/penns-creek.webp`).
+- [Creative Commons Attribution 2.0](https://creativecommons.org/licenses/by/2.0/).
+
+No generated imagery or invented field measurements are used.
 
 ## Product direction
 

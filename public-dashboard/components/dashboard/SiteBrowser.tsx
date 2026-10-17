@@ -72,7 +72,7 @@ export function SiteBrowser(props: {
         ) : sourceUnavailable ? (
           <div className="empty-panel compact source-empty" role="status"><CalciteIcon icon="offline" label="Monitoring source unavailable" /><strong>Monitoring data unavailable</strong><span>Approved monitoring sources have not been connected yet.</span></div>
         ) : sites.length === 0 ? (
-          <div className="empty-panel compact" role="status"><strong>No monitoring sites available</strong><span>The connected public source returned no monitoring sites.</span></div>
+          <div className="empty-panel compact" role="status"><strong>Awaiting approved records</strong><span>Monitoring sites will appear after scientific review and publication.</span></div>
         ) : filteredSites.length === 0 ? (
           <div className="empty-panel compact" role="status"><strong>No matching sites</strong><span>Try a different name, county, watershed, or site ID.</span>{filtersActive && <button type="button" className="text-action" onClick={() => { onSearch(""); onWatershedFilter(""); }}>Clear filters</button>}</div>
         ) : filteredSites.map((site) => (
