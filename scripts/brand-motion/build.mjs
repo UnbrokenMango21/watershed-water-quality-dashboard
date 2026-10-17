@@ -130,6 +130,7 @@ const revealMark = (dx, dy) =>
   Object.entries(paths).map(([part, p]) => `<path class="wwr-${part}" stroke-width="${p.strokeWidth}" pathLength="1" d="${p.d}"/>`).join("") +
   `</g><circle class="wwr-point" cx="64" cy="74" r="9.5" fill="${themes.light.point}"/></g></g>`;
 
+const sweeps = {};
 function revealSvg(layout) {
   if (layout === "mark") {
     const w = MARK.maxX - MARK.minX + PAD * 2, h = MARK.maxY - MARK.minY + PAD * 2;
@@ -145,6 +146,7 @@ function revealSvg(layout) {
   const endX = b.minX - 0.06 * W;
   const travel = 1.3 * W;
   const region = { x: b.minX - 1.5 * W, y: b.minY - 6, w: 2.6 * W, h: b.height + 12 };
+  sweeps[layout] = { endX: round(endX), width: round(sweepWidth), travel: round(travel), feather };
   const defs = `<defs><linearGradient id="__ID__-g"><stop offset="0" stop-color="#fff"/><stop offset="${1 - feather}" stop-color="#fff"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>` +
     `<mask id="__ID__-m" maskUnits="userSpaceOnUse" x="${round(region.x)}" y="${round(region.y)}" width="${round(region.w)}" height="${round(region.h)}">` +
     `<rect class="wwr-sweep" x="${round(endX)}" y="${round(region.y)}" width="${round(sweepWidth)}" height="${round(region.h)}" fill="url(#__ID__-g)"/></mask></defs>`;
@@ -197,6 +199,114 @@ write(path.join(root, "public-dashboard/styles"), "reveal.css", css);
 write(path.join(root, "public-dashboard/lib/brand"), "reveal.generated.ts", tsModule);
 write(path.join(root, "web/app"), "reveal.css", css);
 write(path.join(root, "web/lib"), "reveal.generated.ts", tsModule);
+
+// Native geometry and timing, generated so SwiftUI and Compose match the web reveal exactly.
+const nativeDir = path.join(root, "brand/motion/native");
+fs.mkdirSync(path.join(nativeDir, "ios"), { recursive: true });
+fs.mkdirSync(path.join(nativeDir, "android"), { recursive: true });
+const markSize = { width: round(MARK.maxX - MARK.minX + PAD * 2), height: round(MARK.maxY - MARK.minY + PAD * 2) };
+const layouts = {
+  mark: { ...markSize, markTranslate: [round(PAD - MARK.minX), round(PAD - MARK.minY)], wordmark: "", sweep: { endX: 0, width: 0, travel: 0, feather: 0 } },
+  horizontal: { width: geometry.horizontal.width, height: geometry.horizontal.height, markTranslate: geometry.horizontal.markTranslate, wordmark: geometry.horizontal.wordmark, sweep: sweeps.horizontal },
+  stacked: { width: geometry.stacked.width, height: geometry.stacked.height, markTranslate: geometry.stacked.markTranslate, wordmark: geometry.stacked.wordmark, sweep: sweeps.stacked },
+};
+const t = Object.fromEntries(spec.tracks.map((k) => [k.part, k]));
+const hex = (c) => c.replace("#", "");
+const header = "GENERATED from brand/motion/source/motion-spec.json and the archived logo masters by scripts/brand-motion/build.mjs. Do not edit by hand.";
+const swiftLayout = (name, l) => `    static let ${name} = Layout(width: ${l.width}, height: ${l.height}, markOffset: CGPoint(x: ${l.markTranslate[0]}, y: ${l.markTranslate[1] - 5}), wordmark: "${l.wordmark}", sweepEndX: ${l.sweep.endX}, sweepWidth: ${l.sweep.width}, sweepTravel: ${l.sweep.travel}, sweepFeather: ${l.sweep.feather})`;
+write(path.join(nativeDir, "ios"), "WatershedWatchRevealGeometry.swift", `// ${header}
+import CoreGraphics
+
+enum WatershedWatchRevealGeometry {
+    struct Layout {
+        let width: CGFloat
+        let height: CGFloat
+        /// Where the master mark's coordinate space sits in the layout (includes the master's translate(0 -5)).
+        let markOffset: CGPoint
+        /// Wordmark outlines (absolute M/L/Q/Z), already in layout coordinates. Empty for the mark alone.
+        let wordmark: String
+        let sweepEndX: CGFloat
+        let sweepWidth: CGFloat
+        let sweepTravel: CGFloat
+        let sweepFeather: CGFloat
+    }
+
+${swiftLayout("mark", layouts.mark)}
+${swiftLayout("horizontal", layouts.horizontal)}
+${swiftLayout("stacked", layouts.stacked)}
+
+    /// The original strokes, in the master mark's coordinates (pww-mark-master.svg).
+    static let strokes: [(part: String, d: String, width: CGFloat)] = [
+${Object.entries(paths).map(([part, p]) => `        ("${part}", "${p.d}", ${p.strokeWidth}),`).join("\n")}
+    ]
+    static let point = (cx: CGFloat(64), cy: CGFloat(74), r: CGFloat(9.5))
+
+    struct Track { let delay: Double; let duration: Double }
+${Object.entries(t).map(([part, k]) => `    static let ${part.replace(/-([a-z])/g, (_, c) => c.toUpperCase())} = Track(delay: ${k.delay / 1000}, duration: ${k.duration / 1000})`).join("\n")}
+    static let strokeEasing: (Double, Double, Double, Double) = (${spec.easings.stroke.join(", ")})
+    static let settleEasing: (Double, Double, Double, Double) = (${spec.easings.settle.join(", ")})
+    static let strokeFadeInFraction = ${spec.strokeFadeInFraction}
+    static let pointFromScale: CGFloat = ${t["monitoring-point"].fromScale}
+    static let settledMark = ${spec.settledAt.mark / 1000}
+    static let settledLockup = ${spec.settledAt.lockup / 1000}
+
+    /// Light: Hemlock, Goldenrod, Limestone. Dark: icon stroke, Goldenrod 300, Night.
+    static let light = (stream: 0x${hex(themes.light.stream)}, point: 0x${hex(themes.light.point)}, word: 0x${hex(themes.light.word)}, canvas: 0x${hex(themes.light.canvas)})
+    static let dark = (stream: 0x${hex(themes.dark.stream)}, point: 0x${hex(themes.dark.point)}, word: 0x${hex(themes.dark.word)}, canvas: 0x${hex(themes.dark.canvas)})
+}
+`);
+const ktLayout = (name, l) => `    val ${name} = Layout(${l.width}f, ${l.height}f, ${l.markTranslate[0]}f, ${l.markTranslate[1] - 5}f, "${l.wordmark}", ${l.sweep.endX}f, ${l.sweep.width}f, ${l.sweep.travel}f, ${l.sweep.feather}f)`;
+write(path.join(nativeDir, "android"), "WatershedWatchRevealGeometry.kt", `// ${header}
+package org.watershed.pawatershedwatch.brand
+
+internal object WatershedWatchRevealGeometry {
+    class Layout(
+        val width: Float,
+        val height: Float,
+        /** Where the master mark's coordinate space sits in the layout (includes the master's translate(0 -5)). */
+        val markOffsetX: Float,
+        val markOffsetY: Float,
+        /** Wordmark outlines (absolute M/L/Q/Z), already in layout coordinates. Empty for the mark alone. */
+        val wordmark: String,
+        val sweepEndX: Float,
+        val sweepWidth: Float,
+        val sweepTravel: Float,
+        val sweepFeather: Float,
+    )
+
+${ktLayout("mark", layouts.mark)}
+${ktLayout("horizontal", layouts.horizontal)}
+${ktLayout("stacked", layouts.stacked)}
+
+    class Stroke(val part: String, val d: String, val width: Float)
+    /** The original strokes, in the master mark's coordinates (pww-mark-master.svg). */
+    val strokes = listOf(
+${Object.entries(paths).map(([part, p]) => `        Stroke("${part}", "${p.d}", ${p.strokeWidth}f),`).join("\n")}
+    )
+    const val POINT_CX = 64f
+    const val POINT_CY = 74f
+    const val POINT_R = 9.5f
+
+    class Track(val delayMs: Int, val durationMs: Int)
+${Object.entries(t).map(([part, k]) => `    val ${part.replace(/-([a-z])/g, (_, c) => c.toUpperCase())} = Track(${k.delay}, ${k.duration})`).join("\n")}
+    val STROKE_EASING = floatArrayOf(${spec.easings.stroke.map((v) => v + "f").join(", ")})
+    val SETTLE_EASING = floatArrayOf(${spec.easings.settle.map((v) => v + "f").join(", ")})
+    const val STROKE_FADE_IN_FRACTION = ${spec.strokeFadeInFraction}f
+    const val POINT_FROM_SCALE = ${t["monitoring-point"].fromScale}f
+    const val SETTLED_MARK_MS = ${spec.settledAt.mark}
+    const val SETTLED_LOCKUP_MS = ${spec.settledAt.lockup}
+
+    /** Light: Hemlock, Goldenrod, Limestone. Dark: icon stroke, Goldenrod 300, Night. */
+    const val LIGHT_STREAM = 0xFF${hex(themes.light.stream)}
+    const val LIGHT_POINT = 0xFF${hex(themes.light.point)}
+    const val LIGHT_WORD = 0xFF${hex(themes.light.word)}
+    const val LIGHT_CANVAS = 0xFF${hex(themes.light.canvas)}
+    const val DARK_STREAM = 0xFF${hex(themes.dark.stream)}
+    const val DARK_POINT = 0xFF${hex(themes.dark.point)}
+    const val DARK_WORD = 0xFF${hex(themes.dark.word)}
+    const val DARK_CANVAS = 0xFF${hex(themes.dark.canvas)}
+}
+`);
 
 if (written.some((f) => /PA Watershed/.test(fs.readFileSync(path.join(root, f), "utf8")))) throw new Error("Legacy name found in an output");
 console.log(`Wrote ${written.length} files. Horizontal ${round(hW)}x${round(hH)}, stacked ${round(sW)}x${round(sH)}.`);

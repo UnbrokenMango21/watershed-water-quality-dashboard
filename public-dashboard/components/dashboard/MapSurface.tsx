@@ -62,7 +62,7 @@ export function MapSurface({
       <details className="map-geography" open={Boolean(selectedSite || geographyError)}>
         <summary>Watershed context</summary>
         <div className="map-geography-body">
-          <p>USGS Watershed Boundary Dataset · reference geography</p>
+          <p>Reference geography from the USGS Watershed Boundary Dataset.</p>
           {geographyError && <p role="alert">{geographyError}</p>}
           {!selectedSite && <p>Select a monitoring site to identify its watershed from its displayed coordinates.</p>}
           {selectedSite && !watershedContext && <p role="status">Finding HUC10 and HUC12 watersheds…</p>}
@@ -132,9 +132,9 @@ function WatershedResult({ result }: { result: WatershedLookup }) {
       : result.status === "error" ? "Reference lookup unavailable. No watershed has been assumed." : null;
   return (
     <div className="map-geography-result" role="status">
-      <strong>{label} · HUC{result.level}</strong>
+      <strong>{label} (HUC{result.level})</strong>
       {result.status === "found" ? <span>{result.name}<br /><code>{result.huc}</code></span> : <span>{message}</span>}
-      <small><a href={result.sourceUrl} target="_blank" rel="noreferrer">{result.sourceUrl.startsWith("https://hydro.nationalmap.gov/") ? "USGS National Map" : "Public WBD reference layer"}</a> · checked {new Date(result.checkedAt).toLocaleString()}{result.dataLastEditedAt ? ` · source edited ${new Date(result.dataLastEditedAt).toLocaleDateString()}` : ""}</small>
+      <small><a href={result.sourceUrl} target="_blank" rel="noreferrer">{result.sourceUrl.startsWith("https://hydro.nationalmap.gov/") ? "USGS National Map" : "Public WBD reference layer"}</a>, checked {new Date(result.checkedAt).toLocaleString()}{result.dataLastEditedAt ? `, source edited ${new Date(result.dataLastEditedAt).toLocaleDateString()}` : ""}</small>
     </div>
   );
 }
