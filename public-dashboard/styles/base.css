@@ -135,7 +135,8 @@ button[data-tooltip]:hover::after, button[data-tooltip]:focus-visible::after { o
   .dashboard-availability-note { display: none; }
 }
 @media (max-width: 760px) {
-  .dashboard-title { display: none; }
+  /* Still the page's heading for assistive technology; the lockup carries the name visually. */
+  .dashboard-title { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; padding: 0; border: 0; }
 }
 @media (max-width: 640px) {
   .dashboard-brand img { width: 128px; }

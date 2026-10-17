@@ -166,7 +166,7 @@ export function DashboardShell() {
             <div className="kpi"><span>Watersheds</span><strong>{watershedCount}</strong></div>
           </div>
         ) : (
-          <div className="source-status" role="status">Records unavailable</div>
+          <span className="dashboard-availability-note">Records unavailable</span>
         )}
       </header>
 
