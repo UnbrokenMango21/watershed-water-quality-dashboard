@@ -13,11 +13,9 @@ This package is the isolated public-facing dashboard. It does not replace or mod
 
 ## Reference geography
 
-The map uses public USGS National Map Watershed Boundary Dataset layers, filtered to Pennsylvania. HUC8 outlines provide regional context and HUC12 outlines provide local context. Selecting a site queries its actual displayed coordinates against HUC10 and HUC12 polygons, displays the names/codes and source-check timestamps, and highlights the containing HUC12 polygon. Reference geography remains independent of monitoring observations.
+The map displays Esri Living Atlas copies of USGS Watershed Boundary Dataset polygons, filtered to Pennsylvania. HUC8 outlines provide regional context and HUC12 outlines provide local context. Selected-site identification uses the authoritative USGS service through the server route, separately from browser map outlines. Selecting a site queries its actual displayed coordinates against HUC10 and HUC12 polygons, displays the names/codes and source-check timestamps, and highlights the containing HUC12 polygon. Reference geography remains independent of monitoring observations.
 
-The default public reference layer is:
-
-`https://hydro.nationalmap.gov/arcgis/rest/services/wbd/MapServer/6`
+Default browser outline URLs are `REGIONAL_OUTLINE_LAYER_URL` and `LOCAL_OUTLINE_LAYER_URL` in `lib/geography/watershedContext.ts`. The server identifies selected sites with fixed USGS WBD `MapServer/5` (HUC10) and `MapServer/6` (HUC12) point queries. Separating these consumers avoids unreliable USGS browser CORS behavior.
 
 The renderer keeps restrained watershed outlines and emphasizes only the selected site's containing polygon. Monitoring points remain visually above the watershed layer. Geographic lookup failures, missing coverage and multiple intersecting boundaries are explicit states; no watershed is guessed. Successful results are cached in memory for 15 minutes with a 100-entry bound and exact coordinate keys.
 
@@ -43,14 +41,9 @@ The browser must never read private Firestore workflow documents or the private 
 
 ## Environment
 
-Copy `.env.example` to `.env.local` for local development and provide verified public ArcGIS resources when they exist:
+Production monitoring URLs are explicitly pinned in `lib/data/productionResources.ts` and consumed by `DashboardShell`. Changing the historical four `NEXT_PUBLIC_ARCGIS_*_VIEW_URL` monitoring variables in App Hosting does not change these destinations. To change monitoring sources, review that module together with the exact public schema allowlist and anonymous-source verification.
 
-- `NEXT_PUBLIC_ARCGIS_WEBMAP_ID`
-- `NEXT_PUBLIC_ARCGIS_WATERSHEDS_VIEW_URL` (optional override; public USGS/Esri HUC12 service is the default)
-- `NEXT_PUBLIC_ARCGIS_SITES_VIEW_URL`
-- `NEXT_PUBLIC_ARCGIS_OBSERVATIONS_VIEW_URL`
-- `NEXT_PUBLIC_ARCGIS_MEASUREMENTS_VIEW_URL`
-- `NEXT_PUBLIC_ARCGIS_LATEST_CONDITIONS_VIEW_URL`
+`NEXT_PUBLIC_ARCGIS_WATERSHEDS_VIEW_URL` remains an optional browser HUC12-outline override. It does not change the fixed USGS selected-site lookup. No OAuth token or private service URL belongs in any public variable.
 
 For synthetic development monitoring data only:
 
