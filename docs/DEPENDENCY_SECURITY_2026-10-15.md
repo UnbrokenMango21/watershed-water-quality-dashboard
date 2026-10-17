@@ -81,3 +81,9 @@ Raw audit JSON is held outside Git under `/tmp/watershed-dependency-audit-2026-1
 ## Read-only refresh — 2026-10-16
 
 Six fresh npm audit reports under `/tmp/pww-security-refresh-2026-10-16/` retain the same post-remediation counts: root 5 (3 high, 2 moderate), QC 4 high, Firestore-rules tests 5 high; dashboard, validation tests and review tests 0. Applicable exposure and upstream constraints remain as assessed above. No forced override, unsupported downgrade or new dependency change was introduced. QC/dashboard typechecks and production builds pass after this refresh. The earlier production-only root audit is dated evidence; this refresh used full dependency trees.
+
+## Compatible modernization batch — 2026-10-16
+
+Explicit pins and lockfiles now use root Firebase Admin14.5.0 (matching the QC server), Functions7.4.0, web Firebase12.19.0, and React/ReactDOM19.2.9 in both web applications. These stay within the existing major versions; no peer constraint is forced or overridden. Registry metadata confirms Functions supports Admin14 and Node22, and ReactDOM19.2.9 supports React19.2.9. Next16.3.8 and15.5.28 remain the latest patches on their selected minor lines, and FirebaseCLI15.34.0 remains current. Firebase13/Next minor migrations are separate from this compatibility/security batch.
+
+Install audit counts remain root5 (3high/2moderate, tooling), QC4high (retained Firebase gRPC constraint), dashboard0. Fresh root production-only audit reports **0 findings** at `/tmp/pww-root-production-audit-20261016-final.json`. Contracts75pass/3emulator-only skips, publication19/19, provisioning privacy2/2, dashboard12/12 and both web typechecks pass. Final CI and the combined affected iPhone/QC/Functions workflow remain the integration gate; these dependency changes do not claim a deployment.

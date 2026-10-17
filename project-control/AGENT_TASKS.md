@@ -18,3 +18,7 @@ No two agents edit the same worktree. Every agent report must include branch/wor
 - One heavyweight local build/simulator at a time. Cloud deployment, privileged grants, deletion, publication and Apple release require explicit approval.
 
 Agents must not make scientific approval decisions, expose secrets, certify Workday, send final supervisor email without confirmation, submit publicly to the App Store, or perform irreversible production actions.
+
+## Execution policy — 2026-10-16 continuation
+
+Group related implementation/polish into meaningful batches. Use the smallest relevant development checks; preserve security/scientific/authorization/publication contracts. Reserve full simulator/browser/platform verification for affected-workflow milestones and final merge/release. Prefer final GitHub-hosted CI, one heavyweight local build/simulator, and one reused independent reviewer. Do not rerun passed suites without a relevant new change or unresolved concern.
