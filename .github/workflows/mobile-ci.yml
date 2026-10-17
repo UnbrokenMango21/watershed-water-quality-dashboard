@@ -26,8 +26,7 @@ concurrency:
   group: pa-watershed-ci-${{ github.ref }}
   cancel-in-progress: true
 
-# Android native CI is deferred for the iOS 1.0 release cycle and runs only on demand from
-# .github/workflows/android-deferred.yml. See docs/ROADMAP.md.
+# Android native verification also runs for Android pull-request changes in android-deferred.yml.
 jobs:
   backend-contracts:
     name: Backend contracts and security rules
@@ -79,13 +78,31 @@ jobs:
       - run: npm run build
 
   ios:
-    name: iOS native
-    runs-on: macos-15
+    name: iOS native (Xcode ${{ matrix.xcode }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Keep the release toolchain and its CI gate identical.
+          - runner: macos-26
+            xcode: '26.6'
+          # Stable Xcode on GitHub's current-SDK image; no beta SDK is selected.
+          - runner: xcode-27
+            xcode: '27.0'
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_${{ matrix.xcode }}.app/Contents/Developer
     defaults:
       run:
         working-directory: Phone App/iPhone App/PAWatershedWatch
     steps:
       - uses: actions/checkout@v4
+      - name: Verify selected Xcode
+        run: |
+          test -d "$DEVELOPER_DIR"
+          xcodebuild -version
+          xcrun swift --version
       - name: Select an available iPhone simulator
         shell: bash
         run: |
