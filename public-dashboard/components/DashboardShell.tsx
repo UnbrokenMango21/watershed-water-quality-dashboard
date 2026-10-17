@@ -140,7 +140,7 @@ export function DashboardShell() {
         <div className="brand-block">
           {/* eslint-disable-next-line @next/next/no-img-element -- static SVG mark */}
           <span className="brand-mark"><img src="/brand/pww-mark-master.svg" alt="" width={24} height={28} /></span>
-          <div><h1>PA Watershed Watch</h1><p>Watershed Dashboard</p></div>
+          <div><h1>Watershed Watch</h1><p>Public dashboard</p></div>
         </div>
         {sourceConnected ? (
           <div className="kpi-strip" aria-label="Network summary">
@@ -149,7 +149,7 @@ export function DashboardShell() {
             <div className="kpi"><span>Watersheds</span><strong>{watershedCount}</strong></div>
           </div>
         ) : (
-          <div className="source-status" role="status"><span className="source-status-dot" aria-hidden="true" /><span>Monitoring source unavailable</span></div>
+          <div className="source-status" role="status">Monitoring source unavailable</div>
         )}
       </header>
 
