@@ -1,0 +1,31 @@
+{
+  "$comment": "Single source for the Watershed Watch identity reveal. scripts/brand-motion/build.mjs turns it into reveal.css (web, QC Console, video renders); the SwiftUI and Compose sources mirror these numbers. Times are milliseconds from the start of the reveal.",
+  "name": "Watershed Watch identity reveal",
+  "version": "1.0.0",
+  "easings": {
+    "stroke": [0.25, 0.46, 0.45, 0.94],
+    "settle": [0.2, 0, 0, 1]
+  },
+  "strokeFadeInFraction": 0.16,
+  "tracks": [
+    { "part": "tributary-left", "kind": "draw", "delay": 0, "duration": 720, "easing": "stroke" },
+    { "part": "tributary-right", "kind": "draw", "delay": 0, "duration": 720, "easing": "stroke" },
+    { "part": "tributary-middle", "kind": "draw", "delay": 300, "duration": 420, "easing": "stroke" },
+    { "part": "monitoring-point", "kind": "resolve", "delay": 620, "duration": 360, "easing": "settle", "fromScale": 0.72, "fromOpacity": 0 },
+    { "part": "river", "kind": "draw", "delay": 860, "duration": 420, "easing": "stroke" },
+    { "part": "wordmark", "kind": "sweep", "delay": 1160, "duration": 600, "easing": "settle", "featherFraction": 0.2 }
+  ],
+  "settledAt": { "mark": 1280, "lockup": 1760 },
+  "web": {
+    "showAfterMs": 200,
+    "slowAfterMs": 6000,
+    "timeoutMs": 15000,
+    "exitFadeMs": 280,
+    "playOncePerSession": true
+  },
+  "video": {
+    "fps": 60,
+    "leadInMs": 400,
+    "holdMs": 1840
+  }
+}
