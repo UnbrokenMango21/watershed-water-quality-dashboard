@@ -54,8 +54,10 @@ The original strokes draw in their own path direction, which is the direction wa
 | 1160 to 1760 ms | Wordmark appears behind a soft left-to-right mask; the letters never move |
 | 1760 ms | Settled. Geometry equals the master exactly |
 
-Easing: `cubic-bezier(0.33, 0, 0.2, 1)` for strokes, `cubic-bezier(0.2, 0, 0, 1)` for the point and
-mask. No loops, glow, bounce or particles. Reduced motion shows the settled lockup.
+Easing: `cubic-bezier(0.25, 0.46, 0.45, 0.94)` for strokes with a 16% opacity ramp, and
+`cubic-bezier(0.2, 0, 0, 1)` for the point and mask. The first draft used an ease-in-out for strokes;
+frame review showed the river starting as a detached dot below the point, so strokes now start
+promptly and arrive gently. No loops, glow, bounce or particles. Reduced motion shows the settled lockup.
 
 ## Loading behaviour
 
