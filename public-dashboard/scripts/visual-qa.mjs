@@ -167,7 +167,7 @@ for (const viewport of viewports) {
   const consoleErrors = [];
   page.on("console", (message) => { if (message.type() === "error") consoleErrors.push(message.text()); });
 
-  const response = await page.goto(baseUrl, { waitUntil: "networkidle", timeout: 90000 });
+  const response = await page.goto(new URL("/dashboard", baseUrl).toString(), { waitUntil: "networkidle", timeout: 90000 });
   if (!response || !response.ok()) failures.push(`${viewport.name}: page returned ${response?.status() ?? "no response"}`);
   await page.locator(".dashboard-shell").waitFor({ state: "visible", timeout: 30000 });
   await waitForMapStable(page, viewport.name);

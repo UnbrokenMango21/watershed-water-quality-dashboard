@@ -1,6 +1,14 @@
 # Central PA Watershed Public Dashboard
 
-This package is the isolated public-facing dashboard. It does not replace or modify the existing `web/` QC reviewer console.
+This package hosts the public Watershed Watch website and approved-only dashboard. It does not replace or modify the existing `web/` QC reviewer console.
+
+## Public routes
+
+- `/` is the editorial landing page, with a real embedded preview of the dashboard and a clear explanation of field collection, QC and publication.
+- `/dashboard` contains the existing interactive ArcGIS monitoring workspace. It remains the single public-data implementation; the landing page embeds it using a same-origin, lazy-loaded iframe.
+- Local preview: `npm run dev -- -p 3007`, then open `http://localhost:3007/`.
+
+Website copy does not claim monitoring totals or site observations without an authorized published source. The dashboard remains fail-closed when no approved public data exists.
 
 ## Product direction
 
