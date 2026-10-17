@@ -77,3 +77,7 @@ Firebase CLI → `@google-cloud/pubsub 5.3.1` → `@opentelemetry/core 1.30.1` r
 | Browser/native workflow checks | Required independently; dependency audit is not workflow proof. |
 
 Raw audit JSON is held outside Git under `/tmp/watershed-dependency-audit-2026-10-15`. It contains public package/advisory metadata only. No authenticated inventory, credentials, or environment files were added to this report.
+
+## Read-only refresh — 2026-10-16
+
+Six fresh npm audit reports under `/tmp/pww-security-refresh-2026-10-16/` retain the same post-remediation counts: root 5 (3 high, 2 moderate), QC 4 high, Firestore-rules tests 5 high; dashboard, validation tests and review tests 0. Applicable exposure and upstream constraints remain as assessed above. No forced override, unsupported downgrade or new dependency change was introduced. QC/dashboard typechecks and production builds pass after this refresh. The earlier production-only root audit is dated evidence; this refresh used full dependency trees.
