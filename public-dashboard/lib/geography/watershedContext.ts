@@ -18,6 +18,19 @@ const HUC10_LAYER_URL = "https://hydro.nationalmap.gov/arcgis/rest/services/wbd/
 const HUC12_LAYER_URL = "https://hydro.nationalmap.gov/arcgis/rest/services/wbd/MapServer/6";
 const USGS_WBD_URL = "https://www.usgs.gov/national-hydrography/watershed-boundary-dataset";
 export type WatershedLevel = 10 | 12;
+/** Missing or duplicate coordinates must never become an invented (0, 0) location. */
+export function parseWatershedQuery(params: URLSearchParams): { level: WatershedLevel; longitude: number; latitude: number } | null {
+  const keys = [...params.keys()];
+  if (keys.length !== 3 || !["level", "x", "y"].every(key => params.getAll(key).length === 1 && params.get(key)!.trim() !== "")) return null;
+  if (keys.some(key => !["level", "x", "y"].includes(key))) return null;
+  const level = params.get("level");
+  if (level !== "10" && level !== "12") return null;
+  const decimal = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i;
+  if (![params.get("x")!, params.get("y")!].every(value => decimal.test(value.trim()))) return null;
+  const longitude = Number(params.get("x")), latitude = Number(params.get("y"));
+  if (!Number.isFinite(longitude) || Math.abs(longitude) > 180 || !Number.isFinite(latitude) || Math.abs(latitude) > 90) return null;
+  return { level: Number(level) as WatershedLevel, longitude, latitude };
+}
 export type WatershedPolygon = { rings: number[][][]; spatialReference: { wkid: number } };
 export type WatershedLookup = {
   status: "found" | "unmapped" | "ambiguous" | "error";

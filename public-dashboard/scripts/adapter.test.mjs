@@ -2,7 +2,18 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { ArcgisDashboardDataSource, parameterFields } from '../lib/data/ArcgisDashboardDataSource.ts';
-import { createRemoteWatershedLookup, createWatershedLookup, LOCAL_OUTLINE_LAYER_URL, parseWatershedLookup, REGIONAL_OUTLINE_LAYER_URL } from '../lib/geography/watershedContext.ts';
+import { createRemoteWatershedLookup, createWatershedLookup, LOCAL_OUTLINE_LAYER_URL, parseWatershedLookup, parseWatershedQuery, REGIONAL_OUTLINE_LAYER_URL } from '../lib/geography/watershedContext.ts';
+
+test('watershed requests require one explicit valid level and coordinate pair', () => {
+  for (const value of ['level=12', 'level=12&x=-77.86', 'level=12&x=&y=40', 'level=12&x=%20&y=40',
+    'level=12&x=0&x=-77.86&y=40', 'level=12&x=-77.86&y=40&url=https://example.test',
+    'level=12&x=Infinity&y=40', 'level=12&x=0x10&y=40', 'level=12&x=-181&y=40',
+    'level=12&x=-77.86&y=91', 'level=8&x=-77.86&y=40']) {
+    assert.equal(parseWatershedQuery(new URLSearchParams(value)), null, value);
+  }
+  assert.deepEqual(parseWatershedQuery(new URLSearchParams('level=12&x=-77.86&y=40.7934')), { level: 12, longitude: -77.86, latitude: 40.7934 });
+  assert.deepEqual(parseWatershedQuery(new URLSearchParams('level=10&x=0&y=0')), { level: 10, longitude: 0, latitude: 0 });
+});
 
 const schema = JSON.parse(readFileSync(new URL('../../config/arcgis_publication_schema.json', import.meta.url)));
 const kinds = ['sites', 'observations', 'measurements', 'latest'];

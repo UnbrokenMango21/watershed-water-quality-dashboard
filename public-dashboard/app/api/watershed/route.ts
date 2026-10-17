@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createWatershedLookup } from "@/lib/geography/watershedContext";
+import { createWatershedLookup, parseWatershedQuery } from "@/lib/geography/watershedContext";
 
 /**
  * Selected-site HUC10/HUC12 identification from the USGS Watershed Boundary Dataset, queried from
@@ -11,15 +11,11 @@ const lookup = createWatershedLookup();
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
-  const params = new URL(request.url).searchParams;
-  const level = Number(params.get("level"));
-  const longitude = Number(params.get("x"));
-  const latitude = Number(params.get("y"));
-  if ([...params.keys()].some((key) => !["level", "x", "y"].includes(key)) || (level !== 10 && level !== 12)
-    || !Number.isFinite(longitude) || Math.abs(longitude) > 180 || !Number.isFinite(latitude) || Math.abs(latitude) > 90) {
+  const point = parseWatershedQuery(new URL(request.url).searchParams);
+  if (!point) {
     return NextResponse.json({ error: "Use level 10 or 12 with a valid longitude (x) and latitude (y)." }, { status: 400 });
   }
-  const result = await lookup(level, longitude, latitude);
+  const result = await lookup(point.level, point.longitude, point.latitude);
   return NextResponse.json(result, {
     headers: { "Cache-Control": result.status === "error" ? "no-store" : "public, max-age=900" },
   });
