@@ -13,6 +13,8 @@ import androidx.work.workDataOf
 import com.google.android.gms.tasks.Task
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseUser
+import com.google.firebase.auth.FirebaseAuthException
+import com.google.firebase.auth.UserProfileChangeRequest
 import com.google.firebase.functions.FirebaseFunctions
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldValue
@@ -54,7 +56,7 @@ class AppGraph(application: Application, val database: WatershedDatabase) {
 private fun FirebaseUser.toAccount() = AuthAccount(
     uid = uid,
     email = email,
-    displayName = displayName?.takeIf(String::isNotBlank) ?: email?.substringBefore('@').orEmpty(),
+    displayName = displayName?.takeIf(String::isNotBlank).orEmpty(),
     emailVerified = isEmailVerified,
     profileName = displayName?.trim()?.takeIf(String::isNotEmpty),
     hasVerifiedPhone = !phoneNumber.isNullOrBlank(),
@@ -85,7 +87,28 @@ class FirebaseAuthRepository(private val auth: FirebaseAuth) : AuthRepository {
     override suspend fun reload(): Result<AuthAccount?> = runCatching {
         val user = auth.currentUser ?: return@runCatching null
         user.reload().awaitResult()
+        user.getIdToken(true).awaitResult()
         auth.currentUser?.toAccount()
+    }
+
+    override suspend fun createAccount(name: String, email: String, password: String): Result<RegistrationOutcome> = runCatching {
+        val fullName = CollectorName.normalized(name)
+        val user = requireNotNull(auth.createUserWithEmailAndPassword(email.trim(), password).awaitResult().user)
+        // An account already exists after creation succeeds. Secondary failures need recovery, never
+        // account recreation/deletion or a misleading claim that signup had no effect.
+        val nameSaved = runCatching {
+            user.updateProfile(UserProfileChangeRequest.Builder().setDisplayName(fullName).build()).awaitResult()
+        }.isSuccess
+        val verificationSent = runCatching { user.sendEmailVerification().awaitResult() }.isSuccess
+        RegistrationOutcome(user.toAccount(), nameSaved, verificationSent)
+    }
+
+    override suspend fun sendPasswordReset(email: String): Result<Unit> = runCatching {
+        try { auth.sendPasswordResetEmail(email.trim()).awaitResult() }
+        catch (error: FirebaseAuthException) {
+            if (error.errorCode != "ERROR_USER_NOT_FOUND") throw error
+        }
+        Unit
     }
 
     override suspend fun sendEmailVerification(): Result<Unit> = runCatching {

@@ -72,7 +72,7 @@ fun PAWatershedApp(model: AppViewModel) {
         OnboardingScreen(revisit = false, onDone = model::finishOnboarding)
         return
     }
-    if (model.authLoading) {
+    if (model.authLoading || (model.authWorking && (!model.isSignedIn || model.creatingAccount))) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
         return
     }
@@ -142,8 +142,7 @@ fun PAWatershedApp(model: AppViewModel) {
                     onStart = {
                         if (model.draft != null) replaceDraft = true
                         else {
-                            model.startNewObservation()
-                            navController.navigate(Routes.SelectSite)
+                            navController.navigate(if (model.startNewObservation()) Routes.SelectSite else Routes.Account)
                         }
                     },
                     onResume = ::navigateToDraftStep,
@@ -225,8 +224,7 @@ fun PAWatershedApp(model: AppViewModel) {
             confirmButton = {
                 TextButton(onClick = {
                     replaceDraft = false
-                    model.startNewObservation()
-                    navController.navigate(Routes.SelectSite)
+                    navController.navigate(if (model.startNewObservation()) Routes.SelectSite else Routes.Account)
                 }) { Text("Discard and Start") }
             },
             dismissButton = { TextButton(onClick = { replaceDraft = false }) { Text("Keep Draft") } },

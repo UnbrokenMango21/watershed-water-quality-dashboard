@@ -18,11 +18,15 @@ data class AuthAccount(
 interface AuthRepository {
     val account: Flow<AuthAccount?>
     suspend fun signIn(email: String, password: String): Result<AuthAccount>
+    suspend fun createAccount(name: String, email: String, password: String): Result<RegistrationOutcome>
+    suspend fun sendPasswordReset(email: String): Result<Unit>
     /** Reloads the signed-in account so a just-confirmed email verification is seen. */
     suspend fun reload(): Result<AuthAccount?>
     suspend fun sendEmailVerification(): Result<Unit>
     fun signOut()
 }
+
+data class RegistrationOutcome(val account: AuthAccount, val nameSaved: Boolean, val verificationSent: Boolean)
 
 interface SiteRepository {
     suspend fun cached(ownerUid: String): List<Site>
