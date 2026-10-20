@@ -1,9 +1,11 @@
-import { chromium } from "playwright";
+import { chromium, firefox } from "playwright";
 import fs from "node:fs/promises";
 
 const baseUrl = process.env.DASHBOARD_QA_URL || "http://127.0.0.1:3000";
 const outDir = process.env.DASHBOARD_QA_OUT || "artifacts/visual-qa";
 const mode = process.env.DASHBOARD_QA_MODE || "demo";
+const browserName = process.env.DASHBOARD_QA_BROWSER || "chromium";
+if (!["chromium", "firefox"].includes(browserName)) throw new Error("Unsupported DASHBOARD_QA_BROWSER: " + browserName);
 const viewports = [
   { name: "desktop", width: 1600, height: 1000 },
   { name: "laptop", width: 1366, height: 768 },
@@ -46,7 +48,7 @@ async function serveEmptyPublicViews(page) {
 }
 
 await fs.mkdir(outDir, { recursive: true });
-const browser = await chromium.launch({ headless: true });
+const browser = await (browserName === "firefox" ? firefox : chromium).launch({ headless: true });
 const failures = [];
 const results = [];
 
@@ -310,9 +312,9 @@ for (const viewport of viewports) {
 }
 
 await browser.close();
-await fs.writeFile(`${outDir}/results.json`, JSON.stringify({ mode, baseUrl, results, failures }, null, 2));
+await fs.writeFile(`${outDir}/results.json`, JSON.stringify({ mode, browser: browserName, baseUrl, results, failures }, null, 2));
 if (failures.length) {
   console.error("Visual QA failures:\n" + failures.map((item) => `- ${item}`).join("\n"));
   process.exit(1);
 }
-console.log(`Visual QA passed for ${viewports.length} viewports in ${mode} mode with viewport-height, watershed-layer, and map-stability assertions.`);
+console.log(`Visual QA passed for ${viewports.length} viewports in ${browserName}/${mode} mode with viewport-height, watershed-layer, and map-stability assertions.`);
