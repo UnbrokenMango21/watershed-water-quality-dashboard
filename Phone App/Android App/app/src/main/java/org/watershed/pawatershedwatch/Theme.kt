@@ -11,51 +11,54 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 
-val Hemlock = Color(0xFF0D5C4B)
-val Water = Color(0xFF167A8B)
-private val GoldenrodTextLight = Color(0xFF955600)
+val Hemlock = BrandTokens.primary
+val Water = BrandTokens.water
+private val GoldenrodTextLight = BrandTokens.goldText
 val Goldenrod: Color
-    @Composable get() = if (isSystemInDarkTheme()) Color(0xFFF3B65C) else GoldenrodTextLight
-val Fern = Color(0xFF2E7D52)
-val Limestone = Color(0xFFF3F1E9)
-val Ink = Color(0xFF17211E)
-val Mist = Color(0xFFE3ECE8)
+    @Composable get() = if (isSystemInDarkTheme()) BrandTokens.goldTextDark else GoldenrodTextLight
+val Fern = BrandTokens.fern
+val Limestone = BrandTokens.canvas
+val Ink = BrandTokens.ink
+val Mist = BrandTokens.primarySoft
 
 private val LightColors = lightColorScheme(
-    primary = Hemlock,
-    onPrimary = Color.White,
-    primaryContainer = Color(0xFFD2EBE2),
-    onPrimaryContainer = Color(0xFF063B31),
-    secondary = Water,
-    onSecondary = Color.White,
-    secondaryContainer = Color(0xFFD4EEF1),
-    onSecondaryContainer = Color(0xFF07434B),
-    tertiary = GoldenrodTextLight,
-    background = Limestone,
-    onBackground = Ink,
-    surface = Color(0xFFFFFDF8),
-    onSurface = Ink,
-    surfaceVariant = Color(0xFFE7E9E5),
-    onSurfaceVariant = Color(0xFF46504C),
-    outline = Color(0xFF747C78),
-    error = Color(0xFF9A3B31),
+    primary = BrandTokens.primary,
+    onPrimary = BrandTokens.onPrimary,
+    primaryContainer = BrandTokens.primarySoft,
+    onPrimaryContainer = BrandTokens.ink,
+    secondary = BrandTokens.water,
+    onSecondary = BrandTokens.onPrimary,
+    secondaryContainer = BrandTokens.surfaceRaised,
+    onSecondaryContainer = BrandTokens.ink,
+    tertiary = BrandTokens.goldText,
+    background = BrandTokens.canvas,
+    onBackground = BrandTokens.ink,
+    surface = BrandTokens.surface,
+    onSurface = BrandTokens.ink,
+    surfaceVariant = BrandTokens.surfaceRaised,
+    onSurfaceVariant = BrandTokens.inkMuted,
+    outline = BrandTokens.lineInput,
+    error = BrandTokens.alert,
 )
 
 private val DarkColors = darkColorScheme(
-    primary = Color(0xFF8FD5C0),
-    onPrimary = Color(0xFF00382D),
-    primaryContainer = Color(0xFF0C5647),
-    onPrimaryContainer = Color(0xFFC5F0E2),
-    secondary = Color(0xFF7DCBD6),
-    onSecondary = Color(0xFF00363D),
-    tertiary = Color(0xFFF3B65C),
-    background = Color(0xFF111714),
-    onBackground = Color(0xFFE4E9E5),
-    surface = Color(0xFF171E1B),
-    onSurface = Color(0xFFE4E9E5),
-    surfaceVariant = Color(0xFF28312D),
-    onSurfaceVariant = Color(0xFFC1CAC5),
-    outline = Color(0xFF89938E),
+    primary = BrandTokens.primaryDark,
+    onPrimary = BrandTokens.onPrimaryDark,
+    primaryContainer = BrandTokens.primarySoftDark,
+    onPrimaryContainer = BrandTokens.inkDark,
+    secondary = BrandTokens.waterDark,
+    onSecondary = BrandTokens.onPrimaryDark,
+    secondaryContainer = BrandTokens.surfaceRaisedDark,
+    onSecondaryContainer = BrandTokens.inkDark,
+    tertiary = BrandTokens.goldTextDark,
+    background = BrandTokens.canvasDark,
+    onBackground = BrandTokens.inkDark,
+    surface = BrandTokens.surfaceDark,
+    onSurface = BrandTokens.inkDark,
+    surfaceVariant = BrandTokens.surfaceRaisedDark,
+    onSurfaceVariant = BrandTokens.inkMutedDark,
+    outline = BrandTokens.lineInputDark,
+    error = BrandTokens.alertDark,
 )
 
 private val FieldTypography = androidx.compose.material3.Typography(
