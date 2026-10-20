@@ -4,21 +4,17 @@ on:
   workflow_dispatch:
     inputs:
       release_ref:
-        description: Git ref to release
+        description: Exact reviewed release tag or ref (no implicit older build)
         required: true
-        default: release/ios-existing-app-v0.1.0-b13
       expected_sha:
-        description: Exact commit SHA expected at release_ref
+        description: Full 40-character commit SHA of the reviewed release ref
         required: true
-        default: a23358ad1f3c32f5b9c12a2a10e864ca5d1ca7d7
       marketing_version:
-        description: Expected CFBundleShortVersionString
+        description: Expected CFBundleShortVersionString from reviewed source
         required: true
-        default: 0.1.0
       build_number:
-        description: Expected CFBundleVersion
+        description: Expected new and unused CFBundleVersion from App Store Connect
         required: true
-        default: '13'
 
 permissions:
   contents: read
