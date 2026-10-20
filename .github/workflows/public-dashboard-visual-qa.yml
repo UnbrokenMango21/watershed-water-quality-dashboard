@@ -17,7 +17,7 @@ permissions:
 
 jobs:
   visual-qa:
-    name: visual-qa (${{ matrix.qa_mode }})
+    name: visual-qa (${{ matrix.browser }} / ${{ matrix.qa_mode }})
     runs-on: ubuntu-latest
     timeout-minutes: 20
     strategy:
@@ -26,11 +26,20 @@ jobs:
         include:
           - qa_mode: demo
             data_mode: demo
+            browser: chromium
           - qa_mode: empty
             data_mode: production
+            browser: chromium
+          - qa_mode: demo
+            data_mode: demo
+            browser: firefox
+          - qa_mode: empty
+            data_mode: production
+            browser: firefox
     env:
       NEXT_PUBLIC_DASHBOARD_DATA_MODE: ${{ matrix.data_mode }}
       DASHBOARD_QA_MODE: ${{ matrix.qa_mode }}
+      DASHBOARD_QA_BROWSER: ${{ matrix.browser }}
     defaults:
       run:
         working-directory: public-dashboard
@@ -43,9 +52,10 @@ jobs:
           cache-dependency-path: public-dashboard/package-lock.json
       - run: npm ci --no-audit --no-fund
       - name: Install Playwright for QA only
-        # Without --package-lock=false the locked app dependencies stay as tested; only Playwright is added.
-        run: npm install --no-save playwright@1.55.0
-      - run: npx playwright install --with-deps chromium
+        # Keep application dependencies locked; install the stable cross-browser runner separately.
+        # ArcGIS 5.1 requires Firefox >=151, which older Playwright builds do not bundle.
+        run: npm install --no-save playwright@1.64.1
+      - run: npx playwright install --with-deps ${{ matrix.browser }}
       - run: npm run build
       - name: Start dashboard
         run: |
@@ -65,7 +75,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: public-dashboard-visual-qa-${{ matrix.qa_mode }}
+          name: public-dashboard-visual-qa-${{ matrix.browser }}-${{ matrix.qa_mode }}
           path: public-dashboard/artifacts/visual-qa
           if-no-files-found: warn
           retention-days: 14
