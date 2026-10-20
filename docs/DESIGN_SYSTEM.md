@@ -8,16 +8,17 @@ icon and store assets are archived in `submission/brand/assets`.
 
 `config/brand_tokens.json` holds every shared value: the palette, semantic light/dark colours, status
 tones, the presentation tone for each canonical workflow state, radii, spacing and web type.
-`node scripts/brand-tokens.mjs --write` regenerates the platform copies:
+`node scripts/brand-tokens.mjs --write` regenerates the web and iOS copies. Android Compose uses the same canonical color and workflow-tone values in `BrandTokens.kt`, with drift checks in `tests/brand/android-parity.test.mjs`:
 
 | Target | Used by |
 | --- | --- |
 | `web/app/brand-tokens.css`, `web/lib/brandTokens.ts` | QC console |
 | `public-dashboard/styles/brand-tokens.css`, `public-dashboard/lib/brandTokens.ts` | Public dashboard |
 | Marked block in `Phone App/iPhone App/PAWatershedWatch/PAWatershedWatch/DesignSystem.swift` | iOS app |
+| `Phone App/Android App/app/src/main/java/org/watershed/pawatershedwatch/BrandTokens.kt` | Android Compose semantic light/dark colors and workflow presentation tones; checked against the canonical JSON |
 
 Each web app is its own App Hosting root, so each receives its own copy. `npm run test:contracts`
-fails when a copy drifts, when a declared text pairing falls below WCAG AA in light or dark, or when a
+fails when a web/iOS copy or Android token drifts, when a declared text pairing falls below WCAG AA in light or dark, or when a
 state in `config/workflow_states.json` has no tone. Tones are presentation only; they never carry
 workflow meaning.
 
