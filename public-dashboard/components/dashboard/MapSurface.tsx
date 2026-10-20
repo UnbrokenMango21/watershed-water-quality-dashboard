@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import type { DashboardParameter, DashboardSite, LatestSiteCondition } from "@/lib/data/DashboardDataSource";
 import { CalciteIcon, formatDateTime, parameterDefinitions, type MapTool } from "./dashboard-utils";
 import { initialMapLayerState, useDashboardMap, type MapBackground, type MapLayerState } from "./useDashboardMap";
+import { MapLoadVeil, type RecordsPhase } from "./MapLoadVeil";
 import type { WatershedLookup } from "@/lib/geography/watershedContext";
 
 const toolLabels: Record<Exclude<MapTool, null>, string> = {
@@ -26,9 +27,11 @@ export function MapSurface({
   selectedSite,
   hoveredSite,
   activeParameter,
+  records,
   onSelectSite,
   onHoverSite,
 }: {
+  records: RecordsPhase;
   sites: DashboardSite[];
   conditions: Record<string, LatestSiteCondition | null>;
   selectedSite: DashboardSite | null;
@@ -39,7 +42,7 @@ export function MapSurface({
 }) {
   const [activeMapTool, setActiveMapTool] = useState<MapTool>(null);
   const [layerState, setLayerState] = useState<MapLayerState>(initialMapLayerState);
-  const { mapHost, hoverPoint, watershedContext, geographyError, retryGeography } = useDashboardMap({ sites, conditions, selectedSite, hoveredSite, layerState, onSelectSite, onHoverSite });
+  const { mapHost, hoverPoint, watershedContext, geographyError, mapPhase, retryGeography } = useDashboardMap({ sites, conditions, selectedSite, hoveredSite, layerState, onSelectSite, onHoverSite });
   const setLayer = (patch: Partial<MapLayerState>) => setLayerState((current) => ({ ...current, ...patch }));
 
   useEffect(() => {
@@ -52,13 +55,14 @@ export function MapSurface({
   const tooltipSite = hoverPoint ? sites.find((site) => site.id === hoverPoint.siteId) ?? null : null;
 
   return (
-    <div className="map-frame">
+    <div className="map-frame" data-map-phase={mapPhase} aria-busy={mapPhase !== "ready"}>
       <div ref={mapHost} className="map-host" />
+      <MapLoadVeil mapPhase={mapPhase} records={records} onRetry={retryGeography} />
 
       <details className="map-geography" open={Boolean(selectedSite || geographyError)}>
         <summary>Watershed context</summary>
         <div className="map-geography-body">
-          <p>USGS Watershed Boundary Dataset · reference geography</p>
+          <p>Reference geography from the USGS Watershed Boundary Dataset.</p>
           {geographyError && <p role="alert">{geographyError}</p>}
           {!selectedSite && <p>Select a monitoring site to identify its watershed from its displayed coordinates.</p>}
           {selectedSite && !watershedContext && <p role="status">Finding HUC10 and HUC12 watersheds…</p>}
@@ -67,7 +71,7 @@ export function MapSurface({
             <button type="button" className="map-geography-retry" onClick={retryGeography}>Retry reference geography</button>
           )}
           <p><a href="https://www.usgs.gov/national-hydrography/watershed-boundary-dataset" target="_blank" rel="noreferrer">USGS source and limitations</a></p>
-          <p><a href="https://mywaterway.epa.gov/community/State%20College,%20PA,%20USA/overview" target="_blank" rel="noreferrer">EPA How’s My Waterway — external context</a><br />EPA assessments are separate from project measurements.</p>
+          <p><a href="https://mywaterway.epa.gov/community/State%20College,%20PA,%20USA/overview" target="_blank" rel="noreferrer">EPA How’s My Waterway</a> (external context)<br />EPA assessments are separate from project measurements.</p>
         </div>
       </details>
 
@@ -128,9 +132,9 @@ function WatershedResult({ result }: { result: WatershedLookup }) {
       : result.status === "error" ? "Reference lookup unavailable. No watershed has been assumed." : null;
   return (
     <div className="map-geography-result" role="status">
-      <strong>{label} · HUC{result.level}</strong>
+      <strong>{label} (HUC{result.level})</strong>
       {result.status === "found" ? <span>{result.name}<br /><code>{result.huc}</code></span> : <span>{message}</span>}
-      <small><a href={result.sourceUrl} target="_blank" rel="noreferrer">{result.sourceUrl.startsWith("https://hydro.nationalmap.gov/") ? "USGS National Map" : "Public WBD reference layer"}</a> · checked {new Date(result.checkedAt).toLocaleString()}{result.dataLastEditedAt ? ` · source edited ${new Date(result.dataLastEditedAt).toLocaleDateString()}` : ""}</small>
+      <small><a href={result.sourceUrl} target="_blank" rel="noreferrer">{result.sourceUrl.startsWith("https://hydro.nationalmap.gov/") ? "USGS National Map" : "Public WBD reference layer"}</a>, checked {new Date(result.checkedAt).toLocaleString()}{result.dataLastEditedAt ? `, source edited ${new Date(result.dataLastEditedAt).toLocaleDateString()}` : ""}</small>
     </div>
   );
 }

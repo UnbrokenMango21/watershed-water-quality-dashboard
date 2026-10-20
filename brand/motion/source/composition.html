@@ -1,0 +1,61 @@
+<!doctype html>
+<!--
+  Watershed Watch identity reveal: video composition.
+  Open directly in a browser to watch it play, or let scripts/brand-motion/render.mjs seek it frame by frame.
+  Query: ?format=landscape|square|portrait&theme=light|dark&still=<ms>
+  Everything visible comes from reveal-data.js and reveal.css, which build.mjs generates from
+  motion-spec.json and the archived logo masters.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Watershed Watch identity reveal</title>
+<link rel="stylesheet" href="reveal.css">
+<style>
+  html, body { margin: 0; height: 100%; }
+  body { display: grid; place-items: center; background: var(--canvas); overflow: hidden; }
+  .stage { position: relative; width: var(--w); height: var(--h); display: grid; place-items: center; background: var(--canvas); }
+  .stage .wwr { width: var(--lockup); transform: translateY(var(--shift, 0)); }
+</style>
+<script src="reveal-data.js"></script>
+</head>
+<body>
+<div class="stage"><div class="wwr" id="reveal"></div></div>
+<script>
+  // Lockup widths are set so the cap height of the wordmark lands near 6% of the short side.
+  const FORMATS = {
+    landscape: { w: 1920, h: 1080, layout: "horizontal", lockup: 760, shift: "0px" },
+    square: { w: 1080, h: 1080, layout: "stacked", lockup: 520, shift: "0px" },
+    // Portrait sits slightly above centre, where native splash icons sit.
+    portrait: { w: 1080, h: 1920, layout: "stacked", lockup: 520, shift: "-48px" },
+  };
+  const params = new URLSearchParams(location.search);
+  const format = FORMATS[params.get("format")] ?? FORMATS.landscape;
+  const theme = params.get("theme") === "dark" ? "dark" : "light";
+  const { svg, themes, spec } = window.WW_REVEAL;
+  const root = document.documentElement.style;
+  root.setProperty("--w", format.w + "px");
+  root.setProperty("--h", format.h + "px");
+  root.setProperty("--lockup", format.lockup + "px");
+  root.setProperty("--shift", format.shift);
+  root.setProperty("--canvas", themes[theme].canvas);
+  const reveal = document.getElementById("reveal");
+  reveal.innerHTML = svg[format.layout].replaceAll("__ID__", "wwr");
+  if (theme === "dark") reveal.classList.add("wwr--dark");
+
+  const leadIn = spec.video.leadInMs;
+  const total = leadIn + spec.settledAt.lockup + spec.video.holdMs;
+  // Deterministic seeking for frame renders: every animation is paused and positioned explicitly.
+  window.WW_TOTAL_MS = total;
+  window.seek = (ms) => {
+    reveal.dataset.play = "true";
+    const t = Math.max(0, ms - leadIn);
+    for (const animation of document.getAnimations()) { animation.pause(); animation.currentTime = t; }
+    return new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  };
+  const still = params.get("still");
+  if (still !== null) window.seek(Number(still));
+  else if (!params.has("render")) setTimeout(() => { reveal.dataset.play = "true"; }, leadIn);
+</script>
+</body>
+</html>

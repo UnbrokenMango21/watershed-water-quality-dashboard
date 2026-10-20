@@ -38,7 +38,7 @@
 .chart-point { fill: var(--surface); stroke: var(--accent); stroke-width: 2.2; cursor: crosshair; }
 .chart-point:focus { outline: none; stroke: var(--pww-gold-graphic); stroke-width: 3; }
 .chart-gap-band { fill: var(--surface-raised); opacity: .7; }
-.chart-gap-label { fill: var(--muted); font-size: 10px; font-style: italic; }
+.chart-gap-label { fill: var(--muted); font-size: 10px; }
 .chart-hover-line { stroke: var(--line-input); stroke-width: 1; stroke-dasharray: 3 3; }
 .chart-tooltip rect { fill: var(--pww-color-night); opacity: .96; }
 .chart-tooltip text { fill: var(--pww-color-on-dark); font-size: 10.5px; }

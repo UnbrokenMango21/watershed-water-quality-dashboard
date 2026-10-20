@@ -4,7 +4,8 @@ import type { DashboardObservationSeriesPoint, DashboardParameter, DashboardSite
 import { CalciteIcon, parameterDefinitions, ranges, type RangeName } from "./dashboard-utils";
 import { TrendChart } from "./TrendChart";
 
-export function ChartPanel({ site, sourceConnected, activeParameter, activeRange, points, onParameter, onRange, onExport, loading, error, onRetry }: {
+export function ChartPanel({ site, sourceConnected, recordsLoading, activeParameter, activeRange, points, onParameter, onRange, onExport, loading, error, onRetry }: {
+  recordsLoading: boolean;
   site: DashboardSite | null;
   loading?: boolean;
   error?: string | null;
@@ -29,9 +30,9 @@ export function ChartPanel({ site, sourceConnected, activeParameter, activeRange
           </div>
         </div>
         <div className="chart-context-empty" role="status">
-          <CalciteIcon icon={sourceConnected ? "cursor-click" : "offline"} label="Time-series state" />
-          <strong>{sourceConnected ? "Select a monitoring site" : "Monitoring data unavailable"}</strong>
-          <span>{sourceConnected ? "Choose a site from the list or the map." : "Approved monitoring sources have not been connected yet."}</span>
+          <CalciteIcon icon={sourceConnected || recordsLoading ? "cursor-click" : "offline"} label="Time-series state" />
+          <strong>{recordsLoading ? "Checking for approved records…" : sourceConnected ? "Select a monitoring site" : "Records unavailable"}</strong>
+          <span>{recordsLoading ? "Readings over time appear when you select a site." : sourceConnected ? "Choose a site from the list or the map." : "Approved records couldn't be loaded. Nothing partial is shown."}</span>
         </div>
       </section>
     );

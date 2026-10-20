@@ -167,7 +167,7 @@ for (const viewport of viewports) {
   const consoleErrors = [];
   page.on("console", (message) => { if (message.type() === "error") consoleErrors.push(message.text()); });
 
-  const response = await page.goto(baseUrl, { waitUntil: "networkidle", timeout: 90000 });
+  const response = await page.goto(new URL("/dashboard", baseUrl).toString(), { waitUntil: "networkidle", timeout: 90000 });
   if (!response || !response.ok()) failures.push(`${viewport.name}: page returned ${response?.status() ?? "no response"}`);
   await page.locator(".dashboard-shell").waitFor({ state: "visible", timeout: 30000 });
   await waitForMapStable(page, viewport.name);
@@ -259,7 +259,7 @@ for (const viewport of viewports) {
     await waitForMapStable(page, viewport.name);
     await assertWatershedLayerTool(page, viewport.name, "demo");
   } else {
-    const sourceState = page.locator(".site-browser").getByText(mode === "empty" ? "No monitoring sites available" : "Monitoring data unavailable", { exact: true });
+    const sourceState = page.locator(".site-browser").getByText(mode === "empty" ? "Awaiting approved records" : "Monitoring data unavailable", { exact: true });
     await sourceState.waitFor({ state: compact ? "hidden" : "visible", timeout: 30000 }).catch(() => undefined);
     if (mode === "empty") {
       await page.locator('.dashboard-shell[data-source-connected="true"]').waitFor({ timeout: 30000 });
@@ -282,7 +282,7 @@ for (const viewport of viewports) {
     if (compact) {
       await page.getByRole("button", { name: "Data", exact: true }).click();
       await page.getByRole("button", { name: "Readings", exact: true }).click();
-      await page.getByRole("heading", { name: "No site selected" }).waitFor({ state: "visible" });
+      await page.getByRole("heading", { name: mode === "empty" ? "Good data takes time." : "No site selected" }).waitFor({ state: "visible" });
       await assertCompactSurfaceFillsWorkspace(page, viewport.name, ".site-detail", "disconnected-readings");
       await page.getByRole("button", { name: "Time series", exact: true }).click();
     }

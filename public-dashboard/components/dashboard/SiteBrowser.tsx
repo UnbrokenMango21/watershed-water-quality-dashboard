@@ -30,7 +30,7 @@ export function SiteBrowser(props: {
       <div className="panel-heading">
         <div>
           <h2>Monitoring sites</h2>
-          <span className="site-count">{loading ? "Loading…" : sourceUnavailable ? "Data source not connected" : sites.length ? `${filteredSites.length} of ${sites.length} sites` : "No sites available"}</span>
+          <span className="site-count">{loading ? "Checking for approved records…" : sourceUnavailable ? "Records unavailable" : sites.length ? `${filteredSites.length} of ${sites.length} sites` : "No published sites yet"}</span>
         </div>
       </div>
 
@@ -68,11 +68,11 @@ export function SiteBrowser(props: {
 
       <div className="site-list" aria-label="Monitoring site list">
         {loading ? (
-          <div className="loading-state" role="status"><span className="loading-spinner" aria-hidden="true" /><span>Loading monitoring sites…</span></div>
+          <div className="loading-state" role="status"><span className="loading-spinner" aria-hidden="true" /><span>Checking for approved records…</span></div>
         ) : sourceUnavailable ? (
-          <div className="empty-panel compact source-empty" role="status"><CalciteIcon icon="offline" label="Monitoring source unavailable" /><strong>Monitoring data unavailable</strong><span>Approved monitoring sources have not been connected yet.</span></div>
+          <div className="empty-panel compact source-empty" role="status"><CalciteIcon icon="offline" label="Records unavailable" /><strong>Records couldn't be loaded</strong><span>Nothing partial is shown. Try again from the message at the top of the page.</span></div>
         ) : sites.length === 0 ? (
-          <div className="empty-panel compact" role="status"><strong>No monitoring sites available</strong><span>The connected public source returned no monitoring sites.</span></div>
+          <div className="empty-panel compact" role="status"><strong>No published sites yet</strong><span>Monitoring sites appear here once their first readings are reviewed and published.</span></div>
         ) : filteredSites.length === 0 ? (
           <div className="empty-panel compact" role="status"><strong>No matching sites</strong><span>Try a different name, county, watershed, or site ID.</span>{filtersActive && <button type="button" className="text-action" onClick={() => { onSearch(""); onWatershedFilter(""); }}>Clear filters</button>}</div>
         ) : filteredSites.map((site) => (

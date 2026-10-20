@@ -2596,9 +2596,18 @@ textarea:disabled {
 .loading-pane {
   display: grid;
   place-items: center;
+  align-content: center;
+  gap: 16px;
   min-height: 50vh;
   color: var(--text-muted);
   font-size: var(--fs-sm);
+}
+
+/* Shared identity reveal (app/reveal.css). The slot keeps its size so the text never shifts. */
+.loading-pane .loading-mark {
+  display: block;
+  width: 44px;
+  height: 52px;
 }
 
 /* ========================================================== responsive ==== */

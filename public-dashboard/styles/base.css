@@ -35,8 +35,10 @@
 }
 
 * { box-sizing: border-box; }
-html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; }
+html, body { margin: 0; }
 body { background: var(--canvas); color: var(--ink); font-family: var(--font-ui); font-size: 14px; line-height: 1.45; -webkit-font-smoothing: antialiased; }
+/* The dashboard is a fixed-height application; the website pages scroll normally. */
+html:has(body .dashboard-shell), body:has(.dashboard-shell) { width: 100%; height: 100%; overflow: hidden; }
 button, input, select { font: inherit; }
 button { color: inherit; }
 a { color: var(--accent); text-underline-offset: 3px; }
@@ -67,10 +69,6 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
   z-index: 20;
 }
 .brand-block { min-width: 0; display: flex; align-items: center; gap: 12px; }
-.brand-mark { width: 24px; height: 28px; flex: 0 0 auto; display: block; }
-.brand-mark img { display: block; width: 100%; height: 100%; }
-.brand-block h1 { margin: 0; font-size: 19px; line-height: 1.15; font-weight: 600; letter-spacing: -.01em; color: var(--accent); white-space: nowrap; }
-.brand-block p { margin: 2px 0 0; color: var(--muted); font-size: 12.5px; font-weight: 500; line-height: 1.25; white-space: nowrap; }
 
 .kpi-strip { display: grid; grid-template-columns: repeat(3, minmax(112px, 1fr)); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; background: var(--surface); }
 .kpi { min-width: 112px; padding: 7px 12px; display: grid; gap: 2px; border-right: 1px solid var(--line-soft); }
@@ -114,3 +112,34 @@ button[data-tooltip]:hover::after, button[data-tooltip]:focus-visible::after { o
 .source-error { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 10px 20px; color: var(--ink); background: var(--pww-status-attention-bg); border-bottom: 1px solid color-mix(in srgb, var(--pww-alert) 35%, transparent); box-shadow: inset 4px 0 0 var(--pww-alert); font-size: 13px; }
 .source-error button { margin-left: auto; min-height: 36px; padding: 0 14px; border: 1px solid var(--pww-alert); border-radius: var(--radius-sm); background: var(--surface); color: var(--pww-alert); font-weight: 600; cursor: pointer; }
 .source-error button:hover { background: var(--pww-alert); color: var(--pww-on-primary); }
+
+
+/* Header and empty-publication panel. Brand tokens only; reference geography never stands in for measurements. */
+.dashboard-brand { display: block; flex: 0 0 auto; line-height: 0; border-radius: var(--radius-sm); }
+.dashboard-brand img { display: block; width: 147px; height: auto; }
+.dashboard-title { margin: 0; padding-left: 14px; border-left: 1px solid var(--line); color: var(--muted); font-size: 13.5px; font-weight: 500; line-height: 1.2; white-space: nowrap; }
+.dashboard-nav { display: flex; gap: 4px; margin-left: 8px; }
+.dashboard-nav a { padding: 6px 8px; border-radius: var(--radius-sm); color: var(--ink); font-size: 13.5px; font-weight: 500; text-decoration: none; white-space: nowrap; }
+.dashboard-nav a:hover { color: var(--accent); text-decoration: underline; }
+.dashboard-availability-note { color: var(--muted); font-size: 13px; line-height: 1.4; text-align: right; }
+.dashboard-shell[data-empty="true"] .center-column { grid-template-rows: minmax(0, 1fr); }
+.dashboard-shell[data-empty="true"] .center-column > .trend-panel { display: none; }
+.dashboard-shell[data-empty="true"] .site-list .empty-panel { padding: 32px 20px; text-align: left; justify-items: start; align-content: start; }
+.dashboard-shell[data-empty="true"] .site-list .empty-panel span { max-width: none; text-align: left; }
+.dashboard-shell .public-explainer { padding: 28px 24px; gap: 0; align-items: flex-start; }
+.dashboard-shell .public-explainer h2 { margin: 0 0 12px; color: var(--ink); font-size: 20px; line-height: 1.25; font-weight: 600; letter-spacing: -.01em; }
+.dashboard-shell .public-explainer p { margin: 0 0 12px; color: var(--muted); font-size: 14px; line-height: 1.6; }
+.public-explainer-link { margin-top: 4px; color: var(--accent); font-size: 14px; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
+@media (max-width: 960px) {
+  .dashboard-shell[data-empty="true"] .workspace[data-mobile-view="data"][data-data-subview="readings"] > .public-explainer { display: flex; grid-column: 1; grid-row: 2; width: 100%; height: 100%; border: 0; }
+  .dashboard-availability-note { display: none; }
+}
+@media (max-width: 760px) {
+  /* Still the page's heading for assistive technology; the lockup carries the name visually. */
+  .dashboard-title { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; padding: 0; border: 0; }
+}
+@media (max-width: 640px) {
+  .dashboard-brand img { width: 128px; }
+  .dashboard-nav { margin-left: auto; }
+  .dashboard-nav a { padding: 6px; font-size: 13px; }
+}

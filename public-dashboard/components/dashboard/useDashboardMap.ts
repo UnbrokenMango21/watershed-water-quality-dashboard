@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { DashboardSite, LatestSiteCondition } from "@/lib/data/DashboardDataSource";
 import { completenessFor, completenessLabel } from "./dashboard-utils";
-import { registerArcgisComponents } from "./registerArcgisComponents";
+import { loadMapModules } from "./mapModules";
 import { siteMarkerAttributes } from "./siteMarkers";
 import { LOCAL_OUTLINE_LAYER_URL, REGIONAL_OUTLINE_LAYER_URL, lookupWatershed, type WatershedLookup } from "@/lib/geography/watershedContext";
 
@@ -38,6 +38,12 @@ export const initialMapLayerState: MapLayerState = {
   background: "terrain",
 };
 export type HoverPoint = { siteId: string; x: number; y: number } | null;
+/**
+ * What the map itself has actually reached, from SDK events rather than timers:
+ * "loading" (SDK and basemap not ready), "drawing" (view ready, first tiles still drawing),
+ * "ready" (view ready, stationary and not updating) or "error" (the map could not start).
+ */
+export type MapPhase = "loading" | "drawing" | "ready" | "error";
 
 // Brand colours as ArcGIS RGBA (Deep Water, Hemlock, Limestone, Night).
 const WATER = [22, 122, 139] as const;
@@ -87,6 +93,7 @@ export function useDashboardMap({
   const [watershedContext, setWatershedContext] = useState<WatershedLookup[] | null>(null);
   const [geographyError, setGeographyError] = useState<string | null>(null);
   const [geographyAttempt, setGeographyAttempt] = useState(0);
+  const [mapPhase, setMapPhase] = useState<MapPhase>("loading");
 
   useEffect(() => { selectedSiteRef.current = selectedSite; }, [selectedSite]);
 
@@ -95,24 +102,10 @@ export function useDashboardMap({
     setGeographyError(null);
     const host = mapHost.current;
     if (!host) return;
+    setMapPhase("loading");
 
     async function initializeMap() {
-      const [graphicsModule, featureLayerModule, graphicsLayerModule, pointModule, markerSymbolModule, fillSymbolModule, rendererModule, uniqueValueModule, reactiveUtils, basemapModule, tileLayerModule, labelClassModule, polygonModule] = await Promise.all([
-        import("@arcgis/core/Graphic.js"),
-        import("@arcgis/core/layers/FeatureLayer.js"),
-        import("@arcgis/core/layers/GraphicsLayer.js"),
-        import("@arcgis/core/geometry/Point.js"),
-        import("@arcgis/core/symbols/SimpleMarkerSymbol.js"),
-        import("@arcgis/core/symbols/SimpleFillSymbol.js"),
-        import("@arcgis/core/renderers/SimpleRenderer.js"),
-        import("@arcgis/core/renderers/UniqueValueRenderer.js"),
-        import("@arcgis/core/core/reactiveUtils.js"),
-        import("@arcgis/core/Basemap.js"),
-        import("@arcgis/core/layers/TileLayer.js"),
-        import("@arcgis/core/layers/support/LabelClass.js"),
-        import("@arcgis/core/geometry/Polygon.js"),
-        registerArcgisComponents(),
-      ]);
+      const [graphicsModule, featureLayerModule, graphicsLayerModule, pointModule, markerSymbolModule, fillSymbolModule, rendererModule, uniqueValueModule, reactiveUtils, basemapModule, tileLayerModule, labelClassModule, polygonModule] = await loadMapModules();
       if (cancelled || !mapHost.current) return;
 
       const Graphic = graphicsModule.default;
@@ -192,7 +185,9 @@ export function useDashboardMap({
 
       const onReady = () => {
         syncStableState();
-        void waitForStableView();
+        if (!cancelled) setMapPhase("drawing");
+        // The first stable frame (basemap tiles drawn, nothing updating) is when the map is usable.
+        void waitForStableView().then(() => { if (!cancelled) setMapPhase("ready"); });
         if (!map.map) return;
 
         // Neighbouring states are softly veiled so Pennsylvania reads first; no outline noise.
@@ -388,6 +383,9 @@ export function useDashboardMap({
       };
 
       map.addEventListener("arcgisViewReadyChange", onReady, { once: true });
+      map.addEventListener("arcgisViewReadyError", () => {
+        if (!cancelled) setMapPhase("error");
+      }, { once: true });
       map.addEventListener("arcgisViewChange", syncStableState);
       map.addEventListener("arcgisViewClick", async (event) => {
         if (sites.length === 0) return;
@@ -410,7 +408,10 @@ export function useDashboardMap({
     }
 
     void initializeMap().catch(() => {
-      if (!cancelled) setGeographyError("The reference map could not be loaded. Check your connection and retry.");
+      if (!cancelled) {
+        setMapPhase("error");
+        setGeographyError("The reference map could not be loaded. Check your connection and retry.");
+      }
     });
     return () => {
       cancelled = true;
@@ -467,5 +468,5 @@ export function useDashboardMap({
   }, [selectedSite]);
 
   useEffect(() => { hoverUpdaterRef.current?.(hoveredSite); }, [hoveredSite]);
-  return { mapHost, hoverPoint, watershedContext, geographyError, retryGeography: () => setGeographyAttempt(value => value + 1) };
+  return { mapHost, hoverPoint, watershedContext, geographyError, mapPhase, retryGeography: () => setGeographyAttempt(value => value + 1) };
 }
